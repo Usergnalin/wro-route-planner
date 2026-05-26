@@ -75,8 +75,9 @@ RP.render = function() {
     for (var si = 0; si < r.waypoints.length - 1; si++) {
       var a = r.waypoints[si], b = r.waypoints[si + 1];
       var isBack = r.segmentDirections[si] === RP.SEG_BACKWARD;
+      var isTeleport = r.segmentDirections[si] === RP.SEG_TELEPORT;
       var isSel  = RP.selectedSegment && RP.selectedSegment.routeId === r.id && RP.selectedSegment.segIdx === si;
-      var segColor = isBack ? revColor : baseColor;
+      var segColor = isTeleport ? '#ffaa00' : (isBack ? revColor : baseColor);
 
       // Selected segment: draw a thick highlight halo underneath.
       if (isSel) {
@@ -91,15 +92,28 @@ RP.render = function() {
       ctx.strokeStyle = segColor;
       ctx.fillStyle = segColor;
       ctx.lineWidth = isActive ? 3 / RP.scale : 2 / RP.scale;
-      // Backward segments use a dashed pattern as a secondary cue.
-      if (isBack) ctx.setLineDash([8 / RP.scale, 5 / RP.scale]);
+      // Backward and teleport segments use different dash patterns.
+      if (isTeleport) ctx.setLineDash([2 / RP.scale, 6 / RP.scale]);
+      else if (isBack) ctx.setLineDash([8 / RP.scale, 5 / RP.scale]);
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      if (RP.scale > 0.05) {
+      // Teleport: draw lightning-bolt zigzag mid-segment + label. No arrow.
+      if (isTeleport) {
+        if (RP.scale > 0.05) {
+          var segMidX = (a.x + b.x) / 2, segMidY = (a.y + b.y) / 2;
+          var segAng = RP.angleRad(a.x, a.y, b.x, b.y);
+          var perpOff = 8 / RP.scale;
+          var zigX = segMidX + Math.cos(segAng + Math.PI / 2) * perpOff;
+          var zigY = segMidY + Math.sin(segAng + Math.PI / 2) * perpOff;
+          ctx.fillStyle = segColor;
+          ctx.font = 'bold ' + (13 / RP.scale) + 'px -apple-system, sans-serif';
+          ctx.fillText('\u26A1', zigX, zigY + 4 / RP.scale);
+        }
+      } else if (RP.scale > 0.05) {
         var mx2 = (a.x + b.x) / 2, my2 = (a.y + b.y) / 2;
         // Arrow points in the direction of TRAVEL. For backward, that's
         // still a -> b geometrically, but we flip it to b -> a to

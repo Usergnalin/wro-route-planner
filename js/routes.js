@@ -19,10 +19,13 @@ RP.getActiveRoute = function() {
 // of the segment between waypoints[i] and waypoints[i+1]:
 //   'forward'  - robot drives forward (chassis-front in direction A->B)
 //   'backward' - robot drives in reverse (chassis-front opposite, B->A)
+//   'teleport' - manual segment: turns before & after are omitted,
+//                replaced with a comment for hand-editing (e.g. arc logic)
 // Old saves without this field default to all-forward.
 // ----------------------------------------------------------------------
 RP.SEG_FORWARD = 'forward';
 RP.SEG_BACKWARD = 'backward';
+RP.SEG_TELEPORT = 'teleport';
 
 RP.ensureSegmentDirections = function(route) {
   if (!route) return;
@@ -31,8 +34,10 @@ RP.ensureSegmentDirections = function(route) {
   while (route.segmentDirections.length < wanted) route.segmentDirections.push(RP.SEG_FORWARD);
   if (route.segmentDirections.length > wanted) route.segmentDirections.length = wanted;
   // Coerce any stray values to 'forward' so we never trust corrupted data.
+  // Accept 'teleport' as a valid value alongside 'forward' and 'backward'.
   for (var i = 0; i < route.segmentDirections.length; i++) {
-    if (route.segmentDirections[i] !== RP.SEG_BACKWARD) route.segmentDirections[i] = RP.SEG_FORWARD;
+    var d = route.segmentDirections[i];
+    if (d !== RP.SEG_BACKWARD && d !== RP.SEG_TELEPORT) route.segmentDirections[i] = RP.SEG_FORWARD;
   }
 };
 
@@ -58,7 +63,11 @@ RP.flipSegmentDirection = function(routeId, segIdx) {
     RP.ensureSegmentDirections(r);
     if (segIdx < 0 || segIdx >= r.segmentDirections.length) return false;
     RP.pushHistory('Flip segment direction');
-    r.segmentDirections[segIdx] = (r.segmentDirections[segIdx] === RP.SEG_BACKWARD) ? RP.SEG_FORWARD : RP.SEG_BACKWARD;
+    // Cycle: forward → backward → teleport → forward
+    var cur = r.segmentDirections[segIdx];
+    if (cur === RP.SEG_FORWARD) r.segmentDirections[segIdx] = RP.SEG_BACKWARD;
+    else if (cur === RP.SEG_BACKWARD) r.segmentDirections[segIdx] = RP.SEG_TELEPORT;
+    else r.segmentDirections[segIdx] = RP.SEG_FORWARD;
     RP.render();
     RP.updateInfoPanel();
     return true;

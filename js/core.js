@@ -556,6 +556,9 @@ RP.updateSegmentPanel = function() {
   var idx = RP.selectedSegment.segIdx;
   var a = route.waypoints[idx], b = route.waypoints[idx + 1];
   var dir = route.segmentDirections[idx];
+  var isTeleport = dir === RP.SEG_TELEPORT;
+  var dirColor = isTeleport ? '#ffaa00' : (dir === RP.SEG_BACKWARD ? '#ff8844' : '#44aaff');
+  var dirLabel = isTeleport ? 'Teleport' : (dir === RP.SEG_BACKWARD ? 'Backward' : 'Forward');
   var lenStr = '';
   if (RP.calibration) {
     var mm = RP.dist(a.x, a.y, b.x, b.y) / RP.calibration.pixelsPerMm;
@@ -570,8 +573,8 @@ RP.updateSegmentPanel = function() {
       '<div>Route: ' + route.name + '</div>' +
       '<div>Segment: ' + (idx + 1) + ' of ' + (route.waypoints.length - 1) + '</div>' +
       '<div>Length: ' + lenStr + '</div>' +
-      '<div>Direction: <b style="color:' + (dir === RP.SEG_BACKWARD ? '#ff8844' : '#44aaff') + '">' +
-        (dir === RP.SEG_BACKWARD ? 'Backward' : 'Forward') + '</b></div>';
+      '<div>Direction: <b style="color:' + dirColor + '">' + dirLabel + '</b></div>' +
+      (isTeleport ? '<div style="font-size:10px;color:#ffaa00;margin-top:2px">Turns omitted — insert manual arc logic</div>' : '');
   }
   RP.dom.segmentSection.style.display = '';
 };

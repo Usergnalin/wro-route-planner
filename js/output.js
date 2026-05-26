@@ -20,6 +20,7 @@ RP.unitFactor = function(unit) {
 // Steps:
 //   { kind: 'turn',    deg: <abs>,    dirRight: <bool> }
 //   { kind: 'forward', mm:  <number>, reverse: <bool> }
+//   { kind: 'teleport', fromX, fromY, toX, toY, heading }
 //
 // Direction model:
 //   For a segment a->b with direction 'forward', the robot's chassis
@@ -86,6 +87,21 @@ RP.computeSteps = function(route) {
   for (var i = 0; i < wps.length - 1; i++) {
     var a = wps[i], b = wps[i + 1];
     var dir = dirs[i] || RP.SEG_FORWARD;
+
+    if (dir === RP.SEG_TELEPORT) {
+      // Teleport: omit turn before, emit comment placeholder, set
+      // prevHeading=null so the turn after is also omitted.
+      var heading = RP.toDeg(RP.angleRad(a.x, a.y, b.x, b.y));
+      steps.push({
+        kind: 'teleport',
+        fromX: a.x, fromY: a.y,
+        toX: b.x, toY: b.y,
+        heading: heading
+      });
+      prevHeading = null;
+      continue;
+    }
+
     var heading = chassisHeading(a, b, dir);
     if (prevHeading !== null) {
       var turn = RP.turnAngle(prevHeading, heading);
@@ -137,6 +153,23 @@ RP.generateCode = function(route) {
         .replace(/\{angle\}/g, absAngle)
         .replace(/\{speed\}/g, speed)
         .replace(/\{distance\}/g, '0'));
+    } else if (st.kind === 'teleport') {
+      var unit2 = RP.codeConfig.defaultUnit || 'mm';
+      var uf2 = RP.unitFactor(unit2);
+      var dx2 = (st.toX - st.fromX);
+      var dy2 = (st.toY - st.fromY);
+      var distPx2 = RP.dist ? RP.dist(st.fromX, st.fromY, st.toX, st.toY) : Math.hypot(dx2, dy2);
+      var distMm2 = 0;
+      if (RP.calibration) distMm2 = distPx2 / RP.calibration.pixelsPerMm;
+      var hdg = Math.round(st.heading || 0);
+      lines_out.push('');
+      lines_out.push(cp + ' === TELEPORT ===');
+      lines_out.push(cp + ' From: (' + st.fromX.toFixed(1) + ', ' + st.fromY.toFixed(1) + ')');
+      lines_out.push(cp + ' To:   (' + st.toX.toFixed(1) + ', ' + st.toY.toFixed(1) + ')');
+      lines_out.push(cp + ' Distance: ' + (distMm2 / uf2).toFixed(1) + ' ' + unit2 + '   Heading: ' + hdg + '\u00b0');
+      lines_out.push(cp + ' (insert your custom arc/maneuver code here)');
+      lines_out.push(cp + ' ================');
+      lines_out.push('');
     } else {
       // Backward legs are signalled by a negative {distance} so the
       // same forward template is reused (e.g. move(-300, 200)).
@@ -179,6 +212,11 @@ RP.updateInstructions = function() {
     if (st.kind === 'turn') {
       var dir = st.dirRight ? 'right' : 'left';
       html += '<li class="turn">' + (i + 1) + '. Turn ' + dir + ' ' + st.deg.toFixed(1) + '\u00b0</li>';
+    } else if (st.kind === 'teleport') {
+      html += '<li class="teleport">' + (i + 1) + '. ' +
+        '\u2708 Teleport from (' + st.fromX.toFixed(0) + ',' + st.fromY.toFixed(0) + ') to (' +
+        st.toX.toFixed(0) + ',' + st.toY.toFixed(0) + ') — ' +
+        '<em>insert manual arc/custom logic here</em></li>';
     } else {
       totalMm += st.mm;
       var verb = st.reverse ? 'Reverse' : 'Forward';
