@@ -599,11 +599,12 @@ RP.updateSegmentPanel = function() {
   if (RP.dom.segmentModeLTDist) RP.dom.segmentModeLTDist.checked = (mode === RP.SEG_MODE_LINETRACE_DIST);
   if (RP.dom.segmentModeLTJunct) RP.dom.segmentModeLTJunct.checked = (mode === RP.SEG_MODE_LINETRACE_JUNCT);
 
-  // Direction button.
+  // Direction button — greyed out for teleport and both line trace modes.
   if (RP.dom.btnFlipSegment) {
     RP.dom.btnFlipSegment.textContent = (dir === RP.SEG_BACKWARD ? '\u2190 Backward' : '\u2192 Forward');
-    RP.dom.btnFlipSegment.style.opacity = isTeleport ? '0.35' : '1';
-    RP.dom.btnFlipSegment.style.pointerEvents = isTeleport ? 'none' : 'auto';
+    var blockDir = isTeleport || isLineTrace;
+    RP.dom.btnFlipSegment.style.opacity = blockDir ? '0.35' : '1';
+    RP.dom.btnFlipSegment.style.pointerEvents = blockDir ? 'none' : 'auto';
   }
 
   // Mode-specific parameter inputs.

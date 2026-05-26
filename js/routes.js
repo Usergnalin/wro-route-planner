@@ -109,8 +109,9 @@ RP.flipSegmentDirection = function(routeId, segIdx) {
     RP.ensureSegmentDirections(r);
     RP.ensureSegmentModes(r);
     if (segIdx < 0 || segIdx >= r.segmentDirections.length) return false;
-    // Can't flip direction in teleport mode.
-    if (r.segmentModes[segIdx] === RP.SEG_MODE_TELEPORT) return false;
+    // Can't flip direction in teleport or line trace modes.
+    var mode = r.segmentModes[segIdx] || RP.SEG_MODE_NORMAL;
+    if (mode !== RP.SEG_MODE_NORMAL) return false;
     RP.pushHistory('Flip segment direction');
     r.segmentDirections[segIdx] = (r.segmentDirections[segIdx] === RP.SEG_BACKWARD) ? RP.SEG_FORWARD : RP.SEG_BACKWARD;
     RP.render();
@@ -140,6 +141,7 @@ RP.setSegmentMode = function(routeId, segIdx, mode) {
     }
     RP.render();
     RP.updateInfoPanel();
+    if (RP.updateInstructions) RP.updateInstructions();
     return true;
   }
   return false;
