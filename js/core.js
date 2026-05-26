@@ -52,6 +52,7 @@ RP.dom.btnRecalibrate = document.getElementById('btn-recalibrate');
 RP.dom.segmentSection = document.getElementById('segment-section');
 RP.dom.segmentInfo = document.getElementById('segment-info');
 RP.dom.btnFlipSegment = document.getElementById('btn-flip-segment');
+RP.dom.btnTeleportSegment = document.getElementById('btn-teleport-segment');
 RP.dom.btnCopyInstr = document.getElementById('btn-copy-instr');
 RP.dom.btnCopyCode = document.getElementById('btn-copy-code');
 RP.dom.btnSetStart = document.getElementById('btn-set-start');
@@ -558,7 +559,7 @@ RP.updateSegmentPanel = function() {
   var dir = route.segmentDirections[idx];
   var isTeleport = dir === RP.SEG_TELEPORT;
   var dirColor = isTeleport ? '#ffaa00' : (dir === RP.SEG_BACKWARD ? '#ff8844' : '#44aaff');
-  var dirLabel = isTeleport ? 'Teleport' : (dir === RP.SEG_BACKWARD ? 'Backward' : 'Forward');
+  var dirLabel = isTeleport ? 'Forward' : (dir === RP.SEG_BACKWARD ? 'Backward' : 'Forward');
   var lenStr = '';
   if (RP.calibration) {
     var mm = RP.dist(a.x, a.y, b.x, b.y) / RP.calibration.pixelsPerMm;
@@ -574,7 +575,18 @@ RP.updateSegmentPanel = function() {
       '<div>Segment: ' + (idx + 1) + ' of ' + (route.waypoints.length - 1) + '</div>' +
       '<div>Length: ' + lenStr + '</div>' +
       '<div>Direction: <b style="color:' + dirColor + '">' + dirLabel + '</b></div>' +
-      (isTeleport ? '<div style="font-size:10px;color:#ffaa00;margin-top:2px">Turns omitted — insert manual arc logic</div>' : '');
+      (isTeleport ? '<div style="font-size:10px;color:#ffaa00;margin-top:2px">\u2708 Teleport: turns omitted</div>' : '');
+  }
+
+  // Update the two toggle buttons.
+  if (RP.dom.btnFlipSegment) {
+    RP.dom.btnFlipSegment.textContent = (dir === RP.SEG_BACKWARD ? '\u2190 Backward' : '\u2192 Forward');
+    RP.dom.btnFlipSegment.style.opacity = isTeleport ? '0.35' : '1';
+    RP.dom.btnFlipSegment.style.pointerEvents = isTeleport ? 'none' : 'auto';
+  }
+  if (RP.dom.btnTeleportSegment) {
+    RP.dom.btnTeleportSegment.textContent = isTeleport ? '\u2708 Teleport: ON' : '\u2708 Teleport: OFF';
+    RP.dom.btnTeleportSegment.style.background = isTeleport ? '#aa6600' : '';
   }
   RP.dom.segmentSection.style.display = '';
 };

@@ -730,6 +730,13 @@ RP.initEvents = function() {
     });
   }
 
+  if (RP.dom.btnTeleportSegment) {
+    RP.dom.btnTeleportSegment.addEventListener('click', function() {
+      if (!RP.selectedSegment) return;
+      RP.toggleSegmentTeleport(RP.selectedSegment.routeId, RP.selectedSegment.segIdx);
+    });
+  }
+
   if (RP.dom.btnClearAll) {
     RP.dom.btnClearAll.addEventListener('click', function() {
       if (!confirm('Clear all lines, routes, calibration, robot config, and code templates?')) return;

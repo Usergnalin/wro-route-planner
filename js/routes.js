@@ -63,11 +63,31 @@ RP.flipSegmentDirection = function(routeId, segIdx) {
     RP.ensureSegmentDirections(r);
     if (segIdx < 0 || segIdx >= r.segmentDirections.length) return false;
     RP.pushHistory('Flip segment direction');
-    // Cycle: forward → backward → teleport → forward
     var cur = r.segmentDirections[segIdx];
-    if (cur === RP.SEG_FORWARD) r.segmentDirections[segIdx] = RP.SEG_BACKWARD;
-    else if (cur === RP.SEG_BACKWARD) r.segmentDirections[segIdx] = RP.SEG_TELEPORT;
-    else r.segmentDirections[segIdx] = RP.SEG_FORWARD;
+    if (cur === RP.SEG_TELEPORT) return false; // can't flip while teleported
+    r.segmentDirections[segIdx] = (cur === RP.SEG_BACKWARD) ? RP.SEG_FORWARD : RP.SEG_BACKWARD;
+    RP.render();
+    RP.updateInfoPanel();
+    return true;
+  }
+  return false;
+};
+
+// Toggle teleport on/off for a segment. When teleport is turned OFF,
+// the segment reverts to forward direction.
+RP.toggleSegmentTeleport = function(routeId, segIdx) {
+  for (var i = 0; i < RP.routes.length; i++) {
+    var r = RP.routes[i];
+    if (r.id !== routeId) continue;
+    RP.ensureSegmentDirections(r);
+    if (segIdx < 0 || segIdx >= r.segmentDirections.length) return false;
+    RP.pushHistory('Toggle teleport');
+    var cur = r.segmentDirections[segIdx];
+    if (cur === RP.SEG_TELEPORT) {
+      r.segmentDirections[segIdx] = RP.SEG_FORWARD;
+    } else {
+      r.segmentDirections[segIdx] = RP.SEG_TELEPORT;
+    }
     RP.render();
     RP.updateInfoPanel();
     return true;
