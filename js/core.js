@@ -52,7 +52,13 @@ RP.dom.btnRecalibrate = document.getElementById('btn-recalibrate');
 RP.dom.segmentSection = document.getElementById('segment-section');
 RP.dom.segmentInfo = document.getElementById('segment-info');
 RP.dom.btnFlipSegment = document.getElementById('btn-flip-segment');
-RP.dom.btnTeleportSegment = document.getElementById('btn-teleport-segment');
+RP.dom.segmentModeNormal = document.getElementById('seg-mode-normal');
+RP.dom.segmentModeTeleport = document.getElementById('seg-mode-teleport');
+RP.dom.segmentModeLTDist = document.getElementById('seg-mode-lt-dist');
+RP.dom.segmentModeLTJunct = document.getElementById('seg-mode-lt-junct');
+RP.dom.segmentTeleportName = document.getElementById('seg-teleport-name');
+RP.dom.segmentJunctionCount = document.getElementById('seg-junction-count');
+RP.dom.segmentModeParams = document.getElementById('seg-mode-params');
 RP.dom.btnCopyInstr = document.getElementById('btn-copy-instr');
 RP.dom.btnCopyCode = document.getElementById('btn-copy-code');
 RP.dom.btnSetStart = document.getElementById('btn-set-start');
@@ -100,6 +106,8 @@ RP.codeConfig = {
   forwardTemplate: 'move({distance}, {speed})',
   turnRightTemplate: 'turn_right({angle}, {speed})',
   turnLeftTemplate: 'turn_left({angle}, {speed})',
+  lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
+  lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
   defaultSpeed: 200,
   defaultUnit: 'mm'
 };
@@ -141,6 +149,8 @@ RP.DEFAULT_CODE_CONFIG_VALUES = {
   forwardTemplate: 'move({distance}, {speed})',
   turnRightTemplate: 'turn_right({angle}, {speed})',
   turnLeftTemplate: 'turn_left({angle}, {speed})',
+  lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
+  lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
   defaultSpeed: 200,
   defaultUnit: 'mm'
 };
@@ -554,12 +564,16 @@ RP.updateSegmentPanel = function() {
     return;
   }
   RP.ensureSegmentDirections(route);
+  RP.ensureSegmentModes(route);
   var idx = RP.selectedSegment.segIdx;
   var a = route.waypoints[idx], b = route.waypoints[idx + 1];
   var dir = route.segmentDirections[idx];
-  var isTeleport = dir === RP.SEG_TELEPORT;
-  var dirColor = isTeleport ? '#ffaa00' : (dir === RP.SEG_BACKWARD ? '#ff8844' : '#44aaff');
-  var dirLabel = isTeleport ? 'Forward' : (dir === RP.SEG_BACKWARD ? 'Backward' : 'Forward');
+  var mode = route.segmentModes[idx] || RP.SEG_MODE_NORMAL;
+  var isTeleport = mode === RP.SEG_MODE_TELEPORT;
+  var isLineTrace = mode === RP.SEG_MODE_LINETRACE_DIST || mode === RP.SEG_MODE_LINETRACE_JUNCT;
+  var dirColor = isTeleport ? '#ffaa00' : (isLineTrace ? '#44ff88' : (dir === RP.SEG_BACKWARD ? '#ff8844' : '#44aaff'));
+  var dirLabel = dir === RP.SEG_BACKWARD ? 'Backward' : 'Forward';
+  var modeLabel = mode === RP.SEG_MODE_TELEPORT ? 'Teleport' : (mode === RP.SEG_MODE_LINETRACE_DIST ? 'Line Trace (dist)' : (mode === RP.SEG_MODE_LINETRACE_JUNCT ? 'Line Trace (junct)' : 'Normal'));
   var lenStr = '';
   if (RP.calibration) {
     var mm = RP.dist(a.x, a.y, b.x, b.y) / RP.calibration.pixelsPerMm;
@@ -575,19 +589,44 @@ RP.updateSegmentPanel = function() {
       '<div>Segment: ' + (idx + 1) + ' of ' + (route.waypoints.length - 1) + '</div>' +
       '<div>Length: ' + lenStr + '</div>' +
       '<div>Direction: <b style="color:' + dirColor + '">' + dirLabel + '</b></div>' +
-      (isTeleport ? '<div style="font-size:10px;color:#ffaa00;margin-top:2px">\u2708 Teleport: turns omitted</div>' : '');
+      '<div>Mode: <b>' + modeLabel + '</b></div>' +
+      (isTeleport ? '<div style="font-size:10px;color:#ffaa00;margin-top:2px">Turns omitted — insert custom code</div>' : '');
   }
 
-  // Update the two toggle buttons.
+  // Mode selector radios.
+  if (RP.dom.segmentModeNormal) RP.dom.segmentModeNormal.checked = (mode === RP.SEG_MODE_NORMAL);
+  if (RP.dom.segmentModeTeleport) RP.dom.segmentModeTeleport.checked = (mode === RP.SEG_MODE_TELEPORT);
+  if (RP.dom.segmentModeLTDist) RP.dom.segmentModeLTDist.checked = (mode === RP.SEG_MODE_LINETRACE_DIST);
+  if (RP.dom.segmentModeLTJunct) RP.dom.segmentModeLTJunct.checked = (mode === RP.SEG_MODE_LINETRACE_JUNCT);
+
+  // Direction button.
   if (RP.dom.btnFlipSegment) {
     RP.dom.btnFlipSegment.textContent = (dir === RP.SEG_BACKWARD ? '\u2190 Backward' : '\u2192 Forward');
     RP.dom.btnFlipSegment.style.opacity = isTeleport ? '0.35' : '1';
     RP.dom.btnFlipSegment.style.pointerEvents = isTeleport ? 'none' : 'auto';
   }
-  if (RP.dom.btnTeleportSegment) {
-    RP.dom.btnTeleportSegment.textContent = isTeleport ? '\u2708 Teleport: ON' : '\u2708 Teleport: OFF';
-    RP.dom.btnTeleportSegment.style.background = isTeleport ? '#aa6600' : '';
+
+  // Mode-specific parameter inputs.
+  if (RP.dom.segmentModeParams) {
+    if (isTeleport) {
+      RP.dom.segmentModeParams.style.display = '';
+      if (RP.dom.segmentTeleportName) {
+        RP.dom.segmentTeleportName.style.display = '';
+        RP.dom.segmentTeleportName.value = route.segmentModeTeleportNames[idx] || ('teleport_' + (idx + 1));
+      }
+      if (RP.dom.segmentJunctionCount) RP.dom.segmentJunctionCount.style.display = 'none';
+    } else if (mode === RP.SEG_MODE_LINETRACE_JUNCT) {
+      RP.dom.segmentModeParams.style.display = '';
+      if (RP.dom.segmentTeleportName) RP.dom.segmentTeleportName.style.display = 'none';
+      if (RP.dom.segmentJunctionCount) {
+        RP.dom.segmentJunctionCount.style.display = '';
+        RP.dom.segmentJunctionCount.value = route.segmentModeJunctionCounts[idx] || 1;
+      }
+    } else {
+      RP.dom.segmentModeParams.style.display = 'none';
+    }
   }
+
   RP.dom.segmentSection.style.display = '';
 };
 

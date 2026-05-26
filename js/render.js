@@ -64,10 +64,13 @@ RP.render = function() {
     var r = RP.routes[ri];
     if (!r.visible || r.waypoints.length < 2) continue;
     RP.ensureSegmentDirections(r);
+    RP.ensureSegmentModes(r);
 
     var isActive = r.id === RP.activeRouteId;
     var baseColor = isActive ? '#44aaff' : '#4488cc';
     var revColor  = isActive ? '#ff8844' : '#cc6633';
+    var teleColor = '#ffaa00';
+    var ltColor   = isActive ? '#44ff88' : '#33cc66';
     var selColor  = '#ffd966';
 
     ctx.setLineDash([]);
@@ -75,9 +78,11 @@ RP.render = function() {
     for (var si = 0; si < r.waypoints.length - 1; si++) {
       var a = r.waypoints[si], b = r.waypoints[si + 1];
       var isBack = r.segmentDirections[si] === RP.SEG_BACKWARD;
-      var isTeleport = r.segmentDirections[si] === RP.SEG_TELEPORT;
+      var mode = r.segmentModes[si] || RP.SEG_MODE_NORMAL;
+      var isTeleport = mode === RP.SEG_MODE_TELEPORT;
+      var isLineTrace = mode === RP.SEG_MODE_LINETRACE_DIST || mode === RP.SEG_MODE_LINETRACE_JUNCT;
       var isSel  = RP.selectedSegment && RP.selectedSegment.routeId === r.id && RP.selectedSegment.segIdx === si;
-      var segColor = isTeleport ? '#ffaa00' : (isBack ? revColor : baseColor);
+      var segColor = isTeleport ? teleColor : (isLineTrace ? ltColor : (isBack ? revColor : baseColor));
 
       // Selected segment: draw a thick highlight halo underneath.
       if (isSel) {

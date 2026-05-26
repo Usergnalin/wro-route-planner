@@ -19,13 +19,26 @@ RP.getActiveRoute = function() {
 // of the segment between waypoints[i] and waypoints[i+1]:
 //   'forward'  - robot drives forward (chassis-front in direction A->B)
 //   'backward' - robot drives in reverse (chassis-front opposite, B->A)
-//   'teleport' - manual segment: turns before & after are omitted,
-//                replaced with a comment for hand-editing (e.g. arc logic)
 // Old saves without this field default to all-forward.
+//
+// Segment mode (parallel array `segmentModes`):
+//   'normal'           - regular turn+forward movement
+//   'teleport'         - manual segment: turns omitted, comment placeholder
+//   'linetrace_dist'   - line trace for a known distance
+//   'linetrace_junct'  - line trace until N junctions detected
+//
+// Mode parameters (parallel arrays):
+//   segmentModeTeleportNames[i]  - string name for teleport (Ctrl+F target)
+//   segmentModeJunctionCounts[i] - number of junctions to detect
+// Old saves without these fields default to 'normal' with null params.
 // ----------------------------------------------------------------------
 RP.SEG_FORWARD = 'forward';
 RP.SEG_BACKWARD = 'backward';
-RP.SEG_TELEPORT = 'teleport';
+
+RP.SEG_MODE_NORMAL = 'normal';
+RP.SEG_MODE_TELEPORT = 'teleport';
+RP.SEG_MODE_LINETRACE_DIST = 'linetrace_dist';
+RP.SEG_MODE_LINETRACE_JUNCT = 'linetrace_junct';
 
 RP.ensureSegmentDirections = function(route) {
   if (!route) return;
@@ -34,16 +47,49 @@ RP.ensureSegmentDirections = function(route) {
   while (route.segmentDirections.length < wanted) route.segmentDirections.push(RP.SEG_FORWARD);
   if (route.segmentDirections.length > wanted) route.segmentDirections.length = wanted;
   // Coerce any stray values to 'forward' so we never trust corrupted data.
-  // Accept 'teleport' as a valid value alongside 'forward' and 'backward'.
   for (var i = 0; i < route.segmentDirections.length; i++) {
-    var d = route.segmentDirections[i];
-    if (d !== RP.SEG_BACKWARD && d !== RP.SEG_TELEPORT) route.segmentDirections[i] = RP.SEG_FORWARD;
+    if (route.segmentDirections[i] !== RP.SEG_BACKWARD) route.segmentDirections[i] = RP.SEG_FORWARD;
+  }
+};
+
+RP.ensureSegmentModes = function(route) {
+  if (!route) return;
+  if (!Array.isArray(route.segmentModes)) route.segmentModes = [];
+  if (!Array.isArray(route.segmentModeTeleportNames)) route.segmentModeTeleportNames = [];
+  if (!Array.isArray(route.segmentModeJunctionCounts)) route.segmentModeJunctionCounts = [];
+  var wanted = Math.max(0, route.waypoints.length - 1);
+  while (route.segmentModes.length < wanted) route.segmentModes.push(RP.SEG_MODE_NORMAL);
+  if (route.segmentModes.length > wanted) route.segmentModes.length = wanted;
+  while (route.segmentModeTeleportNames.length < wanted) route.segmentModeTeleportNames.push(null);
+  if (route.segmentModeTeleportNames.length > wanted) route.segmentModeTeleportNames.length = wanted;
+  while (route.segmentModeJunctionCounts.length < wanted) route.segmentModeJunctionCounts.push(null);
+  if (route.segmentModeJunctionCounts.length > wanted) route.segmentModeJunctionCounts.length = wanted;
+  // Coerce invalid modes.
+  var validModes = [RP.SEG_MODE_NORMAL, RP.SEG_MODE_TELEPORT, RP.SEG_MODE_LINETRACE_DIST, RP.SEG_MODE_LINETRACE_JUNCT];
+  for (var j = 0; j < route.segmentModes.length; j++) {
+    if (validModes.indexOf(route.segmentModes[j]) < 0) route.segmentModes[j] = RP.SEG_MODE_NORMAL;
+  }
+  // Coerce junction counts to positive integers.
+  for (var k = 0; k < route.segmentModeJunctionCounts.length; k++) {
+    var c = route.segmentModeJunctionCounts[k];
+    if (c !== null && (!isFinite(c) || c < 1)) route.segmentModeJunctionCounts[k] = 1;
+  }
+  // Migrate old saves that used segmentDirections='teleport'.
+  RP.ensureSegmentDirections(route);
+  for (var m = 0; m < route.segmentDirections.length; m++) {
+    if (route.segmentDirections[m] === 'teleport') {
+      route.segmentDirections[m] = RP.SEG_FORWARD;
+      route.segmentModes[m] = RP.SEG_MODE_TELEPORT;
+    }
   }
 };
 
 // Apply migration across all routes. Safe to call any time.
 RP.migrateAllRoutes = function() {
-  for (var i = 0; i < RP.routes.length; i++) RP.ensureSegmentDirections(RP.routes[i]);
+  for (var i = 0; i < RP.routes.length; i++) {
+    RP.ensureSegmentDirections(RP.routes[i]);
+    RP.ensureSegmentModes(RP.routes[i]);
+  }
 };
 
 // Selected segment (select mode only). Lives outside the route model so
@@ -61,11 +107,12 @@ RP.flipSegmentDirection = function(routeId, segIdx) {
     var r = RP.routes[i];
     if (r.id !== routeId) continue;
     RP.ensureSegmentDirections(r);
+    RP.ensureSegmentModes(r);
     if (segIdx < 0 || segIdx >= r.segmentDirections.length) return false;
+    // Can't flip direction in teleport mode.
+    if (r.segmentModes[segIdx] === RP.SEG_MODE_TELEPORT) return false;
     RP.pushHistory('Flip segment direction');
-    var cur = r.segmentDirections[segIdx];
-    if (cur === RP.SEG_TELEPORT) return false; // can't flip while teleported
-    r.segmentDirections[segIdx] = (cur === RP.SEG_BACKWARD) ? RP.SEG_FORWARD : RP.SEG_BACKWARD;
+    r.segmentDirections[segIdx] = (r.segmentDirections[segIdx] === RP.SEG_BACKWARD) ? RP.SEG_FORWARD : RP.SEG_BACKWARD;
     RP.render();
     RP.updateInfoPanel();
     return true;
@@ -73,22 +120,55 @@ RP.flipSegmentDirection = function(routeId, segIdx) {
   return false;
 };
 
-// Toggle teleport on/off for a segment. When teleport is turned OFF,
-// the segment reverts to forward direction.
-RP.toggleSegmentTeleport = function(routeId, segIdx) {
+// Set the segment mode. Called from the mode selector UI.
+RP.setSegmentMode = function(routeId, segIdx, mode) {
   for (var i = 0; i < RP.routes.length; i++) {
     var r = RP.routes[i];
     if (r.id !== routeId) continue;
-    RP.ensureSegmentDirections(r);
-    if (segIdx < 0 || segIdx >= r.segmentDirections.length) return false;
-    RP.pushHistory('Toggle teleport');
-    var cur = r.segmentDirections[segIdx];
-    if (cur === RP.SEG_TELEPORT) {
-      r.segmentDirections[segIdx] = RP.SEG_FORWARD;
-    } else {
-      r.segmentDirections[segIdx] = RP.SEG_TELEPORT;
+    RP.ensureSegmentModes(r);
+    if (segIdx < 0 || segIdx >= r.segmentModes.length) return false;
+    if (r.segmentModes[segIdx] === mode) return false;
+    RP.pushHistory('Set segment mode');
+    r.segmentModes[segIdx] = mode;
+    // Default teleport name if switching to teleport.
+    if (mode === RP.SEG_MODE_TELEPORT && !r.segmentModeTeleportNames[segIdx]) {
+      r.segmentModeTeleportNames[segIdx] = 'teleport_' + (segIdx + 1);
+    }
+    // Default junction count if switching to linetrace_junct.
+    if (mode === RP.SEG_MODE_LINETRACE_JUNCT && !r.segmentModeJunctionCounts[segIdx]) {
+      r.segmentModeJunctionCounts[segIdx] = 1;
     }
     RP.render();
+    RP.updateInfoPanel();
+    return true;
+  }
+  return false;
+};
+
+// Update teleport name for a segment.
+RP.setSegmentTeleportName = function(routeId, segIdx, name) {
+  for (var i = 0; i < RP.routes.length; i++) {
+    var r = RP.routes[i];
+    if (r.id !== routeId) continue;
+    RP.ensureSegmentModes(r);
+    if (segIdx < 0 || segIdx >= r.segmentModes.length) return false;
+    // Don't push history on every keystroke — only when leaving the field.
+    r.segmentModeTeleportNames[segIdx] = name || null;
+    RP.updateInfoPanel();
+    return true;
+  }
+  return false;
+};
+
+// Update junction count for a segment.
+RP.setSegmentJunctionCount = function(routeId, segIdx, count) {
+  for (var i = 0; i < RP.routes.length; i++) {
+    var r = RP.routes[i];
+    if (r.id !== routeId) continue;
+    RP.ensureSegmentModes(r);
+    if (segIdx < 0 || segIdx >= r.segmentModes.length) return false;
+    var n = parseInt(count, 10);
+    r.segmentModeJunctionCounts[segIdx] = (isFinite(n) && n > 0) ? n : 1;
     RP.updateInfoPanel();
     return true;
   }
@@ -99,10 +179,14 @@ RP.addWaypoint = function(x, y) {
   var r = RP.getActiveRoute();
   if (!r) return;
   r.waypoints.push({ x: x, y: y, label: '', id: RP.nextWpId++ });
-  // New trailing segment defaults to forward.
+  // New trailing segment defaults to forward, normal mode.
   if (r.waypoints.length >= 2) {
-    if (!Array.isArray(r.segmentDirections)) r.segmentDirections = [];
+    RP.ensureSegmentDirections(r);
+    RP.ensureSegmentModes(r);
     r.segmentDirections.push(RP.SEG_FORWARD);
+    r.segmentModes.push(RP.SEG_MODE_NORMAL);
+    r.segmentModeTeleportNames.push(null);
+    r.segmentModeJunctionCounts.push(null);
   }
   RP.render();
   RP.updateRouteSelect();
@@ -114,12 +198,18 @@ RP.insertWaypointAt = function(x, y, idx) {
   var r = RP.getActiveRoute();
   if (!r || idx < 0 || idx >= r.waypoints.length - 1) return;
   RP.ensureSegmentDirections(r);
+  RP.ensureSegmentModes(r);
   // Inserting in segment `idx` splits it into two halves; both halves
-  // inherit the parent segment's direction.
+  // inherit the parent segment's direction and mode.
   var parentDir = r.segmentDirections[idx] || RP.SEG_FORWARD;
+  var parentMode = r.segmentModes[idx] || RP.SEG_MODE_NORMAL;
+  var parentTpName = r.segmentModeTeleportNames[idx] || null;
+  var parentJct = r.segmentModeJunctionCounts[idx] || null;
   r.waypoints.splice(idx + 1, 0, { x: x, y: y, label: '', id: RP.nextWpId++ });
-  // Replace segmentDirections[idx] (the parent) with two copies.
   r.segmentDirections.splice(idx, 1, parentDir, parentDir);
+  r.segmentModes.splice(idx, 1, parentMode, parentMode);
+  r.segmentModeTeleportNames.splice(idx, 1, parentTpName, parentTpName);
+  r.segmentModeJunctionCounts.splice(idx, 1, parentJct, parentJct);
   RP.render();
   RP.updateRouteSelect();
   RP.updateSideRouteList();
@@ -132,25 +222,27 @@ RP.removeWaypoint = function(rteId, wpIdx) {
       var r = RP.routes[i];
       if (!r || r.waypoints.length <= 1) return;
       RP.ensureSegmentDirections(r);
-      // Adjust segmentDirections:
-      //   - Removing wpIdx removes segment(s) touching it. Specifically:
-      //     * If wpIdx == 0: segment 0 (between wp[0] and wp[1]) goes away.
-      //     * If wpIdx == last: segment (last-1) goes away.
-      //     * Otherwise: segments (wpIdx-1) and (wpIdx) merge into one;
-      //       the surviving segment inherits the INCOMING segment's
-      //       direction (segmentDirections[wpIdx-1]).
+      RP.ensureSegmentModes(r);
       var lastIdx = r.waypoints.length - 1;
       if (wpIdx === 0) {
         r.segmentDirections.splice(0, 1);
+        r.segmentModes.splice(0, 1);
+        r.segmentModeTeleportNames.splice(0, 1);
+        r.segmentModeJunctionCounts.splice(0, 1);
       } else if (wpIdx === lastIdx) {
         r.segmentDirections.splice(lastIdx - 1, 1);
+        r.segmentModes.splice(lastIdx - 1, 1);
+        r.segmentModeTeleportNames.splice(lastIdx - 1, 1);
+        r.segmentModeJunctionCounts.splice(lastIdx - 1, 1);
       } else {
         var incomingDir = r.segmentDirections[wpIdx - 1] || RP.SEG_FORWARD;
-        // Replace the two adjacent segments with one inheriting incoming.
+        // Merged segment inherits incoming direction and is always normal mode.
         r.segmentDirections.splice(wpIdx - 1, 2, incomingDir);
+        r.segmentModes.splice(wpIdx - 1, 2, RP.SEG_MODE_NORMAL);
+        r.segmentModeTeleportNames.splice(wpIdx - 1, 2, null);
+        r.segmentModeJunctionCounts.splice(wpIdx - 1, 2, null);
       }
       r.waypoints.splice(wpIdx, 1);
-      // Clear selected segment if it pointed at something that no longer exists.
       if (RP.selectedSegment && RP.selectedSegment.routeId === rteId) {
         if (RP.selectedSegment.segIdx >= r.segmentDirections.length) RP.selectedSegment = null;
       }
@@ -167,7 +259,7 @@ RP.createRoute = function(name) {
   // Snapshot the id BEFORE incrementing so the default name doesn't
   // run one ahead of the route id.
   var id = RP.nextRouteId++;
-  var r = { id: id, name: name || ('Route ' + id), waypoints: [], visible: true, segmentDirections: [] };
+  var r = { id: id, name: name || ('Route ' + id), waypoints: [], visible: true, segmentDirections: [], segmentModes: [], segmentModeTeleportNames: [], segmentModeJunctionCounts: [] };
   RP.routes.push(r);
   RP.activeRouteId = r.id;
   RP.updateRouteSelect();

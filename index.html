@@ -108,8 +108,18 @@
     <div class="sidebar-section" id="segment-section" style="display:none">
       <div class="sidebar-title">Selected Segment</div>
       <div id="segment-info" style="font-size:11px;color:#bbb;line-height:1.5"></div>
+      <div style="margin:6px 0 2px;font-size:10px;color:#888">Mode</div>
+      <div class="seg-mode-group">
+        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-normal" checked> Normal</label>
+        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-teleport"> ✈ Teleport</label>
+        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-dist"> 📏 LT Dist</label>
+        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-junct"> 🔀 LT Junct</label>
+      </div>
+      <div id="seg-mode-params" style="margin-top:4px;display:none">
+        <input type="text" id="seg-teleport-name" placeholder="teleport name" style="display:none;width:100%;box-sizing:border-box;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px">
+        <input type="number" id="seg-junction-count" value="1" min="1" style="display:none;width:100%;box-sizing:border-box;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px">
+      </div>
       <button id="btn-flip-segment" class="sidebar-small-btn" style="margin-top:4px">→ Forward</button>
-      <button id="btn-teleport-segment" class="sidebar-small-btn" style="margin-top:2px">✈ Teleport: OFF</button>
       <div class="sidebar-hint">Click a segment in Select mode</div>
     </div>
   </div>
@@ -177,6 +187,8 @@
   <label>Forward Template <input type="text" id="code-forward" value="move({distance}, {speed})"></label>
   <label>Turn Right <input type="text" id="code-turn-r" value="turn_right({angle}, {speed})"></label>
   <label>Turn Left <input type="text" id="code-turn-l" value="turn_left({angle}, {speed})"></label>
+  <label>Line Trace Dist <input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed})"></label>
+  <label>Line Trace Junct <input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed})"></label>
   <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>
   <label>Unit <input type="text" id="code-unit" value="mm"></label>
   <div class="hint">Use {distance}, {angle}, {speed} as placeholders.</div>

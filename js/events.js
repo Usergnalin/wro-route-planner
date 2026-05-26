@@ -730,10 +730,39 @@ RP.initEvents = function() {
     });
   }
 
-  if (RP.dom.btnTeleportSegment) {
-    RP.dom.btnTeleportSegment.addEventListener('click', function() {
+  // Segment mode radio buttons.
+  function onModeChange(mode) {
+    if (!RP.selectedSegment) return;
+    RP.setSegmentMode(RP.selectedSegment.routeId, RP.selectedSegment.segIdx, mode);
+  }
+  if (RP.dom.segmentModeNormal) {
+    RP.dom.segmentModeNormal.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_NORMAL); });
+  }
+  if (RP.dom.segmentModeTeleport) {
+    RP.dom.segmentModeTeleport.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_TELEPORT); });
+  }
+  if (RP.dom.segmentModeLTDist) {
+    RP.dom.segmentModeLTDist.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_LINETRACE_DIST); });
+  }
+  if (RP.dom.segmentModeLTJunct) {
+    RP.dom.segmentModeLTJunct.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_LINETRACE_JUNCT); });
+  }
+
+  // Teleport name input.
+  if (RP.dom.segmentTeleportName) {
+    RP.dom.segmentTeleportName.addEventListener('change', function() {
       if (!RP.selectedSegment) return;
-      RP.toggleSegmentTeleport(RP.selectedSegment.routeId, RP.selectedSegment.segIdx);
+      RP.pushHistory('Edit teleport name');
+      RP.setSegmentTeleportName(RP.selectedSegment.routeId, RP.selectedSegment.segIdx, this.value);
+    });
+  }
+
+  // Junction count input.
+  if (RP.dom.segmentJunctionCount) {
+    RP.dom.segmentJunctionCount.addEventListener('change', function() {
+      if (!RP.selectedSegment) return;
+      RP.pushHistory('Edit junction count');
+      RP.setSegmentJunctionCount(RP.selectedSegment.routeId, RP.selectedSegment.segIdx, this.value);
     });
   }
 

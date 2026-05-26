@@ -46,6 +46,8 @@ RP.updateCodeConfigFromUI = function() {
   RP.codeConfig.forwardTemplate = _strOr(document.getElementById('code-forward').value, d.forwardTemplate || 'move({distance}, {speed})');
   RP.codeConfig.turnRightTemplate = _strOr(document.getElementById('code-turn-r').value, d.turnRightTemplate || 'turn_right({angle}, {speed})');
   RP.codeConfig.turnLeftTemplate = _strOr(document.getElementById('code-turn-l').value, d.turnLeftTemplate || 'turn_left({angle}, {speed})');
+  RP.codeConfig.lineTraceDistTemplate = _strOr(document.getElementById('code-lt-dist').value, d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})');
+  RP.codeConfig.lineTraceJunctTemplate = _strOr(document.getElementById('code-lt-junct').value, d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})');
   RP.codeConfig.defaultSpeed = _posNum(document.getElementById('code-speed').value, d.defaultSpeed || 200);
   RP.codeConfig.defaultUnit = _strOr(document.getElementById('code-unit').value, d.defaultUnit || 'mm');
   if (RP.render) RP.render();
@@ -56,6 +58,8 @@ RP.updateCodeConfigUI = function() {
   document.getElementById('code-forward').value = RP.codeConfig.forwardTemplate;
   document.getElementById('code-turn-r').value = RP.codeConfig.turnRightTemplate;
   document.getElementById('code-turn-l').value = RP.codeConfig.turnLeftTemplate;
+  document.getElementById('code-lt-dist').value = RP.codeConfig.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
+  document.getElementById('code-lt-junct').value = RP.codeConfig.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
   document.getElementById('code-speed').value = RP.codeConfig.defaultSpeed;
   document.getElementById('code-unit').value = RP.codeConfig.defaultUnit;
 };
