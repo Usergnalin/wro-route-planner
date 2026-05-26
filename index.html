@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WRO RoboMission Route Planner</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ========== TAB BAR ========== -->
+<div id="top-bar">
+  <div class="tab" id="tab-file">
+    <span class="tab-label">File ▾</span>
+    <div class="tab-dropdown">
+      <div id="file-input-wrap"><button>📂 Open Image</button><input type="file" id="file-input" accept="image/*"></div>
+      <button id="btn-save-map">💾 Save Map</button>
+      <button id="btn-load-map">📂 Load Map</button>
+      <button id="btn-export-project">📥 Export Project</button>
+      <button id="btn-import-project">📤 Import Project</button>
+    </div>
+  </div>
+  <div class="tab" id="tab-insert">
+    <span class="tab-label">Insert ▾</span>
+    <div class="tab-dropdown">
+      <button id="btn-tool-construction" class="tool-btn active" data-tool="construction">📏 Construction Line</button>
+      <button id="btn-tool-route" class="tool-btn" data-tool="route">📍 Route</button>
+      <button id="btn-tool-select" class="tool-btn" data-tool="select">🖱️ Select / Move</button>
+      <div class="dropdown-sep"></div>
+      <button id="btn-snap" class="active">🧲 Snap</button>
+      <button id="btn-robot-config">🤖 Robot Config</button>
+    </div>
+  </div>
+  <div class="tab" id="tab-route">
+    <span class="tab-label">Route ▾</span>
+    <div class="tab-dropdown">
+      <button id="btn-new-route">➕ New Route</button>
+      <button id="btn-del-route">🗑️ Delete Route</button>
+      <div class="dropdown-sep"></div>
+      <button id="btn-undo" title="Undo (Ctrl+Z)">↩ Undo</button>
+      <button id="btn-redo" title="Redo (Ctrl+Y)">↪ Redo</button>
+      <div class="dropdown-sep"></div>
+      <button id="btn-clear-all">🗑️ Clear All</button>
+    </div>
+  </div>
+  <div id="top-bar-right">
+    <button id="btn-zoom-in" title="Zoom in">🔍+</button>
+    <button id="btn-zoom-out" title="Zoom out">🔍−</button>
+    <button id="btn-fit" title="Fit to view">Fit</button>
+    <span id="calib-status"></span>
+    <span id="image-info">No image</span>
+  </div>
+</div>
+
+<!-- ========== MAIN AREA ========== -->
+<div id="main-area">
+  <!-- Left sidebar: Tools -->
+  <div id="left-sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">Tool</div>
+      <div class="tool-group">
+        <button id="btn-sidebar-construction" class="tool-btn sidebar-tool-btn active" data-tool="construction">📏 Line</button>
+        <button id="btn-sidebar-route" class="tool-btn sidebar-tool-btn" data-tool="route">📍 Route</button>
+        <button id="btn-sidebar-select" class="tool-btn sidebar-tool-btn" data-tool="select">🖱️ Move</button>
+      </div>
+      <div class="sidebar-hint" id="sidebar-tool-hint">Drag to draw a line</div>
+    </div>
+    <div class="sidebar-section" id="snap-section">
+      <div class="sidebar-title">Snap</div>
+      <button id="btn-sidebar-snap" class="active sidebar-small-btn">🧲 Snap On</button>
+      <div class="sidebar-hint">Ctrl = temporary off</div>
+    </div>
+    <div class="sidebar-section" id="route-section">
+      <div class="sidebar-title">Active Route</div>
+      <select id="route-select">
+        <option value="__new__">+ New Route</option>
+      </select>
+      <div id="route-wp-count" class="sidebar-hint">0 waypoints</div>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+    <div class="zoom-hint" id="zoom-hint">Scroll to zoom · Drag to pan · WASD to pan · Route: drag from dot</div>
+  </div>
+
+  <!-- Right sidebar: Info -->
+  <div id="right-sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">Selection Info</div>
+      <div id="info-panel">
+        <div class="info-row"><span class="info-label">Tool:</span><span class="info-value" id="info-tool">Construction</span></div>
+        <div class="info-row"><span class="info-label">Snap:</span><span class="info-value" id="info-snap">On</span></div>
+        <hr style="border-color:#444;margin:4px 0">
+        <div class="info-row"><span class="info-label">Hover:</span><span class="info-value" id="info-hover">-</span></div>
+        <div class="info-row"><span class="info-label">Click:</span><span class="info-value" id="info-click">-</span></div>
+        <hr style="border-color:#444;margin:4px 0">
+        <div class="info-row"><span class="info-label">Lines:</span><span class="info-value" id="info-lines">0</span></div>
+        <div class="info-row"><span class="info-label">Routes:</span><span class="info-value" id="info-routes">0</span></div>
+      </div>
+    </div>
+    <div class="sidebar-section" id="calibration-section">
+      <div class="sidebar-title">Calibration</div>
+      <div id="info-calib-status">Not set</div>
+      <button id="btn-recalibrate" class="sidebar-small-btn" style="margin-top:4px">📏 Recalibrate</button>
+    </div>
+    <div class="sidebar-section" id="segment-section" style="display:none">
+      <div class="sidebar-title">Selected Segment</div>
+      <div id="segment-info" style="font-size:11px;color:#bbb;line-height:1.5"></div>
+      <button id="btn-flip-segment" class="sidebar-small-btn" style="margin-top:4px">↔ Flip Direction</button>
+      <div class="sidebar-hint">Click a segment in Select mode</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== BOTTOM PANELS ========== -->
+<div id="bottom-panels">
+  <button id="btn-instr-toggle" class="active">📋 Route Instructions</button>
+  <div id="side-panels">
+    <!-- Instruction / Code panel -->
+    <div id="instr-panel" class="side-panel">
+      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">📋 Instructions <span>▼</span></div>
+      <div class="side-panel-body">
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="instr">Instructions</button>
+          <button class="tab-btn" data-tab="code">Code</button>
+        </div>
+        <div id="instr-tab" class="tab-content">
+          <ol id="instr-list"></ol>
+          <div id="instr-total"></div>
+        </div>
+        <div id="code-tab" class="tab-content hidden">
+          <pre id="code-output"></pre>
+        </div>
+        <div class="btn-row">
+          <button id="btn-copy-instr">📋 Copy Instructions</button>
+          <button id="btn-copy-code">📋 Copy Code</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Saved routes panel -->
+    <div class="side-panel">
+      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">🗺️ Saved Routes <span>▼</span></div>
+      <div class="side-panel-body">
+        <div id="route-list"></div>
+      </div>
+    </div>
+
+    <!-- Saved maps panel -->
+    <div class="side-panel">
+      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">💾 Saved Maps <span>▼</span></div>
+      <div class="side-panel-body">
+        <div id="map-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Robot config overlay -->
+<div id="robot-overlay">
+  <h3>🤖 Robot Configuration</h3>
+  <label>Width (mm) <input type="number" id="robot-w" value="250" min="1" max="1000"></label>
+  <label>Length (mm) <input type="number" id="robot-l" value="250" min="1" max="1000"></label>
+  <label>Wheelbase (mm) <input type="number" id="robot-wb" value="180" min="1" max="1000"></label>
+  <hr style="border-color:#444;margin:8px 0">
+  <p style="font-size:12px;color:#888">Start Position: <span id="robot-start-label">not set</span></p>
+  <p style="font-size:12px;color:#888">Start Heading: <span id="robot-heading-label">0°</span></p>
+  <button id="btn-set-start">📍 Click on map to set</button>
+  <button id="btn-clear-start">🗑️ Clear start</button>
+  <div class="hint">Click on canvas to place start marker, then drag to set heading.</div>
+  <hr style="border-color:#444;margin:8px 0">
+  <h3 style="font-size:13px;margin-bottom:6px">📝 Code Templates</h3>
+  <label>Comment Prefix <input type="text" id="code-comment" value="//"></label>
+  <label>Forward Template <input type="text" id="code-forward" value="move({distance}, {speed})"></label>
+  <label>Turn Right <input type="text" id="code-turn-r" value="turn_right({angle}, {speed})"></label>
+  <label>Turn Left <input type="text" id="code-turn-l" value="turn_left({angle}, {speed})"></label>
+  <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>
+  <label>Unit <input type="text" id="code-unit" value="mm"></label>
+  <div class="hint">Use {distance}, {angle}, {speed} as placeholders.</div>
+</div>
+
+<script src="js/core.js"></script>
+<script src="js/render.js"></script>
+<script src="js/routes.js"></script>
+<script src="js/output.js"></script>
+<script src="js/persist.js"></script>
+<script src="js/config.js"></script>
+<script src="js/events.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

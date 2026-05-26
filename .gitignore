@@ -1,0 +1,22 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (if ever added)
+node_modules/
+package-lock.json
+
+# Export artifacts (user project files)
+*.wro.json
+export/
+
+# Browser localStorage backups
+*.localstorage.json
