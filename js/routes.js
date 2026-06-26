@@ -10,6 +10,7 @@ RP.SEG_MODE_NORMAL = 'normal';
 RP.SEG_MODE_TELEPORT = 'teleport';
 RP.SEG_MODE_LINETRACE_DIST = 'linetrace_dist';
 RP.SEG_MODE_LINETRACE_JUNCT = 'linetrace_junct';
+RP.SEG_MODE_WALL_ALIGN = 'wall_align';
 
 // No-ops kept so any lingering call-sites don't crash
 RP.ensureSegmentDirections = function() {};
@@ -35,7 +36,8 @@ RP.migrateRoute = function(route) {
     var mode = modes[j] || RP.SEG_MODE_NORMAL;
     if (dir === 'teleport') { dir = RP.SEG_FORWARD; mode = RP.SEG_MODE_TELEPORT; }
     if ([RP.SEG_MODE_NORMAL, RP.SEG_MODE_TELEPORT,
-         RP.SEG_MODE_LINETRACE_DIST, RP.SEG_MODE_LINETRACE_JUNCT].indexOf(mode) < 0) {
+         RP.SEG_MODE_LINETRACE_DIST, RP.SEG_MODE_LINETRACE_JUNCT,
+         RP.SEG_MODE_WALL_ALIGN].indexOf(mode) < 0) {
       mode = RP.SEG_MODE_NORMAL;
     }
     route.segments.push({
@@ -212,14 +214,73 @@ RP.removeNode = function(routeId, nodeId) {
 // ---- Selected segment (select mode) — now uses segId ----
 RP.selectedSegment = null; // { routeId, segId } or null
 
+// ──────────────────────────────────────────────────────────────────────────
+// WALL ALIGN SNAPPING
+// ──────────────────────────────────────────────────────────────────────────
+RP.computeWallAlignEndPoint = function(route, seg) {
+  var na = RP.findNode(route, seg.fromNodeId);
+  var nb = RP.findNode(route, seg.toNodeId);
+  if (!na || !nb || !RP.calibration || !RP.imgNaturalW || !RP.imgNaturalH) return null;
+
+  var dx = nb.x - na.x, dy = nb.y - na.y;
+  var len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 0.001) return null;
+  var ux = dx / len, uy = dy / len;
+
+  // Find closest field wall in travel direction
+  var tMin = Infinity, hitWall = null;
+  if (ux > 0.001) { var t = (RP.imgNaturalW - na.x) / ux; if (t > 0 && t < tMin) { tMin = t; hitWall = 'right';  } }
+  if (ux < -0.001){ var t = (0 - na.x)            / ux; if (t > 0 && t < tMin) { tMin = t; hitWall = 'left';   } }
+  if (uy > 0.001) { var t = (RP.imgNaturalH - na.y) / uy; if (t > 0 && t < tMin) { tMin = t; hitWall = 'bottom'; } }
+  if (uy < -0.001){ var t = (0 - na.y)            / uy; if (t > 0 && t < tMin) { tMin = t; hitWall = 'top';    } }
+
+  if (!hitWall) return null;
+
+  var ppm = RP.calibration.pixelsPerMm;
+  var isBackward = seg.direction === RP.SEG_BACKWARD;
+  var clearanceMm = isBackward ? (RP.robotConfig.rearClearance || 50) : (RP.robotConfig.frontClearance || 50);
+  var clearancePx = clearanceMm * ppm;
+
+  var snapX = na.x + tMin * ux - ux * clearancePx;
+  var snapY = na.y + tMin * uy - uy * clearancePx;
+
+  return { x: snapX, y: snapY, hitWall: hitWall };
+};
+
+RP.applyWallAlignSnap = function(route, seg) {
+  var result = RP.computeWallAlignEndPoint(route, seg);
+  if (!result) return;
+  var nb = RP.findNode(route, seg.toNodeId);
+  if (!nb) return;
+  nb.x = result.x;
+  nb.y = result.y;
+};
+
+RP.reapplyAllWallAlignSnaps = function() {
+  for (var ri = 0; ri < RP.routes.length; ri++) {
+    var r = RP.routes[ri];
+    if (!r.segments) continue;
+    for (var si = 0; si < r.segments.length; si++) {
+      if (r.segments[si].mode === RP.SEG_MODE_WALL_ALIGN) {
+        RP.applyWallAlignSnap(r, r.segments[si]);
+      }
+    }
+  }
+  if (RP.render) RP.render();
+  if (RP.updateInstructions) RP.updateInstructions();
+};
+
 RP.flipSegmentDirection = function(routeId, segId) {
   for (var i = 0; i < RP.routes.length; i++) {
     var r = RP.routes[i];
     if (r.id !== routeId) continue;
     var seg = RP.findSegment(r, segId);
-    if (!seg || seg.mode !== RP.SEG_MODE_NORMAL) return false;
+    if (!seg) return false;
+    // Only wall_align and normal can be flipped
+    if (seg.mode !== RP.SEG_MODE_NORMAL && seg.mode !== RP.SEG_MODE_WALL_ALIGN) return false;
     RP.pushHistory('Flip segment direction');
     seg.direction = (seg.direction === RP.SEG_BACKWARD) ? RP.SEG_FORWARD : RP.SEG_BACKWARD;
+    if (seg.mode === RP.SEG_MODE_WALL_ALIGN) RP.applyWallAlignSnap(r, seg);
     RP.render(); RP.updateInfoPanel();
     return true;
   }
@@ -238,6 +299,8 @@ RP.setSegmentMode = function(routeId, segId, mode) {
       seg.teleportName = 'teleport_' + seg.id;
     if (mode === RP.SEG_MODE_LINETRACE_JUNCT && !seg.junctionCount)
       seg.junctionCount = 1;
+    if (mode === RP.SEG_MODE_WALL_ALIGN)
+      RP.applyWallAlignSnap(r, seg);
     RP.render(); RP.updateInfoPanel();
     if (RP.updateInstructions) RP.updateInstructions();
     return true;

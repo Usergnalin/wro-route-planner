@@ -117,6 +117,7 @@
         <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-teleport"> ✈ Teleport</label>
         <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-dist"> 📏 LT Dist</label>
         <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-junct"> 🔀 LT Junct</label>
+        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-wall-align"> 🧱 Wall Align</label>
       </div>
       <div id="seg-mode-params" style="margin-top:4px;display:none">
         <input type="text" id="seg-teleport-name" placeholder="teleport name" style="display:none;width:100%;box-sizing:border-box;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px">
@@ -167,6 +168,8 @@
   <label>Width (mm) <input type="number" id="robot-w" value="250" min="1" max="1000"></label>
   <label>Length (mm) <input type="number" id="robot-l" value="250" min="1" max="1000"></label>
   <label>Wheelbase (mm) <input type="number" id="robot-wb" value="180" min="1" max="1000"></label>
+  <label>Front Clearance (mm) <input type="number" id="robot-fc" value="50" min="0" max="500"></label>
+  <label>Rear Clearance (mm) <input type="number" id="robot-rc" value="50" min="0" max="500"></label>
   <hr style="border-color:#444;margin:8px 0">
   <p style="font-size:12px;color:#888">Start Position: <span id="robot-start-label">not set</span></p>
   <p style="font-size:12px;color:#888">Start Heading: <span id="robot-heading-label">0°</span></p>
@@ -175,14 +178,15 @@
   <div class="hint">Click on canvas to place start marker, then drag to set heading.</div>
   <hr style="border-color:#444;margin:8px 0">
   <h3 style="font-size:13px;margin-bottom:6px">📝 Code Templates</h3>
-  <label>Comment Prefix <input type="text" id="code-comment" value="//"></label>
-  <label>Forward Template <input type="text" id="code-forward" value="move({distance}, {speed})"></label>
-  <label>Turn <small style="color:#888">(+CW / -CCW)</small> <input type="text" id="code-turn" value="turn({angle}, {speed})"></label>
+  <label>Comment Prefix <input type="text" id="code-comment" value="#"></label>
+  <label>Forward Template <input type="text" id="code-forward" value="robot.move_distance(distance={distance}, speed={speed})"></label>
+  <label>Turn <small style="color:#888">(+CW / -CCW)</small> <input type="text" id="code-turn" value="robot.turn_arc(angle={angle}, speed={speed})"></label>
+  <label>Wall Align <input type="text" id="code-wall-align" value="robot.wall_align(reversed={reversed}, speed={speed})"></label>
   <label>Line Trace Dist <input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed})"></label>
   <label>Line Trace Junct <input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed})"></label>
   <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>
   <label>Unit <input type="text" id="code-unit" value="mm"></label>
-  <div class="hint">Use {distance}, {angle}, {speed} as placeholders.</div>
+  <div class="hint">Use {distance}, {angle}, {speed}, {reversed}, {junctions} as placeholders.</div>
 </div>
 
 <script src="js/core.js"></script>

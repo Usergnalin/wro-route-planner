@@ -57,6 +57,26 @@ RP.render = function() {
     }
   }
 
+  // --- Field boundary (shown when any wall_align segment exists) ---
+  if (RP.imgNaturalW && RP.imgNaturalH && RP.calibration) {
+    var hasWallAlign = false;
+    for (var wri = 0; wri < RP.routes.length && !hasWallAlign; wri++) {
+      var wr = RP.routes[wri];
+      if (wr.segments) for (var wsi = 0; wsi < wr.segments.length && !hasWallAlign; wsi++) {
+        if (wr.segments[wsi].mode === RP.SEG_MODE_WALL_ALIGN) hasWallAlign = true;
+      }
+    }
+    if (hasWallAlign) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(220,220,220,0.35)';
+      ctx.lineWidth = 2 / RP.scale;
+      ctx.setLineDash([8 / RP.scale, 8 / RP.scale]);
+      ctx.strokeRect(0, 0, RP.imgNaturalW, RP.imgNaturalH);
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  }
+
   // --- Draw routes (graph model) ---
   for (var ri = 0; ri < RP.routes.length; ri++) {
     var r = RP.routes[ri];
@@ -76,6 +96,7 @@ RP.render = function() {
     var revColor   = isActive ? '#ff8844' : '#cc6633';
     var teleColor  = '#ffaa00';
     var ltColor    = isActive ? '#44ff88' : '#33cc66';
+    var waColor    = '#e0e0e0';
     var selColor   = '#ffd966';
     var dimColor   = isActive ? 'rgba(68,170,255,0.28)' : 'rgba(68,136,204,0.22)';
 
@@ -105,10 +126,11 @@ RP.render = function() {
       var sMode = seg.mode || RP.SEG_MODE_NORMAL;
       var isTeleport  = sMode === RP.SEG_MODE_TELEPORT;
       var isLineTrace = sMode === RP.SEG_MODE_LINETRACE_DIST || sMode === RP.SEG_MODE_LINETRACE_JUNCT;
+      var isWallAlign = sMode === RP.SEG_MODE_WALL_ALIGN;
       var isSegSel = RP.selectedSegment && RP.selectedSegment.routeId === r.id && RP.selectedSegment.segId === seg.id;
       var onPath = pathSegIds[seg.id];
       var segColor = (hasLongestPath && !onPath) ? dimColor
-        : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isBack ? revColor : baseColor)));
+        : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isWallAlign ? waColor : (isBack ? revColor : baseColor))));
 
       if (isSegSel) {
         ctx.strokeStyle = selColor;
@@ -132,7 +154,28 @@ RP.render = function() {
 
       if (hasLongestPath && !onPath) continue; // skip decorations for off-path segs
 
-      if (isTeleport) {
+      if (isWallAlign && RP.scale > 0.03) {
+        // Draw a wall-stop block at the end (toNode = nb)
+        var wallBlockSize = 10 / RP.scale;
+        var wAng = RP.angleRad(na.x, na.y, nb.x, nb.y) + Math.PI / 2; // perpendicular to segment
+        ctx.save();
+        ctx.strokeStyle = waColor;
+        ctx.lineWidth = 3 / RP.scale;
+        ctx.beginPath();
+        ctx.moveTo(nb.x + wallBlockSize * Math.cos(wAng), nb.y + wallBlockSize * Math.sin(wAng));
+        ctx.lineTo(nb.x - wallBlockSize * Math.cos(wAng), nb.y - wallBlockSize * Math.sin(wAng));
+        ctx.stroke();
+        ctx.restore();
+        // Small label
+        if (RP.scale > 0.1) {
+          ctx.save();
+          ctx.font = (10 / RP.scale) + 'px -apple-system, sans-serif';
+          ctx.fillStyle = waColor;
+          var labAng = RP.angleRad(na.x, na.y, nb.x, nb.y) + Math.PI / 2;
+          ctx.fillText('wall', nb.x + (14 / RP.scale) * Math.cos(labAng), nb.y + (14 / RP.scale) * Math.sin(labAng));
+          ctx.restore();
+        }
+      } else if (isTeleport) {
         if (RP.scale > 0.05) {
           var segMidX = (na.x + nb.x) / 2, segMidY = (na.y + nb.y) / 2;
           var segAng = RP.angleRad(na.x, na.y, nb.x, nb.y);

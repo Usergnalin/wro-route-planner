@@ -15,8 +15,9 @@ RP.unitFactor = function(unit) {
 // Compute ordered list of steps for the longest path through a route graph.
 //
 // Steps:
-//   { kind: 'turn',          deg, dirRight }
+//   { kind: 'turn',          deg }
 //   { kind: 'forward',       mm, reverse }
+//   { kind: 'wall_align',    reverse }
 //   { kind: 'teleport',      fromX, fromY, toX, toY, heading, name }
 //   { kind: 'linetrace',     mm, reverse }
 //   { kind: 'linetrace_junct', junctions, reverse }
@@ -106,6 +107,12 @@ RP.computeSteps = function(route) {
       steps.push({ kind: 'linetrace', mm: legMm, reverse: effectiveBackward });
     } else if (mode === RP.SEG_MODE_LINETRACE_JUNCT) {
       steps.push({ kind: 'linetrace_junct', junctions: seg.junctionCount || 1, reverse: effectiveBackward });
+    } else if (mode === RP.SEG_MODE_WALL_ALIGN) {
+      steps.push({ kind: 'wall_align', reverse: effectiveBackward });
+      // Heading is now guaranteed perpendicular to the hit wall — snap to nearest cardinal
+      prevHeading = Math.round(heading / 90) * 90 % 360;
+      if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
+      continue;
     } else {
       steps.push({ kind: 'forward', mm: legMm, reverse: effectiveBackward });
     }
@@ -164,12 +171,15 @@ RP.generateCode = function(route) {
       lines_out.push(cp + ' ' + (distMm2 / uFactor).toFixed(1) + ' ' + unit + ', heading ' + Math.round(st.heading || 0) + '°, from (' +
         st.fromX.toFixed(0) + ',' + st.fromY.toFixed(0) + ') to (' +
         st.toX.toFixed(0) + ',' + st.toY.toFixed(0) + ')');
-      lines_out.push(cp + ' (insert custom code below, ctrl+f "' + st.name + '")');
       lines_out.push('');
     } else if (st.kind === 'checkpoint') {
       lines_out.push('');
       lines_out.push(cp + ' ' + '─'.repeat(20) + ' CHECKPOINT: ' + (st.name || '?') + ' ' + '─'.repeat(20));
       lines_out.push('');
+    } else if (st.kind === 'wall_align') {
+      lines_out.push((RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed})')
+        .replace(/\{reversed\}/g, st.reverse ? 'True' : 'False')
+        .replace(/\{speed\}/g, speed));
     } else if (st.kind === 'linetrace') {
       lines_out.push(RP.codeConfig.lineTraceDistTemplate
         .replace(/\{distance\}/g, (st.mm / uFactor).toFixed(1))

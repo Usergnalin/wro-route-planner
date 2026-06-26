@@ -298,7 +298,18 @@ RP.initEvents = function() {
           var re_ = RP.routes[rie];
           if (re_.id !== RP.elementDrag.routeId || !re_.nodes) continue;
           var nd_ = RP.findNode(re_, RP.elementDrag.nodeId);
-          if (nd_) { nd_.x = fED.x; nd_.y = fED.y; }
+          if (nd_) {
+            nd_.x = fED.x; nd_.y = fED.y;
+            // Re-snap if this node is the end of a wall_align segment
+            if (re_.segments) {
+              for (var wse = 0; wse < re_.segments.length; wse++) {
+                var wseg = re_.segments[wse];
+                if (wseg.mode === RP.SEG_MODE_WALL_ALIGN && wseg.toNodeId === nd_.id) {
+                  RP.applyWallAlignSnap(re_, wseg);
+                }
+              }
+            }
+          }
           break;
         }
       } else if (RP.elementDrag.type === 'line-endpoint') {
@@ -813,6 +824,8 @@ RP.initEvents = function() {
     RP.dom.segmentModeLTDist.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_LINETRACE_DIST); });
   if (RP.dom.segmentModeLTJunct)
     RP.dom.segmentModeLTJunct.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_LINETRACE_JUNCT); });
+  if (RP.dom.segmentModeWallAlign)
+    RP.dom.segmentModeWallAlign.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_WALL_ALIGN); });
 
   if (RP.dom.segmentTeleportName) {
     RP.dom.segmentTeleportName.addEventListener('change', function() {
@@ -866,14 +879,14 @@ RP.initEvents = function() {
     });
   }
 
-  ['robot-w', 'robot-l', 'robot-wb'].forEach(function(id) {
+  ['robot-w', 'robot-l', 'robot-wb', 'robot-fc', 'robot-rc'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateRobotConfigFromUI);
     el.addEventListener('input', RP.updateRobotConfigFromUI);
   });
 
-  ['code-comment', 'code-forward', 'code-turn', 'code-lt-dist', 'code-lt-junct', 'code-speed', 'code-unit'].forEach(function(id) {
+  ['code-comment', 'code-forward', 'code-turn', 'code-wall-align', 'code-lt-dist', 'code-lt-junct', 'code-speed', 'code-unit'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateCodeConfigFromUI);

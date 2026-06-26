@@ -56,6 +56,7 @@ RP.dom.segmentModeNormal = document.getElementById('seg-mode-normal');
 RP.dom.segmentModeTeleport = document.getElementById('seg-mode-teleport');
 RP.dom.segmentModeLTDist = document.getElementById('seg-mode-lt-dist');
 RP.dom.segmentModeLTJunct = document.getElementById('seg-mode-lt-junct');
+RP.dom.segmentModeWallAlign = document.getElementById('seg-mode-wall-align');
 RP.dom.segmentTeleportName = document.getElementById('seg-teleport-name');
 RP.dom.segmentJunctionCount = document.getElementById('seg-junction-count');
 RP.dom.segmentModeParams = document.getElementById('seg-mode-params');
@@ -104,9 +105,10 @@ RP.activeTool = 'construction';
 
 // Code configuration
 RP.codeConfig = {
-  commentPrefix: '//',
-  forwardTemplate: 'move({distance}, {speed})',
-  turnTemplate: 'turn({angle}, {speed})',
+  commentPrefix: '#',
+  forwardTemplate: 'robot.move_distance(distance={distance}, speed={speed})',
+  turnTemplate: 'robot.turn_arc(angle={angle}, speed={speed})',
+  wallAlignTemplate: 'robot.wall_align(reversed={reversed}, speed={speed})',
   lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
   lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
   defaultSpeed: 200,
@@ -142,13 +144,16 @@ RP.DEFAULT_ROBOT_CONFIG = {
   width: 250,
   length: 250,
   wheelbase: 180,
+  frontClearance: 50,
+  rearClearance: 50,
   startPos: null,
   startHeading: 0
 };
 RP.DEFAULT_CODE_CONFIG_VALUES = {
-  commentPrefix: '//',
-  forwardTemplate: 'move({distance}, {speed})',
-  turnTemplate: 'turn({angle}, {speed})',
+  commentPrefix: '#',
+  forwardTemplate: 'robot.move_distance(distance={distance}, speed={speed})',
+  turnTemplate: 'robot.turn_arc(angle={angle}, speed={speed})',
+  wallAlignTemplate: 'robot.wall_align(reversed={reversed}, speed={speed})',
   lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
   lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
   defaultSpeed: 200,
@@ -160,6 +165,8 @@ RP.robotConfig = {
   width: 250,
   length: 250,
   wheelbase: 180,
+  frontClearance: 50,
+  rearClearance: 50,
   startPos: null,
   startHeading: 0
 };
@@ -600,10 +607,11 @@ RP.updateSegmentPanel = function() {
   }
 
   // Mode selector radios.
-  if (RP.dom.segmentModeNormal) RP.dom.segmentModeNormal.checked = (mode === RP.SEG_MODE_NORMAL);
-  if (RP.dom.segmentModeTeleport) RP.dom.segmentModeTeleport.checked = (mode === RP.SEG_MODE_TELEPORT);
-  if (RP.dom.segmentModeLTDist) RP.dom.segmentModeLTDist.checked = (mode === RP.SEG_MODE_LINETRACE_DIST);
-  if (RP.dom.segmentModeLTJunct) RP.dom.segmentModeLTJunct.checked = (mode === RP.SEG_MODE_LINETRACE_JUNCT);
+  if (RP.dom.segmentModeNormal)    RP.dom.segmentModeNormal.checked    = (mode === RP.SEG_MODE_NORMAL);
+  if (RP.dom.segmentModeTeleport)  RP.dom.segmentModeTeleport.checked  = (mode === RP.SEG_MODE_TELEPORT);
+  if (RP.dom.segmentModeLTDist)    RP.dom.segmentModeLTDist.checked    = (mode === RP.SEG_MODE_LINETRACE_DIST);
+  if (RP.dom.segmentModeLTJunct)   RP.dom.segmentModeLTJunct.checked   = (mode === RP.SEG_MODE_LINETRACE_JUNCT);
+  if (RP.dom.segmentModeWallAlign) RP.dom.segmentModeWallAlign.checked = (mode === RP.SEG_MODE_WALL_ALIGN);
 
   // Direction button — greyed out for teleport and both line trace modes.
   if (RP.dom.btnFlipSegment) {
