@@ -1,267 +1,287 @@
 /* ========================================================================
-   routes.js - Create/delete routes, add/insert/delete waypoints
+   routes.js - Route graph: nodes + segments (branching allowed)
    WRO RoboMission Senior 2026 - Route Planner
    ======================================================================== */
 var RP = window.RP || {};
 
-RP.getActiveRoute = function() {
-  for (var i = 0; i < RP.routes.length; i++) {
-    if (RP.routes[i].id === RP.activeRouteId) return RP.routes[i];
-  }
-  return null;
-};
-
-// ----------------------------------------------------------------------
-// Direction model
-// ----------------------------------------------------------------------
-// Each route has a parallel array `segmentDirections` of length
-// max(0, waypoints.length - 1). segmentDirections[i] is the direction
-// of the segment between waypoints[i] and waypoints[i+1]:
-//   'forward'  - robot drives forward (chassis-front in direction A->B)
-//   'backward' - robot drives in reverse (chassis-front opposite, B->A)
-// Old saves without this field default to all-forward.
-//
-// Segment mode (parallel array `segmentModes`):
-//   'normal'           - regular turn+forward movement
-//   'teleport'         - manual segment: turns omitted, comment placeholder
-//   'linetrace_dist'   - line trace for a known distance
-//   'linetrace_junct'  - line trace until N junctions detected
-//
-// Mode parameters (parallel arrays):
-//   segmentModeTeleportNames[i]  - string name for teleport (Ctrl+F target)
-//   segmentModeJunctionCounts[i] - number of junctions to detect
-// Old saves without these fields default to 'normal' with null params.
-// ----------------------------------------------------------------------
 RP.SEG_FORWARD = 'forward';
 RP.SEG_BACKWARD = 'backward';
-
 RP.SEG_MODE_NORMAL = 'normal';
 RP.SEG_MODE_TELEPORT = 'teleport';
 RP.SEG_MODE_LINETRACE_DIST = 'linetrace_dist';
 RP.SEG_MODE_LINETRACE_JUNCT = 'linetrace_junct';
 
-RP.ensureSegmentDirections = function(route) {
-  if (!route) return;
-  if (!Array.isArray(route.segmentDirections)) route.segmentDirections = [];
-  var wanted = Math.max(0, route.waypoints.length - 1);
-  while (route.segmentDirections.length < wanted) route.segmentDirections.push(RP.SEG_FORWARD);
-  if (route.segmentDirections.length > wanted) route.segmentDirections.length = wanted;
-  // Coerce any stray values to 'forward' so we never trust corrupted data.
-  for (var i = 0; i < route.segmentDirections.length; i++) {
-    if (route.segmentDirections[i] !== RP.SEG_BACKWARD) route.segmentDirections[i] = RP.SEG_FORWARD;
+// No-ops kept so any lingering call-sites don't crash
+RP.ensureSegmentDirections = function() {};
+RP.ensureSegmentModes = function() {};
+
+// ---- Migration: old linear waypoints[] -> new nodes[]+segments[] ----
+RP.migrateRoute = function(route) {
+  if (!route.waypoints) return; // already new format
+  var wps  = route.waypoints || [];
+  var dirs = route.segmentDirections || [];
+  var modes= route.segmentModes || [];
+  var tpN  = route.segmentModeTeleportNames || [];
+  var jct  = route.segmentModeJunctionCounts || [];
+  route.nodes = [];
+  route.segments = [];
+  for (var i = 0; i < wps.length; i++) {
+    route.nodes.push({ id: wps[i].id, x: wps[i].x, y: wps[i].y,
+      isCheckpoint: wps[i].isCheckpoint || false,
+      checkpointName: wps[i].checkpointName || null });
   }
+  for (var j = 0; j < wps.length - 1; j++) {
+    var dir  = dirs[j] || RP.SEG_FORWARD;
+    var mode = modes[j] || RP.SEG_MODE_NORMAL;
+    if (dir === 'teleport') { dir = RP.SEG_FORWARD; mode = RP.SEG_MODE_TELEPORT; }
+    if ([RP.SEG_MODE_NORMAL, RP.SEG_MODE_TELEPORT,
+         RP.SEG_MODE_LINETRACE_DIST, RP.SEG_MODE_LINETRACE_JUNCT].indexOf(mode) < 0) {
+      mode = RP.SEG_MODE_NORMAL;
+    }
+    route.segments.push({
+      id: RP.nextSegId++,
+      fromNodeId: wps[j].id, toNodeId: wps[j+1].id,
+      direction: dir === RP.SEG_BACKWARD ? RP.SEG_BACKWARD : RP.SEG_FORWARD,
+      mode: mode,
+      teleportName: tpN[j] || null, junctionCount: jct[j] || null
+    });
+  }
+  delete route.waypoints;
+  delete route.segmentDirections;
+  delete route.segmentModes;
+  delete route.segmentModeTeleportNames;
+  delete route.segmentModeJunctionCounts;
 };
 
-RP.ensureSegmentModes = function(route) {
-  if (!route) return;
-  if (!Array.isArray(route.segmentModes)) route.segmentModes = [];
-  if (!Array.isArray(route.segmentModeTeleportNames)) route.segmentModeTeleportNames = [];
-  if (!Array.isArray(route.segmentModeJunctionCounts)) route.segmentModeJunctionCounts = [];
-  var wanted = Math.max(0, route.waypoints.length - 1);
-  while (route.segmentModes.length < wanted) route.segmentModes.push(RP.SEG_MODE_NORMAL);
-  if (route.segmentModes.length > wanted) route.segmentModes.length = wanted;
-  while (route.segmentModeTeleportNames.length < wanted) route.segmentModeTeleportNames.push(null);
-  if (route.segmentModeTeleportNames.length > wanted) route.segmentModeTeleportNames.length = wanted;
-  while (route.segmentModeJunctionCounts.length < wanted) route.segmentModeJunctionCounts.push(null);
-  if (route.segmentModeJunctionCounts.length > wanted) route.segmentModeJunctionCounts.length = wanted;
-  // Coerce invalid modes.
-  var validModes = [RP.SEG_MODE_NORMAL, RP.SEG_MODE_TELEPORT, RP.SEG_MODE_LINETRACE_DIST, RP.SEG_MODE_LINETRACE_JUNCT];
-  for (var j = 0; j < route.segmentModes.length; j++) {
-    if (validModes.indexOf(route.segmentModes[j]) < 0) route.segmentModes[j] = RP.SEG_MODE_NORMAL;
+RP.migrateAllRoutes = function() {
+  for (var i = 0; i < RP.routes.length; i++) RP.migrateRoute(RP.routes[i]);
+};
+
+// ---- Node / segment lookups ----
+RP.findNode = function(route, nodeId) {
+  for (var i = 0; i < route.nodes.length; i++)
+    if (route.nodes[i].id === nodeId) return route.nodes[i];
+  return null;
+};
+
+RP.findSegment = function(route, segId) {
+  for (var i = 0; i < route.segments.length; i++)
+    if (route.segments[i].id === segId) return route.segments[i];
+  return null;
+};
+
+RP.findSegBetween = function(route, nodeId1, nodeId2) {
+  for (var i = 0; i < route.segments.length; i++) {
+    var s = route.segments[i];
+    if ((s.fromNodeId === nodeId1 && s.toNodeId === nodeId2) ||
+        (s.fromNodeId === nodeId2 && s.toNodeId === nodeId1)) return s;
   }
-  // Coerce junction counts to positive integers.
-  for (var k = 0; k < route.segmentModeJunctionCounts.length; k++) {
-    var c = route.segmentModeJunctionCounts[k];
-    if (c !== null && (!isFinite(c) || c < 1)) route.segmentModeJunctionCounts[k] = 1;
+  return null;
+};
+
+// Nearest node to image-space point within screenPx screen pixels
+RP.findNodeNear = function(route, ix, iy, screenPx) {
+  var thresh = RP.snapThresholdImg(screenPx || RP.ROUTE_CONTINUE_SCREEN_RADIUS);
+  var best = null, bestD = Infinity;
+  for (var i = 0; i < route.nodes.length; i++) {
+    var n = route.nodes[i];
+    var d = RP.dist(ix, iy, n.x, n.y);
+    if (d < thresh && d < bestD) { bestD = d; best = n; }
   }
-  // Migrate old saves that used segmentDirections='teleport'.
-  RP.ensureSegmentDirections(route);
-  for (var m = 0; m < route.segmentDirections.length; m++) {
-    if (route.segmentDirections[m] === 'teleport') {
-      route.segmentDirections[m] = RP.SEG_FORWARD;
-      route.segmentModes[m] = RP.SEG_MODE_TELEPORT;
+  return best;
+};
+
+// ---- Longest simple path (DFS, brute-force — fine for small graphs) ----
+RP.computeLongestPath = function(route) {
+  if (!route || !route.nodes || route.nodes.length === 0) return [];
+  if (!route.segments || route.segments.length === 0) return [];
+
+  var nodeById = {};
+  for (var i = 0; i < route.nodes.length; i++) nodeById[route.nodes[i].id] = route.nodes[i];
+
+  // Adjacency: nodeId -> [neighborId, ...]
+  var adj = {};
+  for (var ni = 0; ni < route.nodes.length; ni++) adj[route.nodes[ni].id] = [];
+  for (var si = 0; si < route.segments.length; si++) {
+    var s = route.segments[si];
+    if (adj[s.fromNodeId]) adj[s.fromNodeId].push(s.toNodeId);
+    if (adj[s.toNodeId])   adj[s.toNodeId].push(s.fromNodeId);
+  }
+
+  var bestPath = [];
+  var bestDist = -1;
+  var visited = {};
+
+  function dfs(nodeId, path, dist) {
+    if (path.length >= 2 && dist > bestDist) {
+      bestDist = dist;
+      bestPath = path.slice();
+    }
+    var nb = adj[nodeId] || [];
+    for (var j = 0; j < nb.length; j++) {
+      var nid = nb[j];
+      if (visited[nid]) continue;
+      var cur = nodeById[nodeId], next = nodeById[nid];
+      if (!cur || !next) continue;
+      visited[nid] = true;
+      path.push(nid);
+      dfs(nid, path, dist + RP.dist(cur.x, cur.y, next.x, next.y));
+      path.pop();
+      visited[nid] = false;
     }
   }
+
+  // Always start from the first node placed (route.nodes[0])
+  var startId = route.nodes[0].id;
+  visited[startId] = true;
+  dfs(startId, [startId], 0);
+
+  if (bestPath.length < 2) return [];
+  return bestPath.map(function(id) { return nodeById[id]; });
 };
 
-// Apply migration across all routes. Safe to call any time.
-RP.migrateAllRoutes = function() {
-  for (var i = 0; i < RP.routes.length; i++) {
-    RP.ensureSegmentDirections(RP.routes[i]);
-    RP.ensureSegmentModes(RP.routes[i]);
+// ---- Mutation helpers ----
+RP._addNode = function(route, x, y, props) {
+  var node = { id: RP.nextWpId++, x: x, y: y, isCheckpoint: false, checkpointName: null };
+  if (props) {
+    if (props.isCheckpoint !== undefined) node.isCheckpoint = props.isCheckpoint;
+    if (props.checkpointName !== undefined) node.checkpointName = props.checkpointName;
+  }
+  route.nodes.push(node);
+  return node;
+};
+
+RP._addSegment = function(route, fromNodeId, toNodeId) {
+  var seg = {
+    id: RP.nextSegId++,
+    fromNodeId: fromNodeId, toNodeId: toNodeId,
+    direction: RP.SEG_FORWARD, mode: RP.SEG_MODE_NORMAL,
+    teleportName: null, junctionCount: null
+  };
+  route.segments.push(seg);
+  return seg;
+};
+
+// Remove a single segment (leaves nodes in place; orphaned nodes are ignored by DFS)
+RP.removeSegment = function(routeId, segId) {
+  for (var ri = 0; ri < RP.routes.length; ri++) {
+    var r = RP.routes[ri];
+    if (r.id !== routeId) continue;
+    RP.pushHistory('Delete segment');
+    r.segments = r.segments.filter(function(s) { return s.id !== segId; });
+    if (RP.selectedSegment && RP.selectedSegment.routeId === routeId && RP.selectedSegment.segId === segId) {
+      RP.selectedSegment = null;
+    }
+    RP.render();
+    RP.updateSideRouteList();
+    RP.updateInfoPanel();
+    if (RP.updateInstructions) RP.updateInstructions();
+    return;
   }
 };
 
-// Selected segment (select mode only). Lives outside the route model so
-// it doesn't get persisted.
-RP.selectedSegment = null; // { routeId, segIdx } or null
-
-// Get/flip helpers for segment direction.
-RP.getSegmentDirection = function(route, segIdx) {
-  if (!route || !Array.isArray(route.segmentDirections)) return RP.SEG_FORWARD;
-  return route.segmentDirections[segIdx] || RP.SEG_FORWARD;
+// Remove a construction line
+RP.removeConstructionLine = function(lineId) {
+  RP.pushHistory('Delete construction line');
+  RP.lines = RP.lines.filter(function(l) { return l.id !== lineId; });
+  if (RP.selectedLineId === lineId) RP.selectedLineId = null;
+  RP.updateLayerList();
+  RP.render();
 };
 
-RP.flipSegmentDirection = function(routeId, segIdx) {
+// Remove a node and all segments connected to it
+RP.removeNode = function(routeId, nodeId) {
+  for (var ri = 0; ri < RP.routes.length; ri++) {
+    var r = RP.routes[ri];
+    if (r.id !== routeId) continue;
+    r.segments = r.segments.filter(function(s) {
+      return s.fromNodeId !== nodeId && s.toNodeId !== nodeId;
+    });
+    r.nodes = r.nodes.filter(function(n) { return n.id !== nodeId; });
+    if (RP.selectedSegment && RP.selectedSegment.routeId === routeId) {
+      if (!RP.findSegment(r, RP.selectedSegment.segId)) RP.selectedSegment = null;
+    }
+    RP.render();
+    RP.updateRouteSelect();
+    RP.updateSideRouteList();
+    RP.updateInfoPanel();
+    return;
+  }
+};
+
+// ---- Selected segment (select mode) — now uses segId ----
+RP.selectedSegment = null; // { routeId, segId } or null
+
+RP.flipSegmentDirection = function(routeId, segId) {
   for (var i = 0; i < RP.routes.length; i++) {
     var r = RP.routes[i];
     if (r.id !== routeId) continue;
-    RP.ensureSegmentDirections(r);
-    RP.ensureSegmentModes(r);
-    if (segIdx < 0 || segIdx >= r.segmentDirections.length) return false;
-    // Can't flip direction in teleport or line trace modes.
-    var mode = r.segmentModes[segIdx] || RP.SEG_MODE_NORMAL;
-    if (mode !== RP.SEG_MODE_NORMAL) return false;
+    var seg = RP.findSegment(r, segId);
+    if (!seg || seg.mode !== RP.SEG_MODE_NORMAL) return false;
     RP.pushHistory('Flip segment direction');
-    r.segmentDirections[segIdx] = (r.segmentDirections[segIdx] === RP.SEG_BACKWARD) ? RP.SEG_FORWARD : RP.SEG_BACKWARD;
-    RP.render();
-    RP.updateInfoPanel();
+    seg.direction = (seg.direction === RP.SEG_BACKWARD) ? RP.SEG_FORWARD : RP.SEG_BACKWARD;
+    RP.render(); RP.updateInfoPanel();
     return true;
   }
   return false;
 };
 
-// Set the segment mode. Called from the mode selector UI.
-RP.setSegmentMode = function(routeId, segIdx, mode) {
+RP.setSegmentMode = function(routeId, segId, mode) {
   for (var i = 0; i < RP.routes.length; i++) {
     var r = RP.routes[i];
     if (r.id !== routeId) continue;
-    RP.ensureSegmentModes(r);
-    if (segIdx < 0 || segIdx >= r.segmentModes.length) return false;
-    if (r.segmentModes[segIdx] === mode) return false;
+    var seg = RP.findSegment(r, segId);
+    if (!seg || seg.mode === mode) return false;
     RP.pushHistory('Set segment mode');
-    r.segmentModes[segIdx] = mode;
-    // Default teleport name if switching to teleport.
-    if (mode === RP.SEG_MODE_TELEPORT && !r.segmentModeTeleportNames[segIdx]) {
-      r.segmentModeTeleportNames[segIdx] = 'teleport_' + (segIdx + 1);
-    }
-    // Default junction count if switching to linetrace_junct.
-    if (mode === RP.SEG_MODE_LINETRACE_JUNCT && !r.segmentModeJunctionCounts[segIdx]) {
-      r.segmentModeJunctionCounts[segIdx] = 1;
-    }
-    RP.render();
-    RP.updateInfoPanel();
+    seg.mode = mode;
+    if (mode === RP.SEG_MODE_TELEPORT && !seg.teleportName)
+      seg.teleportName = 'teleport_' + seg.id;
+    if (mode === RP.SEG_MODE_LINETRACE_JUNCT && !seg.junctionCount)
+      seg.junctionCount = 1;
+    RP.render(); RP.updateInfoPanel();
     if (RP.updateInstructions) RP.updateInstructions();
     return true;
   }
   return false;
 };
 
-// Update teleport name for a segment.
-RP.setSegmentTeleportName = function(routeId, segIdx, name) {
+RP.setSegmentTeleportName = function(routeId, segId, name) {
   for (var i = 0; i < RP.routes.length; i++) {
     var r = RP.routes[i];
     if (r.id !== routeId) continue;
-    RP.ensureSegmentModes(r);
-    if (segIdx < 0 || segIdx >= r.segmentModes.length) return false;
-    // Don't push history on every keystroke — only when leaving the field.
-    r.segmentModeTeleportNames[segIdx] = name || null;
+    var seg = RP.findSegment(r, segId);
+    if (!seg) return false;
+    seg.teleportName = name || null;
     RP.updateInfoPanel();
     return true;
   }
   return false;
 };
 
-// Update junction count for a segment.
-RP.setSegmentJunctionCount = function(routeId, segIdx, count) {
+RP.setSegmentJunctionCount = function(routeId, segId, count) {
   for (var i = 0; i < RP.routes.length; i++) {
     var r = RP.routes[i];
     if (r.id !== routeId) continue;
-    RP.ensureSegmentModes(r);
-    if (segIdx < 0 || segIdx >= r.segmentModes.length) return false;
+    var seg = RP.findSegment(r, segId);
+    if (!seg) return false;
     var n = parseInt(count, 10);
-    r.segmentModeJunctionCounts[segIdx] = (isFinite(n) && n > 0) ? n : 1;
+    seg.junctionCount = (isFinite(n) && n > 0) ? n : 1;
     RP.updateInfoPanel();
     return true;
   }
   return false;
 };
 
-RP.addWaypoint = function(x, y) {
-  var r = RP.getActiveRoute();
-  if (!r) return;
-  r.waypoints.push({ x: x, y: y, label: '', id: RP.nextWpId++ });
-  // New trailing segment defaults to forward, normal mode.
-  if (r.waypoints.length >= 2) {
-    RP.ensureSegmentDirections(r);
-    RP.ensureSegmentModes(r);
-    r.segmentDirections.push(RP.SEG_FORWARD);
-    r.segmentModes.push(RP.SEG_MODE_NORMAL);
-    r.segmentModeTeleportNames.push(null);
-    r.segmentModeJunctionCounts.push(null);
-  }
-  RP.render();
-  RP.updateRouteSelect();
-  RP.updateSideRouteList();
-  RP.updateInfoPanel();
-};
-
-RP.insertWaypointAt = function(x, y, idx) {
-  var r = RP.getActiveRoute();
-  if (!r || idx < 0 || idx >= r.waypoints.length - 1) return;
-  RP.ensureSegmentDirections(r);
-  RP.ensureSegmentModes(r);
-  // Inserting in segment `idx` splits it into two halves; both halves
-  // inherit the parent segment's direction and mode.
-  var parentDir = r.segmentDirections[idx] || RP.SEG_FORWARD;
-  var parentMode = r.segmentModes[idx] || RP.SEG_MODE_NORMAL;
-  var parentTpName = r.segmentModeTeleportNames[idx] || null;
-  var parentJct = r.segmentModeJunctionCounts[idx] || null;
-  r.waypoints.splice(idx + 1, 0, { x: x, y: y, label: '', id: RP.nextWpId++ });
-  r.segmentDirections.splice(idx, 1, parentDir, parentDir);
-  r.segmentModes.splice(idx, 1, parentMode, parentMode);
-  r.segmentModeTeleportNames.splice(idx, 1, parentTpName, parentTpName);
-  r.segmentModeJunctionCounts.splice(idx, 1, parentJct, parentJct);
-  RP.render();
-  RP.updateRouteSelect();
-  RP.updateSideRouteList();
-  RP.updateInfoPanel();
-};
-
-RP.removeWaypoint = function(rteId, wpIdx) {
-  for (var i = 0; i < RP.routes.length; i++) {
-    if (RP.routes[i].id === rteId) {
-      var r = RP.routes[i];
-      if (!r || r.waypoints.length <= 1) return;
-      RP.ensureSegmentDirections(r);
-      RP.ensureSegmentModes(r);
-      var lastIdx = r.waypoints.length - 1;
-      if (wpIdx === 0) {
-        r.segmentDirections.splice(0, 1);
-        r.segmentModes.splice(0, 1);
-        r.segmentModeTeleportNames.splice(0, 1);
-        r.segmentModeJunctionCounts.splice(0, 1);
-      } else if (wpIdx === lastIdx) {
-        r.segmentDirections.splice(lastIdx - 1, 1);
-        r.segmentModes.splice(lastIdx - 1, 1);
-        r.segmentModeTeleportNames.splice(lastIdx - 1, 1);
-        r.segmentModeJunctionCounts.splice(lastIdx - 1, 1);
-      } else {
-        var incomingDir = r.segmentDirections[wpIdx - 1] || RP.SEG_FORWARD;
-        // Merged segment inherits incoming direction and is always normal mode.
-        r.segmentDirections.splice(wpIdx - 1, 2, incomingDir);
-        r.segmentModes.splice(wpIdx - 1, 2, RP.SEG_MODE_NORMAL);
-        r.segmentModeTeleportNames.splice(wpIdx - 1, 2, null);
-        r.segmentModeJunctionCounts.splice(wpIdx - 1, 2, null);
-      }
-      r.waypoints.splice(wpIdx, 1);
-      if (RP.selectedSegment && RP.selectedSegment.routeId === rteId) {
-        if (RP.selectedSegment.segIdx >= r.segmentDirections.length) RP.selectedSegment = null;
-      }
-      RP.render();
-      RP.updateRouteSelect();
-      RP.updateSideRouteList();
-      RP.updateInfoPanel();
-      return;
-    }
-  }
+// ---- Route CRUD ----
+RP.getActiveRoute = function() {
+  for (var i = 0; i < RP.routes.length; i++)
+    if (RP.routes[i].id === RP.activeRouteId) return RP.routes[i];
+  return null;
 };
 
 RP.createRoute = function(name) {
-  // Snapshot the id BEFORE incrementing so the default name doesn't
-  // run one ahead of the route id.
   var id = RP.nextRouteId++;
-  var r = { id: id, name: name || ('Route ' + id), waypoints: [], visible: true, segmentDirections: [], segmentModes: [], segmentModeTeleportNames: [], segmentModeJunctionCounts: [] };
+  var r = { id: id, name: name || ('Route ' + id), nodes: [], segments: [], visible: true };
   RP.routes.push(r);
   RP.activeRouteId = r.id;
   RP.updateRouteSelect();
@@ -273,33 +293,14 @@ RP.createRoute = function(name) {
 
 RP.deleteRoute = function(id) {
   if (RP.selectedSegment && RP.selectedSegment.routeId === id) RP.selectedSegment = null;
-  var newRoutes = [];
-  for (var i = 0; i < RP.routes.length; i++) {
-    if (RP.routes[i].id !== id) newRoutes.push(RP.routes[i]);
-  }
-  RP.routes = newRoutes;
-  if (RP.activeRouteId === id) {
+  RP.routes = RP.routes.filter(function(r) { return r.id !== id; });
+  if (RP.activeRouteId === id)
     RP.activeRouteId = RP.routes.length > 0 ? RP.routes[RP.routes.length - 1].id : null;
-  }
   if (RP.routes.length === 0) { RP.activeRouteId = null; RP.createRoute('Route 1'); }
   RP.updateRouteSelect();
   RP.updateSideRouteList();
   RP.render();
   RP.updateInfoPanel();
-};
-
-// Snap a point to the end of the previous route segment.
-// Returns the snapped point, or the original if no snap needed.
-RP.snapToPrevRouteEnd = function(ix, iy) {
-  var r = RP.getActiveRoute();
-  if (!r || r.waypoints.length === 0) return { x: ix, y: iy };
-  var last = r.waypoints[r.waypoints.length - 1];
-  var d = RP.dist(ix, iy, last.x, last.y);
-  var thresh = RP.snapThresholdImg(20);
-  if (d < thresh) {
-    return { x: last.x, y: last.y };
-  }
-  return { x: ix, y: iy };
 };
 
 RP.updateRouteSelect = function() {
@@ -317,95 +318,6 @@ RP.updateRouteSelect = function() {
   RP.updateSideRouteList();
 };
 
-RP.updateLayerList = function() {
-  var el = document.getElementById('layer-list');
-  if (!el) return;
-  el.innerHTML = '';
-
-  if (RP.lines.length > 0) {
-    var lh = document.createElement('div');
-    lh.className = 'layer-group-title';
-    lh.textContent = 'Construction Lines';
-    el.appendChild(lh);
-    for (var li = 0; li < RP.lines.length; li++) {
-      (function(line, idx) {
-        var div = document.createElement('div');
-        div.className = 'layer-item' + (RP.selectedLineId === line.id ? ' active' : '');
-        var eye = document.createElement('button');
-        eye.className = 'layer-vis-btn';
-        eye.textContent = line.visible === false ? '○' : '●';
-        eye.title = line.visible === false ? 'Show' : 'Hide';
-        eye.onclick = function(e) {
-          e.stopPropagation();
-          line.visible = line.visible === false;
-          RP.updateLayerList();
-          RP.render();
-        };
-        var lbl = document.createElement('span');
-        lbl.className = 'layer-item-label';
-        lbl.textContent = 'Line ' + (idx + 1) + (line.label ? '  ' + line.label : '');
-        lbl.title = lbl.textContent;
-        lbl.onclick = function() {
-          RP.selectedLineId = (RP.selectedLineId === line.id) ? null : line.id;
-          RP.updateLayerList();
-          RP.render();
-        };
-        div.appendChild(eye);
-        div.appendChild(lbl);
-        el.appendChild(div);
-      })(RP.lines[li], li);
-    }
-  }
-
-  if (RP.routes.length > 0) {
-    var rh = document.createElement('div');
-    rh.className = 'layer-group-title';
-    rh.textContent = 'Routes';
-    el.appendChild(rh);
-    for (var ri = 0; ri < RP.routes.length; ri++) {
-      (function(route) {
-        var div = document.createElement('div');
-        div.className = 'layer-item' + (route.id === RP.activeRouteId ? ' active' : '');
-        var eye = document.createElement('button');
-        eye.className = 'layer-vis-btn';
-        eye.textContent = route.visible ? '●' : '○';
-        eye.title = route.visible ? 'Hide' : 'Show';
-        eye.onclick = function(e) {
-          e.stopPropagation();
-          RP.pushHistory(route.visible ? 'Hide route' : 'Show route');
-          route.visible = !route.visible;
-          RP.updateLayerList();
-          RP.render();
-        };
-        var lbl = document.createElement('span');
-        lbl.className = 'layer-item-label';
-        lbl.textContent = route.name + ' (' + route.waypoints.length + ' pts)';
-        lbl.title = lbl.textContent;
-        lbl.onclick = function() {
-          if (RP.activeRouteId !== route.id) {
-            RP.pushHistory('Switch active route');
-            RP.activeRouteId = route.id;
-            RP.updateRouteSelect();
-            RP.render();
-            RP.updateInfoPanel();
-          }
-          RP.updateLayerList();
-        };
-        div.appendChild(eye);
-        div.appendChild(lbl);
-        el.appendChild(div);
-      })(RP.routes[ri]);
-    }
-  }
-
-  if (RP.lines.length === 0 && RP.routes.length === 0) {
-    var empty = document.createElement('div');
-    empty.style.cssText = 'color:#555;font-size:10px;padding:4px 2px';
-    empty.textContent = 'No layers yet';
-    el.appendChild(empty);
-  }
-};
-
 RP.updateSideRouteList = function() {
   RP.updateLayerList();
   var el = RP.dom.routeListEl;
@@ -417,7 +329,7 @@ RP.updateSideRouteList = function() {
     div.className = 'route-item' + (r.id === RP.activeRouteId ? ' active' : '');
     (function(route) {
       var label = document.createElement('span');
-      label.textContent = route.name + ' (' + route.waypoints.length + ' pts)';
+      label.textContent = route.name + ' (' + route.nodes.length + ' nodes)';
       label.style.cursor = 'pointer';
       label.onclick = function() {
         if (RP.activeRouteId !== route.id) {
@@ -429,7 +341,7 @@ RP.updateSideRouteList = function() {
         }
       };
       var visBtn = document.createElement('button');
-      visBtn.textContent = route.visible ? '\ud83d\udc41' : '\ud83d\udc41\u200d\ud83d\udde8';
+      visBtn.textContent = route.visible ? '👁' : '👁‍🗨';
       visBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:13px;padding:0 4px';
       visBtn.onclick = function() {
         RP.pushHistory(route.visible ? 'Hide route' : 'Show route');
@@ -438,7 +350,7 @@ RP.updateSideRouteList = function() {
         RP.render();
       };
       var delBtn = document.createElement('button');
-      delBtn.textContent = '\u2715';
+      delBtn.textContent = '✕';
       delBtn.className = 'del-btn';
       delBtn.onclick = function() {
         if (!confirm('Delete route "' + route.name + '"?')) return;
@@ -450,5 +362,157 @@ RP.updateSideRouteList = function() {
       div.appendChild(delBtn);
     })(r);
     el.appendChild(div);
+  }
+};
+
+RP.updateLayerList = function() {
+  var el = document.getElementById('layer-list');
+  if (!el) return;
+  el.innerHTML = '';
+
+  // ---- Construction lines ----
+  if (RP.lines.length > 0) {
+    var lh = document.createElement('div');
+    lh.className = 'layer-group-title';
+    lh.textContent = 'Construction Lines';
+    el.appendChild(lh);
+    for (var li = 0; li < RP.lines.length; li++) {
+      (function(line, idx) {
+        var div = document.createElement('div');
+        div.className = 'layer-item' + (RP.selectedLineId === line.id ? ' active' : '');
+
+        var eye = document.createElement('button');
+        eye.className = 'layer-vis-btn';
+        eye.textContent = line.visible === false ? '○' : '●';
+        eye.title = line.visible === false ? 'Show' : 'Hide';
+        eye.onclick = function(e) {
+          e.stopPropagation();
+          line.visible = line.visible === false;
+          RP.updateLayerList(); RP.render();
+        };
+
+        var lbl = document.createElement('span');
+        lbl.className = 'layer-item-label';
+        lbl.textContent = 'Line ' + (idx + 1) + (line.label ? '  ' + line.label : '');
+        lbl.title = lbl.textContent;
+        lbl.onclick = function() {
+          RP.selectedLineId = (RP.selectedLineId === line.id) ? null : line.id;
+          RP.updateLayerList(); RP.render();
+        };
+
+        var del = document.createElement('button');
+        del.className = 'layer-del-btn';
+        del.textContent = '✕';
+        del.title = 'Delete line';
+        del.onclick = function(e) {
+          e.stopPropagation();
+          RP.removeConstructionLine(line.id);
+        };
+
+        div.appendChild(eye); div.appendChild(lbl); div.appendChild(del);
+        el.appendChild(div);
+      })(RP.lines[li], li);
+    }
+  }
+
+  // ---- Routes + segments ----
+  if (RP.routes.length > 0) {
+    var rh = document.createElement('div');
+    rh.className = 'layer-group-title';
+    rh.textContent = 'Routes';
+    el.appendChild(rh);
+    for (var ri = 0; ri < RP.routes.length; ri++) {
+      (function(route) {
+        // Route header row
+        var div = document.createElement('div');
+        div.className = 'layer-item' + (route.id === RP.activeRouteId ? ' active' : '');
+
+        var eye = document.createElement('button');
+        eye.className = 'layer-vis-btn';
+        eye.textContent = route.visible ? '●' : '○';
+        eye.title = route.visible ? 'Hide' : 'Show';
+        eye.onclick = function(e) {
+          e.stopPropagation();
+          RP.pushHistory(route.visible ? 'Hide route' : 'Show route');
+          route.visible = !route.visible;
+          RP.updateLayerList(); RP.render();
+        };
+
+        var lbl = document.createElement('span');
+        lbl.className = 'layer-item-label';
+        var nodeCount = route.nodes ? route.nodes.length : 0;
+        var segCount  = route.segments ? route.segments.length : 0;
+        lbl.textContent = route.name + ' (' + segCount + ' seg)';
+        lbl.title = lbl.textContent;
+        lbl.onclick = function() {
+          if (RP.activeRouteId !== route.id) {
+            RP.pushHistory('Switch active route');
+            RP.activeRouteId = route.id;
+            RP.updateRouteSelect();
+            RP.render();
+            RP.updateInfoPanel();
+          }
+          RP.updateLayerList();
+        };
+
+        div.appendChild(eye); div.appendChild(lbl);
+        el.appendChild(div);
+
+        // Segment sub-rows
+        if (route.segments && route.segments.length > 0) {
+          for (var si = 0; si < route.segments.length; si++) {
+            (function(seg, sidx) {
+              var na = RP.findNode(route, seg.fromNodeId);
+              var nb = RP.findNode(route, seg.toNodeId);
+              var lenStr = '';
+              if (na && nb && RP.calibration) {
+                var mm = RP.dist(na.x, na.y, nb.x, nb.y) / RP.calibration.pixelsPerMm;
+                lenStr = ' ' + mm.toFixed(0) + 'mm';
+              }
+              var modeTag = seg.mode && seg.mode !== RP.SEG_MODE_NORMAL
+                ? ' [' + seg.mode.replace('linetrace_', 'LT-') + ']' : '';
+
+              var isSelSeg = RP.selectedSegment && RP.selectedSegment.routeId === route.id && RP.selectedSegment.segId === seg.id;
+              var sdiv = document.createElement('div');
+              sdiv.className = 'layer-seg-item' + (isSelSeg ? ' active-seg' : '');
+
+              var slbl = document.createElement('span');
+              slbl.className = 'layer-item-label';
+              slbl.textContent = 'Seg ' + (sidx + 1) + lenStr + modeTag;
+              slbl.title = slbl.textContent;
+              slbl.onclick = function() {
+                RP.selectedSegment = { routeId: route.id, segId: seg.id };
+                if (RP.activeRouteId !== route.id) {
+                  RP.activeRouteId = route.id;
+                  RP.updateRouteSelect();
+                }
+                RP.updateLayerList();
+                RP.render();
+                RP.updateInfoPanel();
+              };
+
+              var sdel = document.createElement('button');
+              sdel.className = 'layer-del-btn';
+              sdel.textContent = '✕';
+              sdel.title = 'Delete segment';
+              sdel.onclick = function(e) {
+                e.stopPropagation();
+                RP.removeSegment(route.id, seg.id);
+              };
+
+              sdiv.appendChild(slbl); sdiv.appendChild(sdel);
+              el.appendChild(sdiv);
+            })(route.segments[si], si);
+          }
+        }
+      })(RP.routes[ri]);
+    }
+  }
+
+  if (RP.lines.length === 0 && RP.routes.length === 0) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'color:#555;font-size:10px;padding:4px 2px';
+    empty.textContent = 'No layers yet';
+    el.appendChild(empty);
   }
 };

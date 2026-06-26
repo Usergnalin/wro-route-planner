@@ -41,8 +41,10 @@ RP.ensureCodeConfig = function() {
   if (!cfg) { RP.codeConfig = RP.freshCodeConfig(); cfg = RP.codeConfig; }
   if (!cfg.commentPrefix) cfg.commentPrefix = d.commentPrefix || '//';
   if (!cfg.forwardTemplate) cfg.forwardTemplate = d.forwardTemplate || 'move({distance}, {speed})';
-  if (!cfg.turnRightTemplate) cfg.turnRightTemplate = d.turnRightTemplate || 'turn_right({angle}, {speed})';
-  if (!cfg.turnLeftTemplate) cfg.turnLeftTemplate = d.turnLeftTemplate || 'turn_left({angle}, {speed})';
+  if (!cfg.turnTemplate) cfg.turnTemplate = d.turnTemplate || 'turn({angle}, {speed})';
+  // Migrate old split templates
+  if (!cfg.turnTemplate && (cfg.turnRightTemplate || cfg.turnLeftTemplate)) cfg.turnTemplate = 'turn({angle}, {speed})';
+  delete cfg.turnRightTemplate; delete cfg.turnLeftTemplate;
   if (!cfg.lineTraceDistTemplate) cfg.lineTraceDistTemplate = d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
   if (!cfg.lineTraceJunctTemplate) cfg.lineTraceJunctTemplate = d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
   if (cfg.defaultSpeed === undefined || cfg.defaultSpeed === null) cfg.defaultSpeed = d.defaultSpeed || 200;
@@ -57,8 +59,7 @@ RP.updateCodeConfigFromUI = function() {
   function _el(id) { var e = document.getElementById(id); return e && e.value !== undefined ? e.value : ''; }
   RP.codeConfig.commentPrefix = _strOr(_el('code-comment'), d.commentPrefix || '//');
   RP.codeConfig.forwardTemplate = _strOr(_el('code-forward'), d.forwardTemplate || 'move({distance}, {speed})');
-  RP.codeConfig.turnRightTemplate = _strOr(_el('code-turn-r'), d.turnRightTemplate || 'turn_right({angle}, {speed})');
-  RP.codeConfig.turnLeftTemplate = _strOr(_el('code-turn-l'), d.turnLeftTemplate || 'turn_left({angle}, {speed})');
+  RP.codeConfig.turnTemplate = _strOr(_el('code-turn'), d.turnTemplate || 'turn({angle}, {speed})');
   RP.codeConfig.lineTraceDistTemplate = _strOr(_el('code-lt-dist'), d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})');
   RP.codeConfig.lineTraceJunctTemplate = _strOr(_el('code-lt-junct'), d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})');
   RP.codeConfig.defaultSpeed = _posNum(_el('code-speed'), d.defaultSpeed || 200);
@@ -69,8 +70,7 @@ RP.updateCodeConfigFromUI = function() {
 RP.updateCodeConfigUI = function() {
   document.getElementById('code-comment').value = RP.codeConfig.commentPrefix;
   document.getElementById('code-forward').value = RP.codeConfig.forwardTemplate;
-  document.getElementById('code-turn-r').value = RP.codeConfig.turnRightTemplate;
-  document.getElementById('code-turn-l').value = RP.codeConfig.turnLeftTemplate;
+  document.getElementById('code-turn').value = RP.codeConfig.turnTemplate || 'turn({angle}, {speed})';
   document.getElementById('code-lt-dist').value = RP.codeConfig.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
   document.getElementById('code-lt-junct').value = RP.codeConfig.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
   document.getElementById('code-speed').value = RP.codeConfig.defaultSpeed;

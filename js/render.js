@@ -14,14 +14,12 @@ RP.render = function() {
 
   if (!RP.img) return;
 
-  // Draw image
   ctx.save();
   ctx.translate(RP.offsetX, RP.offsetY);
   ctx.scale(RP.scale, RP.scale);
   ctx.drawImage(RP.img, 0, 0);
   ctx.restore();
 
-  // Draw in image coordinate space
   ctx.save();
   ctx.translate(RP.offsetX, RP.offsetY);
   ctx.scale(RP.scale, RP.scale);
@@ -38,17 +36,15 @@ RP.render = function() {
     var isSel = RP.selectedLineId === l.id;
     var color = isSel ? '#ffee44' : '#44ff44';
     var width = (isSel ? 3 : 2) / RP.scale;
-    var dash = [6 / RP.scale, 4 / RP.scale];
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = width;
-    ctx.setLineDash(dash);
+    ctx.setLineDash([6 / RP.scale, 4 / RP.scale]);
     ctx.beginPath();
     ctx.moveTo(l.x1, l.y1);
     ctx.lineTo(l.x2, l.y2);
     ctx.stroke();
     ctx.setLineDash([]);
-
     if (l.label) {
       var mx = (l.x1 + l.x2) / 2;
       var my = (l.y1 + l.y2) / 2;
@@ -61,73 +57,94 @@ RP.render = function() {
     }
   }
 
-  // --- Draw routes ---
+  // --- Draw routes (graph model) ---
   for (var ri = 0; ri < RP.routes.length; ri++) {
     var r = RP.routes[ri];
-    if (!r.visible || r.waypoints.length < 2) continue;
-    RP.ensureSegmentDirections(r);
-    RP.ensureSegmentModes(r);
+    if (!r.visible || !r.nodes || r.nodes.length === 0) continue;
+    if (!r.segments || r.segments.length === 0) {
+      // Route with single node only — draw dot
+      var soloNode = r.nodes[0];
+      ctx.fillStyle = r.id === RP.activeRouteId ? '#44aaff' : '#4488cc';
+      ctx.beginPath();
+      ctx.arc(soloNode.x, soloNode.y, 4.5 / RP.scale, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
 
     var isActive = r.id === RP.activeRouteId;
-    var baseColor = isActive ? '#44aaff' : '#4488cc';
-    var revColor  = isActive ? '#ff8844' : '#cc6633';
-    var teleColor = '#ffaa00';
-    var ltColor   = isActive ? '#44ff88' : '#33cc66';
-    var selColor  = '#ffd966';
+    var baseColor  = isActive ? '#44aaff' : '#4488cc';
+    var revColor   = isActive ? '#ff8844' : '#cc6633';
+    var teleColor  = '#ffaa00';
+    var ltColor    = isActive ? '#44ff88' : '#33cc66';
+    var selColor   = '#ffd966';
+    var dimColor   = isActive ? 'rgba(68,170,255,0.28)' : 'rgba(68,136,204,0.22)';
+
+    // Compute longest path (for code generation path highlighting)
+    var longestPath = RP.computeLongestPath ? RP.computeLongestPath(r) : [];
+    var pathNodeIds = {};
+    for (var pi = 0; pi < longestPath.length; pi++) pathNodeIds[longestPath[pi].id] = pi;
+
+    // Build set of segment ids on longest path
+    var pathSegIds = {};
+    for (var pi2 = 0; pi2 < longestPath.length - 1; pi2++) {
+      var ps = RP.findSegBetween ? RP.findSegBetween(r, longestPath[pi2].id, longestPath[pi2 + 1].id) : null;
+      if (ps) pathSegIds[ps.id] = true;
+    }
+    var hasLongestPath = longestPath.length >= 2;
 
     ctx.setLineDash([]);
 
-    for (var si = 0; si < r.waypoints.length - 1; si++) {
-      var a = r.waypoints[si], b = r.waypoints[si + 1];
-      var isBack = r.segmentDirections[si] === RP.SEG_BACKWARD;
-      var mode = r.segmentModes[si] || RP.SEG_MODE_NORMAL;
-      var isTeleport = mode === RP.SEG_MODE_TELEPORT;
-      var isLineTrace = mode === RP.SEG_MODE_LINETRACE_DIST || mode === RP.SEG_MODE_LINETRACE_JUNCT;
-      var isSel  = RP.selectedSegment && RP.selectedSegment.routeId === r.id && RP.selectedSegment.segIdx === si;
-      var segColor = isTeleport ? teleColor : (isLineTrace ? ltColor : (isBack ? revColor : baseColor));
+    // Draw segments
+    for (var si = 0; si < r.segments.length; si++) {
+      var seg = r.segments[si];
+      var na = RP.findNode(r, seg.fromNodeId);
+      var nb = RP.findNode(r, seg.toNodeId);
+      if (!na || !nb) continue;
 
-      // Selected segment: draw a thick highlight halo underneath.
-      if (isSel) {
+      var isBack = seg.direction === RP.SEG_BACKWARD;
+      var sMode = seg.mode || RP.SEG_MODE_NORMAL;
+      var isTeleport  = sMode === RP.SEG_MODE_TELEPORT;
+      var isLineTrace = sMode === RP.SEG_MODE_LINETRACE_DIST || sMode === RP.SEG_MODE_LINETRACE_JUNCT;
+      var isSegSel = RP.selectedSegment && RP.selectedSegment.routeId === r.id && RP.selectedSegment.segId === seg.id;
+      var onPath = pathSegIds[seg.id];
+      var segColor = (hasLongestPath && !onPath) ? dimColor
+        : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isBack ? revColor : baseColor)));
+
+      if (isSegSel) {
         ctx.strokeStyle = selColor;
         ctx.lineWidth = (isActive ? 6 : 5) / RP.scale;
         ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+        ctx.moveTo(na.x, na.y);
+        ctx.lineTo(nb.x, nb.y);
         ctx.stroke();
       }
 
       ctx.strokeStyle = segColor;
       ctx.fillStyle = segColor;
       ctx.lineWidth = isActive ? 3 / RP.scale : 2 / RP.scale;
-      // Backward and teleport segments use different dash patterns.
       if (isTeleport) ctx.setLineDash([2 / RP.scale, 6 / RP.scale]);
       else if (isBack) ctx.setLineDash([8 / RP.scale, 5 / RP.scale]);
       ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
+      ctx.moveTo(na.x, na.y);
+      ctx.lineTo(nb.x, nb.y);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Teleport: draw lightning-bolt zigzag mid-segment + label. No arrow.
+      if (hasLongestPath && !onPath) continue; // skip decorations for off-path segs
+
       if (isTeleport) {
         if (RP.scale > 0.05) {
-          var segMidX = (a.x + b.x) / 2, segMidY = (a.y + b.y) / 2;
-          var segAng = RP.angleRad(a.x, a.y, b.x, b.y);
+          var segMidX = (na.x + nb.x) / 2, segMidY = (na.y + nb.y) / 2;
+          var segAng = RP.angleRad(na.x, na.y, nb.x, nb.y);
           var perpOff = 8 / RP.scale;
-          var zigX = segMidX + Math.cos(segAng + Math.PI / 2) * perpOff;
-          var zigY = segMidY + Math.sin(segAng + Math.PI / 2) * perpOff;
           ctx.fillStyle = segColor;
           ctx.font = 'bold ' + (13 / RP.scale) + 'px -apple-system, sans-serif';
-          ctx.fillText('\u26A1', zigX, zigY + 4 / RP.scale);
+          ctx.fillText('⚡', segMidX + Math.cos(segAng + Math.PI / 2) * perpOff,
+            segMidY + Math.sin(segAng + Math.PI / 2) * perpOff + 4 / RP.scale);
         }
       } else if (RP.scale > 0.05) {
-        var mx2 = (a.x + b.x) / 2, my2 = (a.y + b.y) / 2;
-        // Arrow points in the direction of TRAVEL. For backward, that's
-        // still a -> b geometrically, but we flip it to b -> a to
-        // visually communicate "chassis-front points this way".
-        var ang = isBack
-          ? RP.angleRad(b.x, b.y, a.x, a.y)
-          : RP.angleRad(a.x, a.y, b.x, b.y);
+        var mx2 = (na.x + nb.x) / 2, my2 = (na.y + nb.y) / 2;
+        var ang = isBack ? RP.angleRad(nb.x, nb.y, na.x, na.y) : RP.angleRad(na.x, na.y, nb.x, nb.y);
         var arrLen = 12 / RP.scale;
         ctx.fillStyle = segColor;
         ctx.beginPath();
@@ -136,76 +153,77 @@ RP.render = function() {
         ctx.lineTo(mx2 + arrLen * 0.5 * Math.cos(ang - 2.5), my2 + arrLen * 0.5 * Math.sin(ang - 2.5));
         ctx.closePath();
         ctx.fill();
-
         if (isBack) {
           ctx.save();
           ctx.font = 'bold ' + fs + 'px -apple-system, sans-serif';
           ctx.fillStyle = segColor;
           ctx.strokeStyle = 'rgba(0,0,0,0.8)';
           ctx.lineWidth = 3 / RP.scale;
-          var labOff = 18 / RP.scale;
-          // Place "(rev)" perpendicular-ish to the segment, biased away
-          // from the arrow tip.
           var perpAng = ang + Math.PI / 2;
-          var lx = mx2 + labOff * Math.cos(perpAng);
-          var ly = my2 + labOff * Math.sin(perpAng);
-          ctx.strokeText('(rev)', lx, ly);
-          ctx.fillText('(rev)', lx, ly);
+          var labOff = 18 / RP.scale;
+          ctx.strokeText('(rev)', mx2 + labOff * Math.cos(perpAng), my2 + labOff * Math.sin(perpAng));
+          ctx.fillText('(rev)', mx2 + labOff * Math.cos(perpAng), my2 + labOff * Math.sin(perpAng));
           ctx.restore();
         }
       }
     }
 
-    // Restore the per-route style for waypoint dots below.
+    // Restore font/style for node dots
+    ctx.font = fs + 'px -apple-system, sans-serif';
     ctx.strokeStyle = baseColor;
     ctx.fillStyle = baseColor;
     ctx.lineWidth = isActive ? 3 / RP.scale : 2 / RP.scale;
 
-    for (var wi = 0; wi < r.waypoints.length; wi++) {
-      var wp = r.waypoints[wi];
-      var isCP = wp.isCheckpoint;
+    // Draw nodes
+    for (var ni = 0; ni < r.nodes.length; ni++) {
+      var node = r.nodes[ni];
+      var nodeIdx = pathNodeIds[node.id];
+      var onLongestPath = nodeIdx !== undefined;
+      var nodeColor = (hasLongestPath && !onLongestPath) ? dimColor : baseColor;
 
-      if (isCP) {
-        // Checkpoint: diamond with flag label.
+      if (node.isCheckpoint) {
         var cpR = 7 / RP.scale;
         ctx.beginPath();
-        ctx.moveTo(wp.x, wp.y - cpR);
-        ctx.lineTo(wp.x + cpR, wp.y);
-        ctx.lineTo(wp.x, wp.y + cpR);
-        ctx.lineTo(wp.x - cpR, wp.y);
+        ctx.moveTo(node.x, node.y - cpR);
+        ctx.lineTo(node.x + cpR, node.y);
+        ctx.lineTo(node.x, node.y + cpR);
+        ctx.lineTo(node.x - cpR, node.y);
         ctx.closePath();
         ctx.fillStyle = '#ff44ff';
         ctx.fill();
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1.5 / RP.scale;
         ctx.stroke();
-        var cpLabel = wp.checkpointName || ('CP ' + (wi + 1));
+        var cpLabel = node.checkpointName || ('CP ' + (ni + 1));
         ctx.fillStyle = '#ffccff';
         ctx.font = 'bold ' + (fs * 0.9) + 'px -apple-system, sans-serif';
         ctx.strokeStyle = 'rgba(0,0,0,0.8)';
         ctx.lineWidth = 2.5 / RP.scale;
-        ctx.strokeText(cpLabel, wp.x + (9 / RP.scale), wp.y - (1 / RP.scale));
-        ctx.fillText(cpLabel, wp.x + (9 / RP.scale), wp.y - (1 / RP.scale));
+        ctx.strokeText(cpLabel, node.x + (9 / RP.scale), node.y - (1 / RP.scale));
+        ctx.fillText(cpLabel, node.x + (9 / RP.scale), node.y - (1 / RP.scale));
       } else {
-        // Normal waypoint: circle with index.
-        var wpR = 4.5 / RP.scale;
+        var nodeR = 4.5 / RP.scale;
+        ctx.fillStyle = nodeColor;
         ctx.beginPath();
-        ctx.arc(wp.x, wp.y, wpR, 0, Math.PI * 2);
-        ctx.fillStyle = isActive ? '#44aaff' : '#4488cc';
+        ctx.arc(node.x, node.y, nodeR, 0, Math.PI * 2);
         ctx.fill();
 
-        var idxLabel = '' + (wi + 1);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold ' + fs + 'px -apple-system, sans-serif';
-        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-        ctx.lineWidth = 3 / RP.scale;
-        ctx.strokeText(idxLabel, wp.x + (5 / RP.scale), wp.y - (5 / RP.scale));
-        ctx.fillText(idxLabel, wp.x + (5 / RP.scale), wp.y - (5 / RP.scale));
+        // Show node index along the longest path, otherwise just a dot
+        var idxLabel = onLongestPath ? String(nodeIdx + 1) : '';
+        if (idxLabel) {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold ' + fs + 'px -apple-system, sans-serif';
+          ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+          ctx.lineWidth = 3 / RP.scale;
+          ctx.strokeText(idxLabel, node.x + (5 / RP.scale), node.y - (5 / RP.scale));
+          ctx.fillText(idxLabel, node.x + (5 / RP.scale), node.y - (5 / RP.scale));
+        }
       }
     }
 
-    if (r.waypoints.length > 0) {
-      var first = r.waypoints[0];
+    // Route name label at first node
+    if (r.nodes.length > 0) {
+      var first = r.nodes[0];
       ctx.font = 'bold ' + (fs * 1.1) + 'px -apple-system, sans-serif';
       ctx.fillStyle = isActive ? '#aaddff' : '#6699aa';
       ctx.strokeStyle = 'rgba(0,0,0,0.8)';
@@ -225,7 +243,6 @@ RP.render = function() {
     ctx.save();
     ctx.translate(sx, sy);
     ctx.rotate(rad);
-
     ctx.fillStyle = 'rgba(0,200,255,0.3)';
     ctx.strokeStyle = '#00ccff';
     ctx.lineWidth = 2 / RP.scale;
@@ -236,7 +253,6 @@ RP.render = function() {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-
     ctx.strokeStyle = '#00ccff';
     ctx.lineWidth = 1.5 / RP.scale;
     ctx.setLineDash([3 / RP.scale, 3 / RP.scale]);
@@ -245,14 +261,13 @@ RP.render = function() {
     ctx.lineTo(iconR * 4, 0);
     ctx.stroke();
     ctx.setLineDash([]);
-
     ctx.restore();
 
     ctx.font = 'bold ' + fs + 'px -apple-system, sans-serif';
     ctx.fillStyle = '#00ccff';
     ctx.strokeStyle = 'rgba(0,0,0,0.7)';
     ctx.lineWidth = 3 / RP.scale;
-    var label = 'Start ' + Math.round(RP.robotConfig.startHeading) + '\u00b0';
+    var label = 'Start ' + Math.round(RP.robotConfig.startHeading) + '°';
     ctx.strokeText(label, sx - 5 / RP.scale, sy - iconR * 1.5 - 2 / RP.scale);
     ctx.fillText(label, sx - 5 / RP.scale, sy - iconR * 1.5 - 2 / RP.scale);
   }
@@ -290,34 +305,30 @@ RP.render = function() {
     ctx.setLineDash([]);
   }
 
-  // (Route standby preview removed: the user has to explicitly
-  // click+drag from the last waypoint to extend a route. No
-  // auto-rubber-band line from last waypoint to cursor.)
-
-  // --- Last-waypoint magnet hint (route mode only) ---
-  // When in route mode and not currently drawing, give a subtle visual
-  // cue that the last waypoint is the magnetic anchor where the next
-  // segment must start. Helps users discover the gesture without
-  // pretending a line is being drawn.
+  // --- All-node magnet hint (route mode only) ---
+  // Show magnetic circles around ALL nodes of active route to hint that
+  // any of them can be a drag anchor for new segments.
   if (RP.activeTool === 'route' && !RP.lineDrawing && RP.img) {
     var activeRm = RP.getActiveRoute();
-    if (activeRm && activeRm.waypoints.length > 0 && RP.activeRouteId === activeRm.id) {
-      var lastWpM = activeRm.waypoints[activeRm.waypoints.length - 1];
-      ctx.strokeStyle = 'rgba(68,170,255,0.55)';
-      ctx.lineWidth = 1.5 / RP.scale;
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.arc(lastWpM.x, lastWpM.y, (RP.ROUTE_CONTINUE_SCREEN_RADIUS || 20) / RP.scale, 0, Math.PI * 2);
-      ctx.stroke();
+    if (activeRm && activeRm.nodes && activeRm.nodes.length > 0) {
+      for (var mni = 0; mni < activeRm.nodes.length; mni++) {
+        var mn = activeRm.nodes[mni];
+        ctx.strokeStyle = 'rgba(68,170,255,0.55)';
+        ctx.lineWidth = 1.5 / RP.scale;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(mn.x, mn.y, (RP.ROUTE_CONTINUE_SCREEN_RADIUS || 20) / RP.scale, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
   }
 
   ctx.restore();
 
   // --- Update status ---
-  var info = RP.imgNaturalW ? (RP.imgNaturalW + '\u00d7' + RP.imgNaturalH + '  \u00b7  ' + Math.round(RP.scale * 100) + '%') : 'No image';
+  var info = RP.imgNaturalW ? (RP.imgNaturalW + '×' + RP.imgNaturalH + '  ·  ' + Math.round(RP.scale * 100) + '%') : 'No image';
   RP.dom.imageInfo.textContent = info;
-  RP.dom.calibStatus.textContent = RP.calibration ? '\u2705 ' + RP.calibration.pixelsPerMm.toFixed(4) + ' px/mm' : '';
+  RP.dom.calibStatus.textContent = RP.calibration ? '✅ ' + RP.calibration.pixelsPerMm.toFixed(4) + ' px/mm' : '';
 
   RP.updateInstructions();
   RP.updateInfoPanel();

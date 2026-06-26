@@ -19,6 +19,7 @@ RP._buildSavePayload = function(name) {
     codeConfig: JSON.parse(JSON.stringify(RP.codeConfig)),
     nextLineId: RP.nextLineId,
     nextWpId: RP.nextWpId,
+    nextSegId: RP.nextSegId,
     nextRouteId: RP.nextRouteId,
     activeRouteId: RP.activeRouteId
   };
@@ -83,6 +84,7 @@ RP.loadMapProject = function(name) {
       RP.selectedSegment = null;
       RP.nextLineId = data.nextLineId || 1;
       RP.nextWpId = data.nextWpId || 1;
+      RP.nextSegId = data.nextSegId || 1;
       RP.nextRouteId = data.nextRouteId || 1;
       RP.activeRouteId = data.activeRouteId || (RP.routes.length > 0 ? RP.routes[0].id : null);
       RP.robotConfig = data.robotConfig ? JSON.parse(JSON.stringify(data.robotConfig)) : RP.freshRobotConfig();
@@ -158,7 +160,7 @@ RP.exportProject = function() {
     routes: JSON.parse(JSON.stringify(RP.routes)),
     robotConfig: JSON.parse(JSON.stringify(RP.robotConfig)),
     codeConfig: JSON.parse(JSON.stringify(RP.codeConfig)),
-    nextIds: { line: RP.nextLineId, wp: RP.nextWpId, route: RP.nextRouteId },
+    nextIds: { line: RP.nextLineId, wp: RP.nextWpId, seg: RP.nextSegId, route: RP.nextRouteId },
     activeRouteId: RP.activeRouteId
   };
   var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -196,10 +198,12 @@ RP.importProject = function(file) {
         if (data.nextIds) {
           RP.nextLineId = data.nextIds.line || 1;
           RP.nextWpId = data.nextIds.wp || 1;
+          RP.nextSegId = data.nextIds.seg || data.nextSegId || 1;
           RP.nextRouteId = data.nextIds.route || 1;
         } else {
           RP.nextLineId = data.nextLineId || 1;
           RP.nextWpId = data.nextWpId || 1;
+          RP.nextSegId = data.nextSegId || 1;
           RP.nextRouteId = data.nextRouteId || 1;
         }
 
@@ -250,6 +254,7 @@ RP.loadImageFromDataUrl = function(dataUrl) {
     RP.routes = [];
     RP.activeRouteId = null;
     RP.nextWpId = 1;
+    RP.nextSegId = 1;
     RP.nextRouteId = 1;
     RP.selectedSegment = null;
     RP.createRoute('Route 1');

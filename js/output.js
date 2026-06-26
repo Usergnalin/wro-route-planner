@@ -1,40 +1,34 @@
 /* ========================================================================
-   output.js - Instruction generation, code template output
+   output.js - Instruction generation, code template output (graph model)
    WRO RoboMission Senior 2026 - Route Planner
    ======================================================================== */
 var RP = window.RP || {};
 
-// Conversion factors from mm to a target unit.
 RP.UNIT_FACTORS_MM = { mm: 1, cm: 10, m: 1000, in: 25.4 };
 
 RP.unitFactor = function(unit) {
   if (!unit) return 1;
   var k = String(unit).trim().toLowerCase();
-  if (RP.UNIT_FACTORS_MM[k]) return RP.UNIT_FACTORS_MM[k];
-  return 1; // unknown unit -> treat as mm (don't silently rescale)
+  return RP.UNIT_FACTORS_MM[k] || 1;
 };
 
-// Compute the ordered list of steps for a route. Single source of truth
-// used by both the on-screen Instructions list and the generated code.
+// Compute ordered list of steps for the longest path through a route graph.
 //
 // Steps:
-//   { kind: 'turn',          deg: <abs>, dirRight: <bool> }
-//   { kind: 'forward',       mm: <number>, reverse: <bool> }
+//   { kind: 'turn',          deg, dirRight }
+//   { kind: 'forward',       mm, reverse }
 //   { kind: 'teleport',      fromX, fromY, toX, toY, heading, name }
-//   { kind: 'linetrace',     mm: <number>, reverse: <bool> }
-//   { kind: 'linetrace_junct', junctions: <number>, reverse: <bool> }
+//   { kind: 'linetrace',     mm, reverse }
+//   { kind: 'linetrace_junct', junctions, reverse }
+//   { kind: 'checkpoint',    name }
 RP.computeSteps = function(route) {
-  if (!route || route.waypoints.length < 2 || !RP.calibration) return [];
+  if (!route || !route.nodes || route.nodes.length < 2 || !RP.calibration) return [];
 
-  RP.ensureSegmentDirections(route);
-  RP.ensureSegmentModes(route);
+  // Find longest path through graph
+  var pathNodes = RP.computeLongestPath(route);
+  if (!pathNodes || pathNodes.length < 2) return [];
 
   var ppm = RP.calibration.pixelsPerMm;
-  var wps = route.waypoints;
-  var dirs = route.segmentDirections;
-  var modes = route.segmentModes;
-  var tpNames = route.segmentModeTeleportNames || [];
-  var jctCounts = route.segmentModeJunctionCounts || [];
   var steps = [];
 
   function chassisHeading(a, b, dir) {
@@ -44,18 +38,19 @@ RP.computeSteps = function(route) {
 
   var prevHeading = null;
 
-  // Virtual leg from startPos / startHeading.
+  // Virtual leg from startPos
   if (RP.robotConfig.startPos) {
     var sp = RP.robotConfig.startPos;
-    var firstDir = dirs[0] || RP.SEG_FORWARD;
-    var firstMode = modes[0] || RP.SEG_MODE_NORMAL;
-    var pxFromStart = RP.dist(sp.x, sp.y, wps[0].x, wps[0].y);
+    var firstSeg = RP.findSegBetween(route, pathNodes[0].id, pathNodes[1].id);
+    var firstDir = (firstSeg && firstSeg.direction) || RP.SEG_FORWARD;
+    var firstMode = (firstSeg && firstSeg.mode) || RP.SEG_MODE_NORMAL;
+    var pxFromStart = RP.dist(sp.x, sp.y, pathNodes[0].x, pathNodes[0].y);
     var mmFromStart = pxFromStart / ppm;
     if (mmFromStart > 0.5 && firstMode === RP.SEG_MODE_NORMAL) {
-      var headingStartLeg = chassisHeading(sp, wps[0], firstDir);
+      var headingStartLeg = chassisHeading(sp, pathNodes[0], firstDir);
       var turnInit = RP.turnAngle(RP.robotConfig.startHeading, headingStartLeg);
       if (Math.abs(turnInit) > 0.5) {
-        steps.push({ kind: 'turn', deg: Math.abs(turnInit), dirRight: turnInit > 0 });
+        steps.push({ kind: 'turn', deg: turnInit });
       }
       steps.push({ kind: 'forward', mm: mmFromStart, reverse: firstDir === RP.SEG_BACKWARD });
       prevHeading = headingStartLeg;
@@ -64,17 +59,26 @@ RP.computeSteps = function(route) {
     }
   }
 
-  // Checkpoint on the very first waypoint.
-  if (wps[0].isCheckpoint && wps[0].checkpointName) {
-    steps.push({ kind: 'checkpoint', name: wps[0].checkpointName });
+  // First node checkpoint
+  if (pathNodes[0].isCheckpoint && pathNodes[0].checkpointName) {
+    steps.push({ kind: 'checkpoint', name: pathNodes[0].checkpointName });
   }
 
-  for (var i = 0; i < wps.length - 1; i++) {
-    var a = wps[i], b = wps[i + 1];
-    var dir = dirs[i] || RP.SEG_FORWARD;
-    var mode = modes[i] || RP.SEG_MODE_NORMAL;
+  for (var i = 0; i < pathNodes.length - 1; i++) {
+    var a = pathNodes[i], b = pathNodes[i + 1];
 
-    // -- TELEPORT: omit both turns, emit comment placeholder --
+    // Find the segment connecting these two nodes (may be traversed in reverse)
+    var seg = RP.findSegBetween(route, a.id, b.id);
+    if (!seg) continue;
+
+    // Determine actual traversal direction: if segment is stored from->to but we
+    // traverse to->from, the storage direction is flipped relative to travel.
+    var storedForward = (seg.fromNodeId === a.id);
+    var dir  = seg.direction || RP.SEG_FORWARD;
+    var mode = seg.mode || RP.SEG_MODE_NORMAL;
+    // Effective backward: XOR of segment.direction and traversal order
+    var effectiveBackward = (dir === RP.SEG_BACKWARD) !== (!storedForward);
+
     if (mode === RP.SEG_MODE_TELEPORT) {
       var hdgTele = RP.toDeg(RP.angleRad(a.x, a.y, b.x, b.y));
       steps.push({
@@ -82,69 +86,64 @@ RP.computeSteps = function(route) {
         fromX: a.x, fromY: a.y,
         toX: b.x, toY: b.y,
         heading: hdgTele,
-        name: tpNames[i] || ('teleport_' + (i + 1))
+        name: seg.teleportName || ('teleport_' + seg.id)
       });
       prevHeading = null;
-      if (b.isCheckpoint && b.checkpointName) {
-        steps.push({ kind: 'checkpoint', name: b.checkpointName });
-      }
+      if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
       continue;
     }
 
-    // -- NORMAL / LINETRACE: compute and emit turn --
-    var heading = chassisHeading(a, b, dir);
+    var heading = chassisHeading(a, b, effectiveBackward ? RP.SEG_BACKWARD : RP.SEG_FORWARD);
     if (prevHeading !== null) {
       var turn = RP.turnAngle(prevHeading, heading);
       if (Math.abs(turn) > 0.5) {
-        steps.push({ kind: 'turn', deg: Math.abs(turn), dirRight: turn > 0 });
+        steps.push({ kind: 'turn', deg: turn }); // positive = clockwise, negative = anticlockwise
       }
     }
-    var legMm = RP.dist(a.x, a.y, b.x, b.y) / ppm;
 
+    var legMm = RP.dist(a.x, a.y, b.x, b.y) / ppm;
     if (mode === RP.SEG_MODE_LINETRACE_DIST) {
-      steps.push({ kind: 'linetrace', mm: legMm, reverse: dir === RP.SEG_BACKWARD });
+      steps.push({ kind: 'linetrace', mm: legMm, reverse: effectiveBackward });
     } else if (mode === RP.SEG_MODE_LINETRACE_JUNCT) {
-      steps.push({ kind: 'linetrace_junct', junctions: jctCounts[i] || 1, reverse: dir === RP.SEG_BACKWARD });
+      steps.push({ kind: 'linetrace_junct', junctions: seg.junctionCount || 1, reverse: effectiveBackward });
     } else {
-      steps.push({ kind: 'forward', mm: legMm, reverse: dir === RP.SEG_BACKWARD });
+      steps.push({ kind: 'forward', mm: legMm, reverse: effectiveBackward });
     }
 
     prevHeading = heading;
-
-    if (b.isCheckpoint && b.checkpointName) {
-      steps.push({ kind: 'checkpoint', name: b.checkpointName });
-    }
+    if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
   }
 
   return steps;
 };
 
 RP.generateCode = function(route) {
-  if (!route || route.waypoints.length < 2 || !RP.calibration) return '';
+  if (!route || !route.nodes || route.nodes.length < 2 || !RP.calibration) return '';
 
   RP.ensureCodeConfig();
+  var pathNodes = RP.computeLongestPath(route);
 
   var cp = RP.codeConfig.commentPrefix;
   var speed = RP.codeConfig.defaultSpeed;
   var unit = RP.codeConfig.defaultUnit || 'mm';
   var uFactor = RP.unitFactor(unit);
-
   var steps = RP.computeSteps(route);
-
   var lines_out = [];
+
   lines_out.push(cp + ' Route: ' + route.name);
+  if (pathNodes && pathNodes.length >= 2) {
+    lines_out.push(cp + ' Path: ' + pathNodes.length + ' nodes, ' + (pathNodes.length - 1) + ' segments');
+  }
 
   var totalMm = 0;
   for (var i = 0; i < steps.length; i++) {
-    if (steps[i].kind === 'forward') totalMm += steps[i].mm;
-    else if (steps[i].kind === 'linetrace') totalMm += steps[i].mm;
+    if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace') totalMm += steps[i].mm;
   }
   lines_out.push(cp + ' Total distance: ' + (totalMm / uFactor).toFixed(1) + ' ' + unit);
 
   if (RP.robotConfig.startPos) {
     lines_out.push(cp + ' Start at (' + RP.robotConfig.startPos.x.toFixed(1) + ', ' +
-      RP.robotConfig.startPos.y.toFixed(1) + ') heading ' +
-      Math.round(RP.robotConfig.startHeading) + '°');
+      RP.robotConfig.startPos.y.toFixed(1) + ') heading ' + Math.round(RP.robotConfig.startHeading) + '°');
   }
 
   lines_out.push(cp + ' ' + '─'.repeat(37));
@@ -152,35 +151,28 @@ RP.generateCode = function(route) {
   for (var s = 0; s < steps.length; s++) {
     var st = steps[s];
     if (st.kind === 'turn') {
-      var absAngle = st.deg.toFixed(1);
-      var tmpl = st.dirRight ? RP.codeConfig.turnRightTemplate : RP.codeConfig.turnLeftTemplate;
-      lines_out.push(tmpl
-        .replace(/\{angle\}/g, absAngle)
+      var turnTmpl = RP.codeConfig.turnTemplate || 'turn({angle}, {speed})';
+      lines_out.push(turnTmpl
+        .replace(/\{angle\}/g, st.deg.toFixed(1))
         .replace(/\{speed\}/g, speed)
         .replace(/\{distance\}/g, '0'));
     } else if (st.kind === 'teleport') {
-      var dx2 = st.toX - st.fromX;
-      var dy2 = st.toY - st.fromY;
-      var distPx2 = Math.hypot(dx2, dy2);
-      var distMm2 = RP.calibration ? distPx2 / RP.calibration.pixelsPerMm : 0;
-      var hdg = Math.round(st.heading || 0);
-      var tpName = st.name || 'teleport';
+      var dx2 = st.toX - st.fromX, dy2 = st.toY - st.fromY;
+      var distMm2 = RP.calibration ? Math.hypot(dx2, dy2) / RP.calibration.pixelsPerMm : 0;
       lines_out.push('');
-      lines_out.push(cp + ' TELEPORT: ' + tpName);
-      lines_out.push(cp + ' ' + (distMm2 / uFactor).toFixed(1) + ' ' + unit + ', heading ' + hdg + '°, from (' +
+      lines_out.push(cp + ' TELEPORT: ' + st.name);
+      lines_out.push(cp + ' ' + (distMm2 / uFactor).toFixed(1) + ' ' + unit + ', heading ' + Math.round(st.heading || 0) + '°, from (' +
         st.fromX.toFixed(0) + ',' + st.fromY.toFixed(0) + ') to (' +
         st.toX.toFixed(0) + ',' + st.toY.toFixed(0) + ')');
-      lines_out.push(cp + ' (insert custom code below, ctrl+f "' + tpName + '")');
+      lines_out.push(cp + ' (insert custom code below, ctrl+f "' + st.name + '")');
       lines_out.push('');
     } else if (st.kind === 'checkpoint') {
-      var sep = '─'.repeat(20);
       lines_out.push('');
-      lines_out.push(cp + ' ' + sep + ' CHECKPOINT: ' + (st.name || '?') + ' ' + sep);
+      lines_out.push(cp + ' ' + '─'.repeat(20) + ' CHECKPOINT: ' + (st.name || '?') + ' ' + '─'.repeat(20));
       lines_out.push('');
     } else if (st.kind === 'linetrace') {
-      var distOutLt = (st.reverse ? -st.mm / uFactor : st.mm / uFactor).toFixed(1);
       lines_out.push(RP.codeConfig.lineTraceDistTemplate
-        .replace(/\{distance\}/g, Math.abs(distOutLt).toFixed(1))
+        .replace(/\{distance\}/g, (st.mm / uFactor).toFixed(1))
         .replace(/\{speed\}/g, speed)
         .replace(/\{angle\}/g, '0'));
     } else if (st.kind === 'linetrace_junct') {
@@ -208,14 +200,19 @@ RP.updateInstructions = function() {
     return;
   }
   var active = RP.getActiveRoute();
-  if (!active || active.waypoints.length < 2 || !RP.calibration) {
-    RP.dom.codeOutput.textContent = '// Need a route with >=2 waypoints';
+  if (!active || !active.nodes || active.nodes.length < 2 || !RP.calibration) {
+    RP.dom.codeOutput.textContent = '// Need a route with >=2 nodes';
+    return;
+  }
+  var path = RP.computeLongestPath(active);
+  if (!path || path.length < 2) {
+    RP.dom.codeOutput.textContent = '// Need at least one segment in route';
     return;
   }
   try {
     RP.dom.codeOutput.textContent = RP.generateCode(active);
   } catch (e) {
     console.error('generateCode failed:', e);
-    RP.dom.codeOutput.textContent = '// Error generating code — check console.';
+    RP.dom.codeOutput.textContent = '// Error generating code - check console.';
   }
 };

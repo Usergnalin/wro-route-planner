@@ -92,11 +92,11 @@ RP.calibration = null;
 RP.lines = [];
 RP.nextLineId = 1;
 
-// Routes: { id, name, waypoints: [{x,y,label,id}], visible }
-// Waypoints no longer have 'action' property; route mode just adds waypoints
+// Routes: { id, name, nodes: [{x,y,id,isCheckpoint,checkpointName}], segments: [{id,fromNodeId,toNodeId,direction,mode,...}], visible }
 RP.routes = [];
 RP.activeRouteId = null;
-RP.nextWpId = 1;
+RP.nextWpId = 1;    // shared id counter for nodes
+RP.nextSegId = 1;   // segment id counter
 RP.nextRouteId = 1;
 
 // Active tool: 'construction' | 'route'
@@ -106,8 +106,7 @@ RP.activeTool = 'construction';
 RP.codeConfig = {
   commentPrefix: '//',
   forwardTemplate: 'move({distance}, {speed})',
-  turnRightTemplate: 'turn_right({angle}, {speed})',
-  turnLeftTemplate: 'turn_left({angle}, {speed})',
+  turnTemplate: 'turn({angle}, {speed})',
   lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
   lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
   defaultSpeed: 200,
@@ -149,8 +148,7 @@ RP.DEFAULT_ROBOT_CONFIG = {
 RP.DEFAULT_CODE_CONFIG_VALUES = {
   commentPrefix: '//',
   forwardTemplate: 'move({distance}, {speed})',
-  turnRightTemplate: 'turn_right({angle}, {speed})',
-  turnLeftTemplate: 'turn_left({angle}, {speed})',
+  turnTemplate: 'turn({angle}, {speed})',
   lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
   lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
   defaultSpeed: 200,
@@ -398,21 +396,22 @@ RP.computeSnap = function(ix, iy, opts) {
   return null;
 };
 
-// Screen-space distance from a point to the last waypoint of the active
-// route, used to gate "start a new route segment" gestures. Route
-// waypoints are never general-purpose snap targets, but the last
-// waypoint of the active route IS a magnetic anchor specifically for
-// continuing the route.
+// Screen-space distance from a point to the nearest node of the active
+// route. ANY node can be a drag anchor for a new segment.
 RP.ROUTE_CONTINUE_SCREEN_RADIUS = 20;
 RP.tryRouteContinueAnchor = function(ix, iy) {
   var r = RP.getActiveRoute();
-  if (!r || r.waypoints.length === 0) return null;
-  var last = r.waypoints[r.waypoints.length - 1];
-  var screenD = RP.screenDist(ix, iy, last.x, last.y);
-  if (screenD < RP.ROUTE_CONTINUE_SCREEN_RADIUS) {
-    return { x: last.x, y: last.y };
+  if (!r || !r.nodes || r.nodes.length === 0) return null;
+  var best = null, bestD = Infinity;
+  for (var ni = 0; ni < r.nodes.length; ni++) {
+    var n = r.nodes[ni];
+    var screenD = RP.screenDist(ix, iy, n.x, n.y);
+    if (screenD < RP.ROUTE_CONTINUE_SCREEN_RADIUS && screenD < bestD) {
+      bestD = screenD;
+      best = { x: n.x, y: n.y, nodeId: n.id };
+    }
   }
-  return null;
+  return best;
 };
 
 // ======================================================================
@@ -425,6 +424,7 @@ RP.snapshotState = function() {
     routes: JSON.parse(JSON.stringify(RP.routes)),
     activeRouteId: RP.activeRouteId,
     nextWpId: RP.nextWpId,
+    nextSegId: RP.nextSegId,
     nextRouteId: RP.nextRouteId,
     calibration: RP.calibration ? JSON.parse(JSON.stringify(RP.calibration)) : null,
     robotConfig: JSON.parse(JSON.stringify(RP.robotConfig)),
@@ -441,6 +441,7 @@ RP.restoreState = function(s) {
   RP.routes = JSON.parse(JSON.stringify(s.routes));
   RP.activeRouteId = s.activeRouteId;
   RP.nextWpId = s.nextWpId;
+  RP.nextSegId = s.nextSegId || 1;
   RP.nextRouteId = s.nextRouteId;
   RP.calibration = s.calibration ? JSON.parse(JSON.stringify(s.calibration)) : null;
   RP.robotConfig = JSON.parse(JSON.stringify(s.robotConfig));
@@ -453,7 +454,7 @@ RP.restoreState = function(s) {
     var stillValid = false;
     for (var ri = 0; ri < RP.routes.length; ri++) {
       var r = RP.routes[ri];
-      if (r.id === RP.selectedSegment.routeId && RP.selectedSegment.segIdx < r.waypoints.length - 1) {
+      if (r.id === RP.selectedSegment.routeId && RP.findSegment && RP.findSegment(r, RP.selectedSegment.segId)) {
         stillValid = true; break;
       }
     }
@@ -564,17 +565,16 @@ RP.updateSegmentPanel = function() {
   for (var i = 0; i < RP.routes.length; i++) {
     if (RP.routes[i].id === RP.selectedSegment.routeId) { route = RP.routes[i]; break; }
   }
-  if (!route || RP.selectedSegment.segIdx >= route.waypoints.length - 1) {
+  var seg = route && RP.findSegment ? RP.findSegment(route, RP.selectedSegment.segId) : null;
+  if (!route || !seg) {
     RP.selectedSegment = null;
     RP.dom.segmentSection.style.display = 'none';
     return;
   }
-  RP.ensureSegmentDirections(route);
-  RP.ensureSegmentModes(route);
-  var idx = RP.selectedSegment.segIdx;
-  var a = route.waypoints[idx], b = route.waypoints[idx + 1];
-  var dir = route.segmentDirections[idx];
-  var mode = route.segmentModes[idx] || RP.SEG_MODE_NORMAL;
+  var a = RP.findNode(route, seg.fromNodeId);
+  var b = RP.findNode(route, seg.toNodeId);
+  var dir  = seg.direction || RP.SEG_FORWARD;
+  var mode = seg.mode || RP.SEG_MODE_NORMAL;
   var isTeleport = mode === RP.SEG_MODE_TELEPORT;
   var isLineTrace = mode === RP.SEG_MODE_LINETRACE_DIST || mode === RP.SEG_MODE_LINETRACE_JUNCT;
   var dirColor = isTeleport ? '#ffaa00' : (isLineTrace ? '#44ff88' : (dir === RP.SEG_BACKWARD ? '#ff8844' : '#44aaff'));
@@ -592,7 +592,7 @@ RP.updateSegmentPanel = function() {
   if (RP.dom.segmentInfo) {
     RP.dom.segmentInfo.innerHTML =
       '<div>Route: ' + route.name + '</div>' +
-      '<div>Segment: ' + (idx + 1) + ' of ' + (route.waypoints.length - 1) + '</div>' +
+      '<div>Segment ' + (route.segments.indexOf(seg) + 1) + ' of ' + route.segments.length + '</div>' +
       '<div>Length: ' + lenStr + '</div>' +
       '<div>Direction: <b style="color:' + dirColor + '">' + dirLabel + '</b></div>' +
       '<div>Mode: <b>' + modeLabel + '</b></div>' +
@@ -619,7 +619,7 @@ RP.updateSegmentPanel = function() {
       RP.dom.segmentModeParams.style.display = '';
       if (RP.dom.segmentTeleportName) {
         RP.dom.segmentTeleportName.style.display = '';
-        RP.dom.segmentTeleportName.value = route.segmentModeTeleportNames[idx] || ('teleport_' + (idx + 1));
+        RP.dom.segmentTeleportName.value = seg.teleportName || ('teleport_' + seg.id);
       }
       if (RP.dom.segmentJunctionCount) RP.dom.segmentJunctionCount.style.display = 'none';
     } else if (mode === RP.SEG_MODE_LINETRACE_JUNCT) {
@@ -627,7 +627,7 @@ RP.updateSegmentPanel = function() {
       if (RP.dom.segmentTeleportName) RP.dom.segmentTeleportName.style.display = 'none';
       if (RP.dom.segmentJunctionCount) {
         RP.dom.segmentJunctionCount.style.display = '';
-        RP.dom.segmentJunctionCount.value = route.segmentModeJunctionCounts[idx] || 1;
+        RP.dom.segmentJunctionCount.value = seg.junctionCount || 1;
       }
     } else {
       RP.dom.segmentModeParams.style.display = 'none';
@@ -642,7 +642,7 @@ RP.updateSegmentPanel = function() {
 // ======================================================================
 RP.updateInfoPanel = function() {
   if (!RP.dom.infoTool) return;
-  RP.dom.infoTool.textContent = RP.activeTool === 'construction' ? 'Construction' : (RP.activeTool === 'route' ? 'Route' : (RP.activeTool === 'select' ? 'Select / Move' : 'Checkpoint'));
+  RP.dom.infoTool.textContent = RP.activeTool === 'construction' ? 'Construction' : (RP.activeTool === 'route' ? 'Route' : (RP.activeTool === 'select' ? 'Select' : 'Checkpoint'));
   RP.dom.infoSnap.textContent = RP.snapEnabled ? 'On' : 'Off';
   RP.dom.infoLines.textContent = RP.lines.length;
   RP.dom.infoRoutes.textContent = RP.routes.length;
@@ -651,7 +651,7 @@ RP.updateInfoPanel = function() {
     : 'Not set';
   if (RP.dom.routeWpCount) {
     var r = RP.getActiveRoute();
-    RP.dom.routeWpCount.textContent = r ? r.waypoints.length + ' waypoints' : 'No active route';
+    RP.dom.routeWpCount.textContent = r ? (r.nodes ? r.nodes.length : 0) + ' nodes' : 'No active route';
   }
   RP.updateSegmentPanel();
 };

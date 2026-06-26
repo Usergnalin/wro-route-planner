@@ -11,7 +11,6 @@ RP.initEvents = function() {
   // MOUSE EVENTS
   // ======================================================================
   wrap.addEventListener('mousedown', function(e) {
-    // Middle-click: pan
     if (e.button === 1) {
       e.preventDefault();
       RP.isDragging = true;
@@ -26,43 +25,40 @@ RP.initEvents = function() {
     RP.mouseDownClient = { x: e.clientX, y: e.clientY };
     RP.mouseMovedSinceDown = false;
 
-    // Update click-position info readout (was dead UI).
     if (RP.dom.infoClick && RP.img) {
       var cip = RP.screenToImage(e.clientX, e.clientY);
       RP.dom.infoClick.textContent = '(' + cip.x.toFixed(1) + ', ' + cip.y.toFixed(1) + ')';
     }
 
-    // Robot start position placement mode
+    // Robot start marker placement
     if (RP.startMarkerPlacing) {
       var sp = RP.screenToImage(e.clientX, e.clientY);
-      var fin = sp;
       var sStart = RP.computeSnap(sp.x, sp.y, { kind: 'point' });
-      if (sStart) fin = sStart;
+      var fin = sStart || sp;
       RP.robotConfig.startPos = { x: fin.x, y: fin.y };
       RP.robotConfig.startHeading = 0;
       RP.startMarkerPlacing = false;
       RP.startMarkerPlacingHeading = true;
       RP.startMarkerPlacedPoint = { x: fin.x, y: fin.y };
-      RP.dom.btnSetStart.textContent = '\ud83d\udccd Click on map to set';
+      RP.dom.btnSetStart.textContent = '📍 Click on map to set';
       RP.updateRobotUI();
       RP.render();
       return;
     }
 
-    // --- SELECT MODE: grab and move elements, or select a segment ---
+    // ---- SELECT MODE ----
     if (RP.activeTool === 'select') {
       if (!RP.img) return;
       var pSel = RP.screenToImage(e.clientX, e.clientY);
 
-      // Check waypoints first (highest priority - small dot target)
+      // Check route nodes first
       for (var ri = 0; ri < RP.routes.length; ri++) {
         var rt = RP.routes[ri];
-        if (!rt.visible) continue;
-        for (var wi = 0; wi < rt.waypoints.length; wi++) {
-          var wp = rt.waypoints[wi];
-          if (RP.screenDist(pSel.x, pSel.y, wp.x, wp.y) < 14) {
-            RP.elementDrag = { type: 'waypoint', routeId: rt.id, wpIdx: wi };
-            // Selecting a waypoint clears any segment selection.
+        if (!rt.visible || !rt.nodes) continue;
+        for (var ni = 0; ni < rt.nodes.length; ni++) {
+          var nd = rt.nodes[ni];
+          if (RP.screenDist(pSel.x, pSel.y, nd.x, nd.y) < 14) {
+            RP.elementDrag = { type: 'node', routeId: rt.id, nodeId: nd.id };
             RP.selectedSegment = null;
             RP.updateInfoPanel();
             return;
@@ -70,8 +66,7 @@ RP.initEvents = function() {
         }
       }
 
-      // If a line is highlighted in the layer list, check it first so
-      // overlapping lines can be individually targeted.
+      // Prioritised construction line endpoint (already selected in layer list)
       if (RP.selectedLineId !== null && RP.selectedLineId !== undefined) {
         for (var liPri = 0; liPri < RP.lines.length; liPri++) {
           if (RP.lines[liPri].id !== RP.selectedLineId) continue;
@@ -92,39 +87,34 @@ RP.initEvents = function() {
         }
       }
 
-      // Check construction line endpoints
+      // Construction line endpoints — also select the line in the layer list
       for (var li = 0; li < RP.lines.length; li++) {
         var l = RP.lines[li];
-        if (RP.screenDist(pSel.x, pSel.y, l.x1, l.y1) < 14) {
-          RP.elementDrag = { type: 'line-endpoint', lineIdx: li, which: 'start' };
+        if (RP.screenDist(pSel.x, pSel.y, l.x1, l.y1) < 14 ||
+            RP.screenDist(pSel.x, pSel.y, l.x2, l.y2) < 14) {
+          var which = RP.screenDist(pSel.x, pSel.y, l.x1, l.y1) < 14 ? 'start' : 'end';
+          RP.elementDrag = { type: 'line-endpoint', lineIdx: li, which: which };
           RP.selectedSegment = null;
-          RP.updateInfoPanel();
-          return;
-        }
-        if (RP.screenDist(pSel.x, pSel.y, l.x2, l.y2) < 14) {
-          RP.elementDrag = { type: 'line-endpoint', lineIdx: li, which: 'end' };
-          RP.selectedSegment = null;
+          RP.selectedLineId = l.id;
+          RP.updateLayerList();
           RP.updateInfoPanel();
           return;
         }
       }
 
-      // Check route segments (click anywhere along the line, away from
-      // its endpoints which are already handled by the waypoint check
-      // above). Use point-to-segment distance with a screen-space
-      // threshold.
-      var hitSegThreshImg = RP.snapThresholdImg(8); // 8 screen-px
-      var hitSegThreshSq = hitSegThreshImg * hitSegThreshImg;
+      // Route segments (click near segment line)
+      var hitThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
       for (var ri2 = 0; ri2 < RP.routes.length; ri2++) {
         var rt2 = RP.routes[ri2];
-        if (!rt2.visible || rt2.waypoints.length < 2) continue;
-        for (var seg = 0; seg < rt2.waypoints.length - 1; seg++) {
-          var aSeg = rt2.waypoints[seg], bSeg = rt2.waypoints[seg + 1];
-          var dSq = RP.pointToSegDistSq(pSel.x, pSel.y, aSeg.x, aSeg.y, bSeg.x, bSeg.y);
-          if (dSq < hitSegThreshSq) {
-            // Don't push history for selection changes - they're not
-            // edits and would spam the undo stack.
-            RP.selectedSegment = { routeId: rt2.id, segIdx: seg };
+        if (!rt2.visible || !rt2.segments) continue;
+        for (var si2 = 0; si2 < rt2.segments.length; si2++) {
+          var seg2 = rt2.segments[si2];
+          var na2 = RP.findNode(rt2, seg2.fromNodeId);
+          var nb2 = RP.findNode(rt2, seg2.toNodeId);
+          if (!na2 || !nb2) continue;
+          var dSq2 = RP.pointToSegDistSq(pSel.x, pSel.y, na2.x, na2.y, nb2.x, nb2.y);
+          if (dSq2 < hitThreshSq) {
+            RP.selectedSegment = { routeId: rt2.id, segId: seg2.id };
             if (RP.activeRouteId !== rt2.id) {
               RP.activeRouteId = rt2.id;
               RP.updateRouteSelect();
@@ -136,7 +126,7 @@ RP.initEvents = function() {
         }
       }
 
-      // No element to grab — clear segment selection and pan.
+      // No element — clear selection and pan
       if (RP.selectedSegment) {
         RP.selectedSegment = null;
         RP.updateInfoPanel();
@@ -151,153 +141,127 @@ RP.initEvents = function() {
       return;
     }
 
-    // --- ROUTE MODE: click-and-drag, either starting a new route
-    //     (first waypoint) or extending from the last waypoint ---
+    // ---- ROUTE MODE ----
     if (RP.activeTool === 'route') {
       if (!RP.img) return;
       var p = RP.screenToImage(e.clientX, e.clientY);
       var r = RP.getActiveRoute();
       if (!r) {
-        var newName = 'Route ' + (RP.routes.length + 1);
         RP.pushHistory('Create route');
-        RP.createRoute(newName);
+        RP.createRoute('Route ' + (RP.routes.length + 1));
         r = RP.getActiveRoute();
       }
 
-      // CASE A: first waypoint of this route. Start may snap freely to
-      // any construction-line point feature.
-      if (r.waypoints.length === 0) {
-        var startPt = p;
+      // First node of empty route: snap + start drag
+      if (!r.nodes || r.nodes.length === 0) {
         var sFirst = RP.computeSnap(p.x, p.y, { kind: 'point' });
-        if (sFirst) startPt = sFirst;
+        var startPt = sFirst || p;
         RP.lineDrawing = true;
-        RP.lineDrawStart = { x: startPt.x, y: startPt.y };
+        RP.lineDrawStart = { x: startPt.x, y: startPt.y, nodeId: null };
         RP.hoverSnapPoint = null;
-        RP.dom.wrap.classList.add('drawing-route');
+        wrap.classList.add('drawing-route');
         return;
       }
 
-      // CASE B: route already has waypoints.
-      // Sub-case B1: clicking near a segment midpoint -> insert.
-      if (r.waypoints.length >= 2) {
-        for (var iSeg = 0; iSeg < r.waypoints.length - 1; iSeg++) {
-          var aSeg = r.waypoints[iSeg], bSeg = r.waypoints[iSeg + 1];
-          var midSx = (aSeg.x + bSeg.x) / 2, midSy = (aSeg.y + bSeg.y) / 2;
-          if (RP.screenDist(p.x, p.y, midSx, midSy) < 12) {
-            var snapMid = p;
+      // Check segment midpoints for insertion
+      if (r.segments && r.segments.length > 0) {
+        for (var iSeg = 0; iSeg < r.segments.length; iSeg++) {
+          var segMid = r.segments[iSeg];
+          var naMid = RP.findNode(r, segMid.fromNodeId);
+          var nbMid = RP.findNode(r, segMid.toNodeId);
+          if (!naMid || !nbMid) continue;
+          var midPt = { x: (naMid.x + nbMid.x) / 2, y: (naMid.y + nbMid.y) / 2 };
+          if (RP.screenDist(p.x, p.y, midPt.x, midPt.y) < 12) {
             var sMid = RP.computeSnap(p.x, p.y, { kind: 'point' });
-            if (sMid) snapMid = sMid;
-            RP.pushHistory('Insert waypoint');
-            RP.insertWaypointAt(snapMid.x, snapMid.y, iSeg);
+            var snapMid = sMid || p;
+            RP.pushHistory('Insert node');
+            var newNode = RP._addNode(r, snapMid.x, snapMid.y);
+            // Remove old segment, add two new ones
+            r.segments.splice(iSeg, 1);
+            RP._addSegment(r, segMid.fromNodeId, newNode.id);
+            RP._addSegment(r, newNode.id, segMid.toNodeId);
+            RP.render();
+            RP.updateSideRouteList();
+            RP.updateInfoPanel();
+            if (RP.updateInstructions) RP.updateInstructions();
             return;
           }
         }
       }
 
-      // Sub-case B2: starting a new segment. Required: click must be
-      // near the last waypoint. The start is FORCED to the last
-      // waypoint exactly. If not near, fall through to allow
-      // waypoint-drag or pan.
+      // Click near any existing node: start drawing a new segment from it
       var anchor = RP.tryRouteContinueAnchor(p.x, p.y);
       if (anchor) {
         RP.lineDrawing = true;
-        RP.lineDrawStart = { x: anchor.x, y: anchor.y };
+        RP.lineDrawStart = { x: anchor.x, y: anchor.y, nodeId: anchor.nodeId };
         RP.hoverSnapPoint = null;
-        RP.dom.wrap.classList.add('drawing-route');
+        wrap.classList.add('drawing-route');
         return;
       }
-      // Not near last waypoint -> fall through (waypoint-drag or pan)
+      // Not near any node — fall through (pan)
     }
 
-    // --- CONSTRUCTION MODE: draw a line ---
+    // ---- CONSTRUCTION MODE ----
     if (RP.activeTool === 'construction') {
       var p2 = RP.screenToImage(e.clientX, e.clientY);
-      var startC = p2;
       var sC = RP.computeSnap(p2.x, p2.y, { kind: 'point' });
-      if (sC) startC = sC;
+      var startC = sC || p2;
       RP.lineDrawing = true;
       RP.lineDrawStart = { x: startC.x, y: startC.y };
       RP.hoverSnapPoint = null;
-      RP.dom.wrap.classList.add('drawing-route');
+      wrap.classList.add('drawing-route');
       return;
     }
 
-    // --- CHECKPOINT MODE: click to place named checkpoints ---
+    // ---- CHECKPOINT MODE ----
     if (RP.activeTool === 'checkpoint') {
       if (!RP.img) return;
       var pCP = RP.screenToImage(e.clientX, e.clientY);
-
-      // Scan ALL visible routes (not just the active one).
       for (var cpri = 0; cpri < RP.routes.length; cpri++) {
         var cpr = RP.routes[cpri];
-        if (!cpr.visible || cpr.waypoints.length < 2) continue;
-
-        // Midpoint: split the segment and insert checkpoint.
-        for (var cpsi = 0; cpsi < cpr.waypoints.length - 1; cpsi++) {
-          var cpa = cpr.waypoints[cpsi], cpb = cpr.waypoints[cpsi + 1];
-          var cpmx = (cpa.x + cpb.x) / 2, cpmy = (cpa.y + cpb.y) / 2;
+        if (!cpr.visible || !cpr.segments || cpr.segments.length === 0) continue;
+        // Click near segment midpoint: insert checkpoint node
+        for (var cpsi = 0; cpsi < cpr.segments.length; cpsi++) {
+          var cpSeg = cpr.segments[cpsi];
+          var cpA = RP.findNode(cpr, cpSeg.fromNodeId);
+          var cpB = RP.findNode(cpr, cpSeg.toNodeId);
+          if (!cpA || !cpB) continue;
+          var cpmx = (cpA.x + cpB.x) / 2, cpmy = (cpA.y + cpB.y) / 2;
           if (RP.screenDist(pCP.x, pCP.y, cpmx, cpmy) < 18) {
             var cpSnap = RP.computeSnap(pCP.x, pCP.y, { kind: 'point' }) || pCP;
             var cpName = prompt('Checkpoint name:', 'CP-' + (cpsi + 1));
-            if (cpName === null) return; // user cancelled
+            if (cpName === null) return;
             RP.pushHistory('Insert checkpoint');
-            // Manual insertion (avoids active-route switching).
-            RP.ensureSegmentDirections(cpr);
-            RP.ensureSegmentModes(cpr);
-            var pDir = cpr.segmentDirections[cpsi] || RP.SEG_FORWARD;
-            var pMode = cpr.segmentModes[cpsi] || RP.SEG_MODE_NORMAL;
-            var pTpName = cpr.segmentModeTeleportNames[cpsi] || null;
-            var pJct = cpr.segmentModeJunctionCounts[cpsi] || null;
-            cpr.waypoints.splice(cpsi + 1, 0, {
-              x: cpSnap.x, y: cpSnap.y, label: '', id: RP.nextWpId++,
-              isCheckpoint: true, checkpointName: cpName
-            });
-            cpr.segmentDirections.splice(cpsi, 1, pDir, pDir);
-            cpr.segmentModes.splice(cpsi, 1, pMode, pMode);
-            cpr.segmentModeTeleportNames.splice(cpsi, 1, pTpName, pTpName);
-            cpr.segmentModeJunctionCounts.splice(cpsi, 1, pJct, pJct);
+            var cpNewNode = RP._addNode(cpr, cpSnap.x, cpSnap.y, { isCheckpoint: true, checkpointName: cpName });
+            cpr.segments.splice(cpsi, 1);
+            var cpNewSeg1 = RP._addSegment(cpr, cpSeg.fromNodeId, cpNewNode.id);
+            var cpNewSeg2 = RP._addSegment(cpr, cpNewNode.id, cpSeg.toNodeId);
+            cpNewSeg1.direction = cpSeg.direction; cpNewSeg1.mode = cpSeg.mode;
+            cpNewSeg2.direction = cpSeg.direction; cpNewSeg2.mode = cpSeg.mode;
             RP.render();
-            RP.updateRouteSelect();
             RP.updateSideRouteList();
             RP.updateInfoPanel();
             return;
           }
         }
-
-        // Endpoint: mark the last waypoint as checkpoint (no split).
-        var lastWp = cpr.waypoints[cpr.waypoints.length - 1];
-        if (RP.screenDist(pCP.x, pCP.y, lastWp.x, lastWp.y) < 18) {
-          var epName = prompt('Checkpoint name:', 'CP-end');
-          if (epName === null) return;
-          if (lastWp.isCheckpoint && lastWp.checkpointName === epName) return;
-          RP.pushHistory('Set endpoint checkpoint');
-          lastWp.isCheckpoint = true;
-          lastWp.checkpointName = epName;
-          RP.render();
-          return;
-        }
-      }
-      // No route segment hit — do nothing (no pan).
-      return;
-    }
-
-    // Check if clicking on a waypoint to start drag
-    if (RP.img) {
-      var p3 = RP.screenToImage(e.clientX, e.clientY);
-      for (var ri = 0; ri < RP.routes.length; ri++) {
-        var rt = RP.routes[ri];
-        if (!rt.visible) continue;
-        for (var wi = 0; wi < rt.waypoints.length; wi++) {
-          var wp = rt.waypoints[wi];
-          if (RP.screenDist(p3.x, p3.y, wp.x, wp.y) < 12) {
-            RP.waypointDrag = { routeId: rt.id, wpIdx: wi, startX: wp.x, startY: wp.y };
+        // Click near an endpoint node: mark as checkpoint
+        for (var cni = 0; cni < cpr.nodes.length; cni++) {
+          var cnNode = cpr.nodes[cni];
+          if (RP.screenDist(pCP.x, pCP.y, cnNode.x, cnNode.y) < 18) {
+            var epName = prompt('Checkpoint name:', 'CP-end');
+            if (epName === null) return;
+            RP.pushHistory('Set checkpoint');
+            cnNode.isCheckpoint = true;
+            cnNode.checkpointName = epName;
+            RP.render();
             return;
           }
         }
       }
+      return;
     }
 
-    // Pan mode (fallback)
+    // Fallback: pan
     RP.isDragging = true;
     wrap.classList.add('dragging');
     RP.dragStartX = e.clientX;
@@ -309,39 +273,33 @@ RP.initEvents = function() {
   window.addEventListener('mousemove', function(e) {
     RP.lastMouseImg = RP.screenToImage(e.clientX, e.clientY);
 
-    // ---- Line drawing preview (construction or route) ----
     if (RP.lineDrawing && RP.lineDrawStart) {
       RP.mouseMovedSinceDown = true;
       var p = RP.screenToImage(e.clientX, e.clientY);
       var snapP = RP.computeSnap(p.x, p.y, { kind: 'line-end', anchor: RP.lineDrawStart });
       if (!snapP) snapP = { x: p.x, y: p.y, kind: null };
-      // Show indicator only when we actually moved the point.
       RP.hoverSnapPoint = (snapP.x !== p.x || snapP.y !== p.y) ? { x: snapP.x, y: snapP.y } : null;
       RP.render();
       return;
     }
 
-    // ---- Element drag (waypoints and line endpoints in select mode) ----
     if (RP.elementDrag) {
       var pED = RP.screenToImage(e.clientX, e.clientY);
       var snapED = null;
       if (RP.elementDrag.type === 'line-endpoint') {
-        // Allow snap, but exclude this line so it can't self-snap.
         snapED = RP.computeSnap(pED.x, pED.y, { kind: 'point', excludeLineIdx: RP.elementDrag.lineIdx });
       } else {
-        // Waypoints snap to construction features only.
         snapED = RP.computeSnap(pED.x, pED.y, { kind: 'point' });
       }
       var fED = snapED || pED;
       RP.hoverSnapPoint = snapED ? { x: snapED.x, y: snapED.y } : null;
-      if (RP.elementDrag.type === 'waypoint') {
+      if (RP.elementDrag.type === 'node') {
         for (var rie = 0; rie < RP.routes.length; rie++) {
           var re_ = RP.routes[rie];
-          if (re_.id === RP.elementDrag.routeId && re_.waypoints[RP.elementDrag.wpIdx]) {
-            re_.waypoints[RP.elementDrag.wpIdx].x = fED.x;
-            re_.waypoints[RP.elementDrag.wpIdx].y = fED.y;
-            break;
-          }
+          if (re_.id !== RP.elementDrag.routeId || !re_.nodes) continue;
+          var nd_ = RP.findNode(re_, RP.elementDrag.nodeId);
+          if (nd_) { nd_.x = fED.x; nd_.y = fED.y; }
+          break;
         }
       } else if (RP.elementDrag.type === 'line-endpoint') {
         var lED = RP.lines[RP.elementDrag.lineIdx];
@@ -354,25 +312,6 @@ RP.initEvents = function() {
       return;
     }
 
-    // ---- Waypoint drag (fallback for non-select modes) ----
-    if (RP.waypointDrag) {
-      var pWD = RP.screenToImage(e.clientX, e.clientY);
-      var snapWD = RP.computeSnap(pWD.x, pWD.y, { kind: 'point' });
-      var fWD = snapWD || pWD;
-      RP.hoverSnapPoint = snapWD ? { x: snapWD.x, y: snapWD.y } : null;
-      for (var riw = 0; riw < RP.routes.length; riw++) {
-        var rw = RP.routes[riw];
-        if (rw.id === RP.waypointDrag.routeId && rw.waypoints[RP.waypointDrag.wpIdx]) {
-          rw.waypoints[RP.waypointDrag.wpIdx].x = fWD.x;
-          rw.waypoints[RP.waypointDrag.wpIdx].y = fWD.y;
-          break;
-        }
-      }
-      RP.render();
-      return;
-    }
-
-    // ---- Pan ----
     if (RP.isDragging) {
       RP.offsetX = RP.dragStartOffX + (e.clientX - RP.dragStartX);
       RP.offsetY = RP.dragStartOffY + (e.clientY - RP.dragStartY);
@@ -381,7 +320,6 @@ RP.initEvents = function() {
       return;
     }
 
-    // ---- Heading preview during start-marker heading placement ----
     if (RP.startMarkerPlacingHeading && RP.robotConfig.startPos) {
       var p3 = RP.screenToImage(e.clientX, e.clientY);
       var dx = p3.x - RP.robotConfig.startPos.x;
@@ -393,7 +331,6 @@ RP.initEvents = function() {
       return;
     }
 
-    // ---- Hover indicator (no drag in progress) ----
     if (RP.img) {
       var p4 = RP.screenToImage(e.clientX, e.clientY);
       var s4 = RP.computeSnap(p4.x, p4.y, { kind: 'point' });
@@ -408,7 +345,6 @@ RP.initEvents = function() {
       }
     }
 
-    // Update hover info
     if (RP.dom.infoHover) {
       var hp = RP.screenToImage(e.clientX, e.clientY);
       RP.dom.infoHover.textContent = '(' + hp.x.toFixed(1) + ', ' + hp.y.toFixed(1) + ')';
@@ -416,17 +352,12 @@ RP.initEvents = function() {
   });
 
   window.addEventListener('mouseup', function(e) {
-    // Middle-click: stop pan
     if (e.button === 1) {
-      if (RP.isDragging) {
-        RP.isDragging = false;
-        wrap.classList.remove('dragging');
-      }
+      if (RP.isDragging) { RP.isDragging = false; wrap.classList.remove('dragging'); }
       return;
     }
     if (e.button !== 0) return;
 
-    // Heading selection after placing start marker
     if (RP.startMarkerPlacingHeading && RP.robotConfig.startPos) {
       var p = RP.screenToImage(e.clientX, e.clientY);
       var dx = p.x - RP.robotConfig.startPos.x;
@@ -442,34 +373,47 @@ RP.initEvents = function() {
       return;
     }
 
-    // Finish line drawing (route or construction)
+    // Finish line drawing
     if (RP.lineDrawing && RP.lineDrawStart) {
       var pUp = RP.screenToImage(e.clientX, e.clientY);
       var snapUp = RP.computeSnap(pUp.x, pUp.y, { kind: 'line-end', anchor: RP.lineDrawStart });
       var endPt = snapUp || pUp;
-
       var movedFar = RP.dist(RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y) > 2 / RP.scale;
 
-      if (RP.activeTool === 'route') {
-        if (movedFar) {
-          var routeR = RP.getActiveRoute();
-          var emptyRoute = routeR && routeR.waypoints.length === 0;
+      if (RP.activeTool === 'route' && movedFar) {
+        var routeR = RP.getActiveRoute();
+        if (routeR) {
           RP.pushHistory('Add route segment');
-          if (emptyRoute) {
-            RP.addWaypoint(RP.lineDrawStart.x, RP.lineDrawStart.y);
-          }
-          RP.addWaypoint(endPt.x, endPt.y);
-        }
-        RP.lineDrawing = false;
-        RP.lineDrawStart = null;
-        RP.hoverSnapPoint = null;
-        RP.dom.wrap.classList.remove('drawing-route');
-        RP.render();
-        return;
-      }
 
-      // --- Construction line completion ---
-      if (movedFar) {
+          // fromNode: either existing (if drag started from a node) or new
+          var fromNodeId = RP.lineDrawStart.nodeId;
+          if (fromNodeId === null || fromNodeId === undefined) {
+            // First node of the route
+            var fromNode = RP._addNode(routeR, RP.lineDrawStart.x, RP.lineDrawStart.y);
+            fromNodeId = fromNode.id;
+          }
+
+          // toNode: snap to existing node or create new
+          var existingEnd = RP.findNodeNear(routeR, endPt.x, endPt.y, RP.ROUTE_CONTINUE_SCREEN_RADIUS);
+          var toNodeId;
+          if (existingEnd) {
+            toNodeId = existingEnd.id;
+          } else {
+            var toNode = RP._addNode(routeR, endPt.x, endPt.y);
+            toNodeId = toNode.id;
+          }
+
+          // Prevent duplicate segment between same two nodes
+          if (toNodeId !== fromNodeId && !RP.findSegBetween(routeR, fromNodeId, toNodeId)) {
+            RP._addSegment(routeR, fromNodeId, toNodeId);
+          }
+
+          RP.render();
+          RP.updateSideRouteList();
+          RP.updateInfoPanel();
+          if (RP.updateInstructions) RP.updateInstructions();
+        }
+      } else if (RP.activeTool === 'construction' && movedFar) {
         RP.pushHistory('Draw construction line');
         var pxLen2 = RP.dist(RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y);
         var mm2 = RP.calibration ? pxLen2 / RP.calibration.pixelsPerMm : pxLen2;
@@ -477,21 +421,21 @@ RP.initEvents = function() {
           id: RP.nextLineId++,
           x1: RP.lineDrawStart.x, y1: RP.lineDrawStart.y,
           x2: endPt.x, y2: endPt.y,
-          type: 'construction',
-          visible: true,
+          type: 'construction', visible: true,
           label: mm2.toFixed(2) + ' mm'
         });
         if (RP.updateLayerList) RP.updateLayerList();
       }
+
       RP.lineDrawing = false;
       RP.lineDrawStart = null;
       RP.hoverSnapPoint = null;
-      RP.dom.wrap.classList.remove('drawing-route');
+      wrap.classList.remove('drawing-route');
       RP.render();
       return;
     }
 
-    // Finish element drag (select mode)
+    // Finish element drag
     if (RP.elementDrag) {
       if (RP.elementDrag.type === 'line-endpoint') {
         var l = RP.lines[RP.elementDrag.lineIdx];
@@ -504,14 +448,7 @@ RP.initEvents = function() {
       RP.pushHistory('Move ' + RP.elementDrag.type);
       RP.elementDrag = null;
       RP.render();
-      return;
-    }
-
-    // Finish waypoint drag
-    if (RP.waypointDrag) {
-      RP.pushHistory('Move waypoint');
-      RP.waypointDrag = null;
-      RP.render();
+      if (RP.updateInstructions) RP.updateInstructions();
       return;
     }
 
@@ -521,26 +458,108 @@ RP.initEvents = function() {
     }
   });
 
-  // Right-click: delete waypoint or route
+  // ======================================================================
+  // CONTEXT MENU (right-click)
+  // ======================================================================
+  var ctxMenu     = document.getElementById('ctx-menu');
+  var ctxTitle    = document.getElementById('ctx-menu-title');
+  var ctxDelBtn   = document.getElementById('ctx-menu-delete');
+  var ctxTarget   = null; // { kind: 'node'|'segment'|'line', ... }
+
+  function hideCtxMenu() {
+    if (ctxMenu) ctxMenu.style.display = 'none';
+    ctxTarget = null;
+  }
+
+  function showCtxMenu(x, y, title, target) {
+    if (!ctxMenu) return;
+    ctxTitle.textContent = title;
+    ctxTarget = target;
+    ctxMenu.style.left = (x + 4) + 'px';
+    ctxMenu.style.top  = (y + 4) + 'px';
+    ctxMenu.style.display = 'block';
+    // Keep menu on screen
+    var mr = ctxMenu.getBoundingClientRect();
+    if (mr.right  > window.innerWidth)  ctxMenu.style.left = (x - mr.width  - 4) + 'px';
+    if (mr.bottom > window.innerHeight) ctxMenu.style.top  = (y - mr.height - 4) + 'px';
+  }
+
+  if (ctxDelBtn) {
+    ctxDelBtn.addEventListener('click', function() {
+      if (!ctxTarget) { hideCtxMenu(); return; }
+      if (ctxTarget.kind === 'node') {
+        var r = null;
+        for (var i = 0; i < RP.routes.length; i++) if (RP.routes[i].id === ctxTarget.routeId) { r = RP.routes[i]; break; }
+        if (r) {
+          if (r.nodes.length <= 1) { RP.pushHistory('Delete route'); RP.deleteRoute(r.id); }
+          else { RP.pushHistory('Delete node'); RP.removeNode(r.id, ctxTarget.nodeId); }
+        }
+      } else if (ctxTarget.kind === 'segment') {
+        RP.removeSegment(ctxTarget.routeId, ctxTarget.segId);
+      } else if (ctxTarget.kind === 'line') {
+        RP.removeConstructionLine(ctxTarget.lineId);
+      }
+      hideCtxMenu();
+    });
+  }
+
+  // Hide on any click outside the menu or on scroll/escape
+  document.addEventListener('click', function(e) {
+    if (ctxMenu && ctxMenu.style.display !== 'none' && !ctxMenu.contains(e.target)) hideCtxMenu();
+  });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') hideCtxMenu(); });
+  wrap.addEventListener('scroll', hideCtxMenu);
+
   wrap.addEventListener('contextmenu', function(e) {
     e.preventDefault();
+    hideCtxMenu();
     if (!RP.img) return;
     var p = RP.screenToImage(e.clientX, e.clientY);
+
+    // 1. Route nodes (highest priority — small click target)
     for (var ri = 0; ri < RP.routes.length; ri++) {
       var r = RP.routes[ri];
-      if (!r.visible) continue;
-      for (var wi = 0; wi < r.waypoints.length; wi++) {
-        var wp = r.waypoints[wi];
-        if (RP.screenDist(p.x, p.y, wp.x, wp.y) < 12) {
-          if (r.waypoints.length <= 1) {
-            RP.pushHistory('Delete route');
-            RP.deleteRoute(r.id);
-          } else {
-            RP.pushHistory('Delete waypoint');
-            RP.removeWaypoint(r.id, wi);
-          }
+      if (!r.visible || !r.nodes) continue;
+      for (var ni = 0; ni < r.nodes.length; ni++) {
+        var n = r.nodes[ni];
+        if (RP.screenDist(p.x, p.y, n.x, n.y) < 12) {
+          var nodeLabel = n.isCheckpoint ? ('Checkpoint: ' + (n.checkpointName || 'node')) : ('Node in ' + r.name);
+          showCtxMenu(e.clientX, e.clientY, nodeLabel, { kind: 'node', routeId: r.id, nodeId: n.id });
           return;
         }
+      }
+    }
+
+    // 2. Route segments
+    var segThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
+    for (var ri2 = 0; ri2 < RP.routes.length; ri2++) {
+      var r2 = RP.routes[ri2];
+      if (!r2.visible || !r2.segments) continue;
+      for (var si = 0; si < r2.segments.length; si++) {
+        var seg = r2.segments[si];
+        var na = RP.findNode(r2, seg.fromNodeId);
+        var nb = RP.findNode(r2, seg.toNodeId);
+        if (!na || !nb) continue;
+        var dSq = RP.pointToSegDistSq(p.x, p.y, na.x, na.y, nb.x, nb.y);
+        if (dSq < segThreshSq) {
+          var lenStr = RP.calibration
+            ? (RP.dist(na.x, na.y, nb.x, nb.y) / RP.calibration.pixelsPerMm).toFixed(0) + 'mm'
+            : 'seg ' + (si + 1);
+          showCtxMenu(e.clientX, e.clientY, r2.name + ' › ' + lenStr, { kind: 'segment', routeId: r2.id, segId: seg.id });
+          return;
+        }
+      }
+    }
+
+    // 3. Construction lines
+    var lineThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
+    for (var li = 0; li < RP.lines.length; li++) {
+      var l = RP.lines[li];
+      if (l.visible === false) continue;
+      var ldSq = RP.pointToSegDistSq(p.x, p.y, l.x1, l.y1, l.x2, l.y2);
+      if (ldSq < lineThreshSq) {
+        showCtxMenu(e.clientX, e.clientY, l.label ? ('Line: ' + l.label) : ('Line ' + (li + 1)), { kind: 'line', lineId: l.id });
+        return;
       }
     }
   });
@@ -621,48 +640,36 @@ RP.initEvents = function() {
   RP.dom.btnZoomOut.addEventListener('click', function() { RP.zoomAt(0.77); });
   RP.dom.btnFit.addEventListener('click', RP.resetView);
 
-  // Tool switching - use RP.setTool (defined in core.js).
-  if (RP.dom.btnToolConstruction) {
+  if (RP.dom.btnToolConstruction)
     RP.dom.btnToolConstruction.addEventListener('click', function() { RP.setTool('construction'); });
-  }
-  if (RP.dom.btnToolRoute) {
+  if (RP.dom.btnToolRoute)
     RP.dom.btnToolRoute.addEventListener('click', function() { RP.setTool('route'); });
-  }
-  if (RP.dom.btnToolSelect) {
+  if (RP.dom.btnToolSelect)
     RP.dom.btnToolSelect.addEventListener('click', function() { RP.setTool('select'); });
-  }
-  if (RP.dom.btnToolCheckpoint) {
+  if (RP.dom.btnToolCheckpoint)
     RP.dom.btnToolCheckpoint.addEventListener('click', function() { RP.setTool('checkpoint'); });
-  }
-  if (RP.dom.btnSidebarConstruction) {
+  if (RP.dom.btnSidebarConstruction)
     RP.dom.btnSidebarConstruction.addEventListener('click', function() { RP.setTool('construction'); });
-  }
-  if (RP.dom.btnSidebarRoute) {
+  if (RP.dom.btnSidebarRoute)
     RP.dom.btnSidebarRoute.addEventListener('click', function() { RP.setTool('route'); });
-  }
-  if (RP.dom.btnSidebarSelect) {
+  if (RP.dom.btnSidebarSelect)
     RP.dom.btnSidebarSelect.addEventListener('click', function() { RP.setTool('select'); });
-  }
-  if (RP.dom.btnSidebarCheckpoint) {
+  if (RP.dom.btnSidebarCheckpoint)
     RP.dom.btnSidebarCheckpoint.addEventListener('click', function() { RP.setTool('checkpoint'); });
-  }
 
-  // Snap toggle
   function toggleSnap() {
     RP.snapEnabled = !RP.snapEnabled;
     if (RP.dom.btnSnap) RP.dom.btnSnap.classList.toggle('active', RP.snapEnabled);
     if (RP.dom.btnSidebarSnap) {
       RP.dom.btnSidebarSnap.classList.toggle('active', RP.snapEnabled);
-      RP.dom.btnSidebarSnap.textContent = RP.snapEnabled ? '\ud83e\uddea Snap On' : '\ud83e\uddea Snap Off';
+      RP.dom.btnSidebarSnap.textContent = RP.snapEnabled ? '🧪 Snap On' : '🧪 Snap Off';
     }
     if (RP.dom.infoSnap) RP.dom.infoSnap.textContent = RP.snapEnabled ? 'On' : 'Off';
     if (!RP.snapEnabled) { RP.hoverSnapPoint = null; RP.render(); }
   }
-
   if (RP.dom.btnSnap) RP.dom.btnSnap.addEventListener('click', toggleSnap);
   if (RP.dom.btnSidebarSnap) RP.dom.btnSidebarSnap.addEventListener('click', toggleSnap);
 
-  // Robot config
   if (RP.dom.btnRobotConfig) {
     RP.dom.btnRobotConfig.addEventListener('click', function() {
       RP.robotOverlayVisible = !RP.robotOverlayVisible;
@@ -674,12 +681,11 @@ RP.initEvents = function() {
 
   if (RP.dom.btnSetStart) {
     RP.dom.btnSetStart.addEventListener('click', function() {
-      // Toggle: clicking again cancels placement mode.
       if (RP.startMarkerPlacing || RP.startMarkerPlacingHeading) {
         RP.startMarkerPlacing = false;
         RP.startMarkerPlacingHeading = false;
         RP.startMarkerPlacedPoint = null;
-        RP.dom.btnSetStart.textContent = '\ud83d\udccd Click on map to set';
+        RP.dom.btnSetStart.textContent = '📍 Click on map to set';
         return;
       }
       RP.startMarkerPlacing = true;
@@ -699,14 +705,13 @@ RP.initEvents = function() {
     });
   }
 
-  // Route select
   if (RP.dom.routeSelect) {
     RP.dom.routeSelect.addEventListener('change', function() {
       var val = RP.dom.routeSelect.value;
       if (val === '__new__') {
         var suggested = 'Route ' + (RP.routes.length + 1);
         var name = prompt('Route name:', suggested);
-        if (name === null) { RP.updateRouteSelect(); return; } // cancel
+        if (name === null) { RP.updateRouteSelect(); return; }
         RP.pushHistory('Create route');
         RP.createRoute(name || suggested);
       } else {
@@ -750,8 +755,6 @@ RP.initEvents = function() {
         return;
       }
       RP.updateMapList();
-      // Scroll the Saved Maps panel into view and briefly highlight it
-      // so the user can find it (it's always visible at the bottom).
       if (RP.dom.mapListEl) {
         RP.dom.mapListEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         var panel = RP.dom.mapListEl.closest && RP.dom.mapListEl.closest('.side-panel');
@@ -779,7 +782,6 @@ RP.initEvents = function() {
 
   if (RP.dom.btnInstrToggle) {
     RP.dom.btnInstrToggle.addEventListener('click', function() {
-      // Toggle only the Instructions panel, not all three bottom panels.
       RP.instructionsVisible = !RP.instructionsVisible;
       RP.dom.btnInstrToggle.classList.toggle('active', RP.instructionsVisible);
       var instrPanel = document.getElementById('instr-panel');
@@ -795,43 +797,36 @@ RP.initEvents = function() {
   if (RP.dom.btnFlipSegment) {
     RP.dom.btnFlipSegment.addEventListener('click', function() {
       if (!RP.selectedSegment) return;
-      RP.flipSegmentDirection(RP.selectedSegment.routeId, RP.selectedSegment.segIdx);
+      RP.flipSegmentDirection(RP.selectedSegment.routeId, RP.selectedSegment.segId);
     });
   }
 
-  // Segment mode radio buttons.
   function onModeChange(mode) {
     if (!RP.selectedSegment) return;
-    RP.setSegmentMode(RP.selectedSegment.routeId, RP.selectedSegment.segIdx, mode);
+    RP.setSegmentMode(RP.selectedSegment.routeId, RP.selectedSegment.segId, mode);
   }
-  if (RP.dom.segmentModeNormal) {
+  if (RP.dom.segmentModeNormal)
     RP.dom.segmentModeNormal.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_NORMAL); });
-  }
-  if (RP.dom.segmentModeTeleport) {
+  if (RP.dom.segmentModeTeleport)
     RP.dom.segmentModeTeleport.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_TELEPORT); });
-  }
-  if (RP.dom.segmentModeLTDist) {
+  if (RP.dom.segmentModeLTDist)
     RP.dom.segmentModeLTDist.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_LINETRACE_DIST); });
-  }
-  if (RP.dom.segmentModeLTJunct) {
+  if (RP.dom.segmentModeLTJunct)
     RP.dom.segmentModeLTJunct.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_LINETRACE_JUNCT); });
-  }
 
-  // Teleport name input.
   if (RP.dom.segmentTeleportName) {
     RP.dom.segmentTeleportName.addEventListener('change', function() {
       if (!RP.selectedSegment) return;
       RP.pushHistory('Edit teleport name');
-      RP.setSegmentTeleportName(RP.selectedSegment.routeId, RP.selectedSegment.segIdx, this.value);
+      RP.setSegmentTeleportName(RP.selectedSegment.routeId, RP.selectedSegment.segId, this.value);
     });
   }
 
-  // Junction count input.
   if (RP.dom.segmentJunctionCount) {
     RP.dom.segmentJunctionCount.addEventListener('change', function() {
       if (!RP.selectedSegment) return;
       RP.pushHistory('Edit junction count');
-      RP.setSegmentJunctionCount(RP.selectedSegment.routeId, RP.selectedSegment.segIdx, this.value);
+      RP.setSegmentJunctionCount(RP.selectedSegment.routeId, RP.selectedSegment.segId, this.value);
     });
   }
 
@@ -845,6 +840,7 @@ RP.initEvents = function() {
       RP.routes = [];
       RP.activeRouteId = null;
       RP.nextWpId = 1;
+      RP.nextSegId = 1;
       RP.nextRouteId = 1;
       RP.selectedSegment = null;
       RP.createRoute('Route 1');
@@ -860,17 +856,16 @@ RP.initEvents = function() {
 
   if (RP.dom.btnCopyCode) {
     RP.dom.btnCopyCode.addEventListener('click', function() {
-      var text = RP.dom.codeOutput.textContent;
+      var text = RP.dom.codeOutput ? RP.dom.codeOutput.textContent : '';
       if (text) {
         navigator.clipboard.writeText(text).then(function() {
-          RP.dom.btnCopyCode.textContent = '\u2705 Copied!';
-          setTimeout(function() { RP.dom.btnCopyCode.textContent = '\ud83d\udccb Copy Code'; }, 2000);
+          RP.dom.btnCopyCode.textContent = '✅ Copied!';
+          setTimeout(function() { RP.dom.btnCopyCode.textContent = '📋 Copy Code'; }, 2000);
         });
       }
     });
   }
 
-  // Robot config value changes
   ['robot-w', 'robot-l', 'robot-wb'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
@@ -878,8 +873,7 @@ RP.initEvents = function() {
     el.addEventListener('input', RP.updateRobotConfigFromUI);
   });
 
-  // Code config value changes (live update as user types)
-  ['code-comment', 'code-forward', 'code-turn-r', 'code-turn-l', 'code-lt-dist', 'code-lt-junct', 'code-speed', 'code-unit'].forEach(function(id) {
+  ['code-comment', 'code-forward', 'code-turn', 'code-lt-dist', 'code-lt-junct', 'code-speed', 'code-unit'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateCodeConfigFromUI);
@@ -898,15 +892,9 @@ RP.initEvents = function() {
   }
 
   window.addEventListener('keydown', function(e) {
-    // Ctrl key tracking (for snap suppression). Always track even when
-    // focused in an input, so Ctrl+Z in inputs still works as native
-    // browser undo (we won't intercept it below).
     if (e.key === 'Control') { RP.ctrlHeld = true; return; }
-
-    // Don't hijack any keys while the user is typing in a form field.
     if (isTypingTarget(e.target)) return;
 
-    // Escape: cancel any in-progress drawing / start-marker / segment selection.
     if (e.key === 'Escape') {
       var didCancel = false;
       if (RP.lineDrawing) { RP.lineDrawing = false; RP.lineDrawStart = null; didCancel = true; }
@@ -914,29 +902,26 @@ RP.initEvents = function() {
         RP.startMarkerPlacing = false;
         RP.startMarkerPlacingHeading = false;
         RP.startMarkerPlacedPoint = null;
-        if (RP.dom.btnSetStart) RP.dom.btnSetStart.textContent = '\ud83d\udccd Click on map to set';
+        if (RP.dom.btnSetStart) RP.dom.btnSetStart.textContent = '📍 Click on map to set';
         didCancel = true;
       }
       if (RP.selectedSegment) { RP.selectedSegment = null; RP.updateInfoPanel(); didCancel = true; }
       if (didCancel) {
         RP.hoverSnapPoint = null;
-        RP.dom.wrap.classList.remove('drawing-route');
+        wrap.classList.remove('drawing-route');
         RP.render();
         e.preventDefault();
       }
       return;
     }
 
-    // Undo/Redo
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); RP.undo(); return; }
     if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); RP.redo(); return; }
 
-    // Zoom
     if (e.key === '+' || e.key === '=') { if (e.ctrlKey || e.metaKey) e.preventDefault(); RP.zoomAt(1.3); return; }
     if (e.key === '-') { if (e.ctrlKey || e.metaKey) e.preventDefault(); RP.zoomAt(0.77); return; }
     if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) { RP.resetView(); return; }
 
-    // WASD panning
     if (!e.ctrlKey && !e.metaKey) {
       var panStep = 30 / RP.scale;
       switch (e.key.toLowerCase()) {
@@ -948,12 +933,10 @@ RP.initEvents = function() {
     }
   });
 
-  // Ctrl key release
   window.addEventListener('keyup', function(e) {
     if (e.key === 'Control') { RP.ctrlHeld = false; }
   });
 
-  // Also handle when window loses focus (reset Ctrl state)
   window.addEventListener('blur', function() {
     RP.ctrlHeld = false;
   });

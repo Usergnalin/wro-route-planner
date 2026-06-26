@@ -126,6 +126,23 @@ canvas{display:block;width:100%;height:100%}
 .saved-project .load-btn{cursor:pointer;color:#6af;background:none;border:none;padding:2px 4px;font-size:11px}
 .saved-project .del-btn{cursor:pointer;color:#c66;background:none;border:none;padding:2px 4px;font-size:11px}
 
+/* Layer list delete button */
+.layer-del-btn{background:none;border:none;cursor:pointer;font-size:10px;color:#955;padding:0 2px;flex-shrink:0;line-height:1;opacity:0.6}
+.layer-del-btn:hover{color:#f66;opacity:1}
+.layer-item:hover .layer-del-btn{opacity:1}
+
+/* Segment sub-items inside the layer list */
+.layer-seg-item{display:flex;align-items:center;gap:4px;padding:1px 3px 1px 14px;border-radius:3px;cursor:default}
+.layer-seg-item:hover{background:#2d2d2d}
+.layer-seg-item .layer-item-label{font-size:9px;color:#888}
+.layer-seg-item.active-seg .layer-item-label{color:#aaddff}
+
+/* Canvas right-click context menu */
+#ctx-menu{position:fixed;z-index:9999;background:#2a2a2a;border:1px solid #555;border-radius:5px;padding:4px;box-shadow:0 4px 16px rgba(0,0,0,.5);min-width:140px}
+#ctx-menu-title{font-size:10px;color:#888;padding:3px 8px 5px;border-bottom:1px solid #444;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+#ctx-menu button{display:block;width:100%;background:none;border:none;color:#ddd;padding:5px 10px;text-align:left;cursor:pointer;font-size:12px;border-radius:3px}
+#ctx-menu button:hover{background:#c0392b;color:#fff}
+
 /* Robot config overlay */
 #robot-overlay{display:none;position:absolute;top:50px;right:200px;background:#2a2a2a;border:1px solid #555;border-radius:6px;padding:18px;z-index:100;width:460px;box-shadow:0 4px 20px rgba(0,0,0,.5);max-height:85vh;overflow-y:auto}
 #robot-overlay.visible{display:block}

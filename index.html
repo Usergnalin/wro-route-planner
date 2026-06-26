@@ -25,7 +25,7 @@
     <div class="tab-dropdown">
       <button id="btn-tool-construction" class="tool-btn active" data-tool="construction">📏 Construction Line</button>
       <button id="btn-tool-route" class="tool-btn" data-tool="route">📍 Route</button>
-      <button id="btn-tool-select" class="tool-btn" data-tool="select">🖱️ Select / Move</button>
+      <button id="btn-tool-select" class="tool-btn" data-tool="select">🖱️ Select</button>
       <button id="btn-tool-checkpoint" class="tool-btn" data-tool="checkpoint">🏁 Checkpoint</button>
       <div class="dropdown-sep"></div>
       <button id="btn-snap" class="active">🧲 Snap</button>
@@ -62,8 +62,8 @@
       <div class="tool-group">
         <button id="btn-sidebar-construction" class="tool-btn sidebar-tool-btn active" data-tool="construction">📏 Line</button>
         <button id="btn-sidebar-route" class="tool-btn sidebar-tool-btn" data-tool="route">📍 Route</button>
-        <button id="btn-sidebar-select" class="tool-btn sidebar-tool-btn" data-tool="select">🖱️ Move</button>
-        <button id="btn-sidebar-checkpoint" class="tool-btn sidebar-tool-btn" data-tool="checkpoint">🏁 CP</button>
+        <button id="btn-sidebar-select" class="tool-btn sidebar-tool-btn" data-tool="select">🖱️ Select</button>
+        <button id="btn-sidebar-checkpoint" class="tool-btn sidebar-tool-btn" data-tool="checkpoint">🏁 Checkpoint</button>
       </div>
       <div class="sidebar-hint" id="sidebar-tool-hint">Drag to draw a line</div>
     </div>
@@ -177,8 +177,7 @@
   <h3 style="font-size:13px;margin-bottom:6px">📝 Code Templates</h3>
   <label>Comment Prefix <input type="text" id="code-comment" value="//"></label>
   <label>Forward Template <input type="text" id="code-forward" value="move({distance}, {speed})"></label>
-  <label>Turn Right <input type="text" id="code-turn-r" value="turn_right({angle}, {speed})"></label>
-  <label>Turn Left <input type="text" id="code-turn-l" value="turn_left({angle}, {speed})"></label>
+  <label>Turn <small style="color:#888">(+CW / -CCW)</small> <input type="text" id="code-turn" value="turn({angle}, {speed})"></label>
   <label>Line Trace Dist <input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed})"></label>
   <label>Line Trace Junct <input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed})"></label>
   <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>
@@ -194,5 +193,11 @@
 <script src="js/config.js"></script>
 <script src="js/events.js"></script>
 <script src="js/main.js"></script>
+
+<!-- Context menu -->
+<div id="ctx-menu" style="display:none">
+  <div id="ctx-menu-title"></div>
+  <button id="ctx-menu-delete">🗑 Delete</button>
+</div>
 </body>
 </html>
