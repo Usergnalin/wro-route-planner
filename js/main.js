@@ -21,6 +21,7 @@ var RP = window.RP || {};
   RP.createRoute('Route 1');
   RP.updateRouteSelect();
   RP.updateSideRouteList();
+  RP.updateLayerList();
   RP.updateMapList();
   RP.updateRobotUI();
   RP.updateCodeConfigUI();

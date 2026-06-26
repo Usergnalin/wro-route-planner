@@ -26,6 +26,7 @@
       <button id="btn-tool-construction" class="tool-btn active" data-tool="construction">📏 Construction Line</button>
       <button id="btn-tool-route" class="tool-btn" data-tool="route">📍 Route</button>
       <button id="btn-tool-select" class="tool-btn" data-tool="select">🖱️ Select / Move</button>
+      <button id="btn-tool-checkpoint" class="tool-btn" data-tool="checkpoint">🏁 Checkpoint</button>
       <div class="dropdown-sep"></div>
       <button id="btn-snap" class="active">🧲 Snap</button>
       <button id="btn-robot-config">🤖 Robot Config</button>
@@ -54,7 +55,7 @@
 
 <!-- ========== MAIN AREA ========== -->
 <div id="main-area">
-  <!-- Left sidebar: Tools -->
+  <!-- Left sidebar: Tools + Layers -->
   <div id="left-sidebar">
     <div class="sidebar-section">
       <div class="sidebar-title">Tool</div>
@@ -62,6 +63,7 @@
         <button id="btn-sidebar-construction" class="tool-btn sidebar-tool-btn active" data-tool="construction">📏 Line</button>
         <button id="btn-sidebar-route" class="tool-btn sidebar-tool-btn" data-tool="route">📍 Route</button>
         <button id="btn-sidebar-select" class="tool-btn sidebar-tool-btn" data-tool="select">🖱️ Move</button>
+        <button id="btn-sidebar-checkpoint" class="tool-btn sidebar-tool-btn" data-tool="checkpoint">🏁 CP</button>
       </div>
       <div class="sidebar-hint" id="sidebar-tool-hint">Drag to draw a line</div>
     </div>
@@ -70,13 +72,15 @@
       <button id="btn-sidebar-snap" class="active sidebar-small-btn">🧲 Snap On</button>
       <div class="sidebar-hint">Ctrl = temporary off</div>
     </div>
-    <div class="sidebar-section" id="route-section">
-      <div class="sidebar-title">Active Route</div>
-      <select id="route-select">
-        <option value="__new__">+ New Route</option>
-      </select>
-      <div id="route-wp-count" class="sidebar-hint">0 waypoints</div>
+    <div class="sidebar-section layers-section">
+      <div class="sidebar-title">Layers</div>
+      <div id="layer-list"></div>
     </div>
+    <!-- Hidden route select kept for internal use -->
+    <select id="route-select" style="display:none">
+      <option value="__new__">+ New Route</option>
+    </select>
+    <div id="route-wp-count" style="display:none">0 waypoints</div>
   </div>
 
   <!-- Canvas -->
@@ -100,10 +104,9 @@
         <div class="info-row"><span class="info-label">Routes:</span><span class="info-value" id="info-routes">0</span></div>
       </div>
     </div>
-    <div class="sidebar-section" id="calibration-section">
+    <div class="sidebar-section">
       <div class="sidebar-title">Calibration</div>
       <div id="info-calib-status">Not set</div>
-      <button id="btn-recalibrate" class="sidebar-small-btn" style="margin-top:4px">📏 Recalibrate</button>
     </div>
     <div class="sidebar-section" id="segment-section" style="display:none">
       <div class="sidebar-title">Selected Segment</div>
@@ -129,23 +132,12 @@
 <div id="bottom-panels">
   <button id="btn-instr-toggle" class="active">📋 Route Instructions</button>
   <div id="side-panels">
-    <!-- Instruction / Code panel -->
+    <!-- Code panel -->
     <div id="instr-panel" class="side-panel">
-      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">📋 Instructions <span>▼</span></div>
+      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">📋 Generated Code <span>▼</span></div>
       <div class="side-panel-body">
-        <div class="tab-bar">
-          <button class="tab-btn active" data-tab="instr">Instructions</button>
-          <button class="tab-btn" data-tab="code">Code</button>
-        </div>
-        <div id="instr-tab" class="tab-content">
-          <ol id="instr-list"></ol>
-          <div id="instr-total"></div>
-        </div>
-        <div id="code-tab" class="tab-content hidden">
-          <pre id="code-output"></pre>
-        </div>
+        <pre id="code-output"></pre>
         <div class="btn-row">
-          <button id="btn-copy-instr">📋 Copy Instructions</button>
           <button id="btn-copy-code">📋 Copy Code</button>
         </div>
       </div>

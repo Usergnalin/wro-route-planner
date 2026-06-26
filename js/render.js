@@ -34,8 +34,10 @@ RP.render = function() {
   // --- Draw construction lines ---
   for (var li = 0; li < RP.lines.length; li++) {
     var l = RP.lines[li];
-    var color = '#44ff44';
-    var width = 2 / RP.scale;
+    if (l.visible === false) continue;
+    var isSel = RP.selectedLineId === l.id;
+    var color = isSel ? '#ffee44' : '#44ff44';
+    var width = (isSel ? 3 : 2) / RP.scale;
     var dash = [6 / RP.scale, 4 / RP.scale];
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
@@ -161,20 +163,45 @@ RP.render = function() {
 
     for (var wi = 0; wi < r.waypoints.length; wi++) {
       var wp = r.waypoints[wi];
-      var wpR = 4.5 / RP.scale;
+      var isCP = wp.isCheckpoint;
 
-      ctx.beginPath();
-      ctx.arc(wp.x, wp.y, wpR, 0, Math.PI * 2);
-      ctx.fillStyle = isActive ? '#44aaff' : '#4488cc';
-      ctx.fill();
+      if (isCP) {
+        // Checkpoint: diamond with flag label.
+        var cpR = 7 / RP.scale;
+        ctx.beginPath();
+        ctx.moveTo(wp.x, wp.y - cpR);
+        ctx.lineTo(wp.x + cpR, wp.y);
+        ctx.lineTo(wp.x, wp.y + cpR);
+        ctx.lineTo(wp.x - cpR, wp.y);
+        ctx.closePath();
+        ctx.fillStyle = '#ff44ff';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5 / RP.scale;
+        ctx.stroke();
+        var cpLabel = wp.checkpointName || ('CP ' + (wi + 1));
+        ctx.fillStyle = '#ffccff';
+        ctx.font = 'bold ' + (fs * 0.9) + 'px -apple-system, sans-serif';
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.lineWidth = 2.5 / RP.scale;
+        ctx.strokeText(cpLabel, wp.x + (9 / RP.scale), wp.y - (1 / RP.scale));
+        ctx.fillText(cpLabel, wp.x + (9 / RP.scale), wp.y - (1 / RP.scale));
+      } else {
+        // Normal waypoint: circle with index.
+        var wpR = 4.5 / RP.scale;
+        ctx.beginPath();
+        ctx.arc(wp.x, wp.y, wpR, 0, Math.PI * 2);
+        ctx.fillStyle = isActive ? '#44aaff' : '#4488cc';
+        ctx.fill();
 
-      var idxLabel = '' + (wi + 1);
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold ' + fs + 'px -apple-system, sans-serif';
-      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-      ctx.lineWidth = 3 / RP.scale;
-      ctx.strokeText(idxLabel, wp.x + (5 / RP.scale), wp.y - (5 / RP.scale));
-      ctx.fillText(idxLabel, wp.x + (5 / RP.scale), wp.y - (5 / RP.scale));
+        var idxLabel = '' + (wi + 1);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold ' + fs + 'px -apple-system, sans-serif';
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 3 / RP.scale;
+        ctx.strokeText(idxLabel, wp.x + (5 / RP.scale), wp.y - (5 / RP.scale));
+        ctx.fillText(idxLabel, wp.x + (5 / RP.scale), wp.y - (5 / RP.scale));
+      }
     }
 
     if (r.waypoints.length > 0) {

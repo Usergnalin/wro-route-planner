@@ -76,7 +76,7 @@ RP.loadMapProject = function(name) {
       RP.imgDataUrl = data.imageData;
       RP.imgNaturalW = loaded.naturalWidth || loaded.width;
       RP.imgNaturalH = loaded.naturalHeight || loaded.height;
-      RP.calibration = data.calibration || null;
+      RP.calibration = data.calibration || { pixelsPerMm: RP.imgNaturalW / 2362 };
       RP.lines = data.lines || [];
       RP.routes = data.routes || [];
       RP.migrateAllRoutes();
@@ -87,6 +87,7 @@ RP.loadMapProject = function(name) {
       RP.activeRouteId = data.activeRouteId || (RP.routes.length > 0 ? RP.routes[0].id : null);
       RP.robotConfig = data.robotConfig ? JSON.parse(JSON.stringify(data.robotConfig)) : RP.freshRobotConfig();
       RP.codeConfig = data.codeConfig ? JSON.parse(JSON.stringify(data.codeConfig)) : RP.freshCodeConfig();
+      RP.ensureCodeConfig();  // backfill any fields missing from old saves
       RP.robotOverlayVisible = false;
       RP.dom.robotOverlay.classList.remove('visible');
       RP.undoStack = [];
@@ -186,7 +187,7 @@ RP.importProject = function(file) {
         RP.imgDataUrl = data.imageData;
         RP.imgNaturalW = loaded.naturalWidth || loaded.width;
         RP.imgNaturalH = loaded.naturalHeight || loaded.height;
-        RP.calibration = data.calibration || null;
+        RP.calibration = data.calibration || { pixelsPerMm: RP.imgNaturalW / 2362 };
         RP.lines = data.lines || [];
         RP.routes = data.routes || [];
         RP.migrateAllRoutes();
@@ -205,6 +206,7 @@ RP.importProject = function(file) {
         RP.activeRouteId = data.activeRouteId || (RP.routes.length > 0 ? RP.routes[0].id : null);
         RP.robotConfig = data.robotConfig ? JSON.parse(JSON.stringify(data.robotConfig)) : RP.freshRobotConfig();
         RP.codeConfig = data.codeConfig ? JSON.parse(JSON.stringify(data.codeConfig)) : RP.freshCodeConfig();
+        RP.ensureCodeConfig();  // backfill any fields missing from old saves
         RP.robotOverlayVisible = false;
         RP.dom.robotOverlay.classList.remove('visible');
         RP.undoStack = [];
@@ -244,7 +246,7 @@ RP.loadImageFromDataUrl = function(dataUrl) {
     RP.imgNaturalH = loaded.naturalHeight || loaded.height;
     RP.lines = [];
     RP.nextLineId = 1;
-    RP.calibration = null;
+    RP.calibration = { pixelsPerMm: RP.imgNaturalW / 2362 };
     RP.routes = [];
     RP.activeRouteId = null;
     RP.nextWpId = 1;

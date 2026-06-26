@@ -317,7 +317,97 @@ RP.updateRouteSelect = function() {
   RP.updateSideRouteList();
 };
 
+RP.updateLayerList = function() {
+  var el = document.getElementById('layer-list');
+  if (!el) return;
+  el.innerHTML = '';
+
+  if (RP.lines.length > 0) {
+    var lh = document.createElement('div');
+    lh.className = 'layer-group-title';
+    lh.textContent = 'Construction Lines';
+    el.appendChild(lh);
+    for (var li = 0; li < RP.lines.length; li++) {
+      (function(line, idx) {
+        var div = document.createElement('div');
+        div.className = 'layer-item' + (RP.selectedLineId === line.id ? ' active' : '');
+        var eye = document.createElement('button');
+        eye.className = 'layer-vis-btn';
+        eye.textContent = line.visible === false ? '○' : '●';
+        eye.title = line.visible === false ? 'Show' : 'Hide';
+        eye.onclick = function(e) {
+          e.stopPropagation();
+          line.visible = line.visible === false;
+          RP.updateLayerList();
+          RP.render();
+        };
+        var lbl = document.createElement('span');
+        lbl.className = 'layer-item-label';
+        lbl.textContent = 'Line ' + (idx + 1) + (line.label ? '  ' + line.label : '');
+        lbl.title = lbl.textContent;
+        lbl.onclick = function() {
+          RP.selectedLineId = (RP.selectedLineId === line.id) ? null : line.id;
+          RP.updateLayerList();
+          RP.render();
+        };
+        div.appendChild(eye);
+        div.appendChild(lbl);
+        el.appendChild(div);
+      })(RP.lines[li], li);
+    }
+  }
+
+  if (RP.routes.length > 0) {
+    var rh = document.createElement('div');
+    rh.className = 'layer-group-title';
+    rh.textContent = 'Routes';
+    el.appendChild(rh);
+    for (var ri = 0; ri < RP.routes.length; ri++) {
+      (function(route) {
+        var div = document.createElement('div');
+        div.className = 'layer-item' + (route.id === RP.activeRouteId ? ' active' : '');
+        var eye = document.createElement('button');
+        eye.className = 'layer-vis-btn';
+        eye.textContent = route.visible ? '●' : '○';
+        eye.title = route.visible ? 'Hide' : 'Show';
+        eye.onclick = function(e) {
+          e.stopPropagation();
+          RP.pushHistory(route.visible ? 'Hide route' : 'Show route');
+          route.visible = !route.visible;
+          RP.updateLayerList();
+          RP.render();
+        };
+        var lbl = document.createElement('span');
+        lbl.className = 'layer-item-label';
+        lbl.textContent = route.name + ' (' + route.waypoints.length + ' pts)';
+        lbl.title = lbl.textContent;
+        lbl.onclick = function() {
+          if (RP.activeRouteId !== route.id) {
+            RP.pushHistory('Switch active route');
+            RP.activeRouteId = route.id;
+            RP.updateRouteSelect();
+            RP.render();
+            RP.updateInfoPanel();
+          }
+          RP.updateLayerList();
+        };
+        div.appendChild(eye);
+        div.appendChild(lbl);
+        el.appendChild(div);
+      })(RP.routes[ri]);
+    }
+  }
+
+  if (RP.lines.length === 0 && RP.routes.length === 0) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'color:#555;font-size:10px;padding:4px 2px';
+    empty.textContent = 'No layers yet';
+    el.appendChild(empty);
+  }
+};
+
 RP.updateSideRouteList = function() {
+  RP.updateLayerList();
   var el = RP.dom.routeListEl;
   if (!el) return;
   el.innerHTML = '';

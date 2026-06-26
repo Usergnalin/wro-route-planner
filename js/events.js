@@ -70,6 +70,28 @@ RP.initEvents = function() {
         }
       }
 
+      // If a line is highlighted in the layer list, check it first so
+      // overlapping lines can be individually targeted.
+      if (RP.selectedLineId !== null && RP.selectedLineId !== undefined) {
+        for (var liPri = 0; liPri < RP.lines.length; liPri++) {
+          if (RP.lines[liPri].id !== RP.selectedLineId) continue;
+          var lPri = RP.lines[liPri];
+          if (RP.screenDist(pSel.x, pSel.y, lPri.x1, lPri.y1) < 14) {
+            RP.elementDrag = { type: 'line-endpoint', lineIdx: liPri, which: 'start' };
+            RP.selectedSegment = null;
+            RP.updateInfoPanel();
+            return;
+          }
+          if (RP.screenDist(pSel.x, pSel.y, lPri.x2, lPri.y2) < 14) {
+            RP.elementDrag = { type: 'line-endpoint', lineIdx: liPri, which: 'end' };
+            RP.selectedSegment = null;
+            RP.updateInfoPanel();
+            return;
+          }
+          break;
+        }
+      }
+
       // Check construction line endpoints
       for (var li = 0; li < RP.lines.length; li++) {
         var l = RP.lines[li];
@@ -197,6 +219,65 @@ RP.initEvents = function() {
       RP.lineDrawStart = { x: startC.x, y: startC.y };
       RP.hoverSnapPoint = null;
       RP.dom.wrap.classList.add('drawing-route');
+      return;
+    }
+
+    // --- CHECKPOINT MODE: click to place named checkpoints ---
+    if (RP.activeTool === 'checkpoint') {
+      if (!RP.img) return;
+      var pCP = RP.screenToImage(e.clientX, e.clientY);
+
+      // Scan ALL visible routes (not just the active one).
+      for (var cpri = 0; cpri < RP.routes.length; cpri++) {
+        var cpr = RP.routes[cpri];
+        if (!cpr.visible || cpr.waypoints.length < 2) continue;
+
+        // Midpoint: split the segment and insert checkpoint.
+        for (var cpsi = 0; cpsi < cpr.waypoints.length - 1; cpsi++) {
+          var cpa = cpr.waypoints[cpsi], cpb = cpr.waypoints[cpsi + 1];
+          var cpmx = (cpa.x + cpb.x) / 2, cpmy = (cpa.y + cpb.y) / 2;
+          if (RP.screenDist(pCP.x, pCP.y, cpmx, cpmy) < 18) {
+            var cpSnap = RP.computeSnap(pCP.x, pCP.y, { kind: 'point' }) || pCP;
+            var cpName = prompt('Checkpoint name:', 'CP-' + (cpsi + 1));
+            if (cpName === null) return; // user cancelled
+            RP.pushHistory('Insert checkpoint');
+            // Manual insertion (avoids active-route switching).
+            RP.ensureSegmentDirections(cpr);
+            RP.ensureSegmentModes(cpr);
+            var pDir = cpr.segmentDirections[cpsi] || RP.SEG_FORWARD;
+            var pMode = cpr.segmentModes[cpsi] || RP.SEG_MODE_NORMAL;
+            var pTpName = cpr.segmentModeTeleportNames[cpsi] || null;
+            var pJct = cpr.segmentModeJunctionCounts[cpsi] || null;
+            cpr.waypoints.splice(cpsi + 1, 0, {
+              x: cpSnap.x, y: cpSnap.y, label: '', id: RP.nextWpId++,
+              isCheckpoint: true, checkpointName: cpName
+            });
+            cpr.segmentDirections.splice(cpsi, 1, pDir, pDir);
+            cpr.segmentModes.splice(cpsi, 1, pMode, pMode);
+            cpr.segmentModeTeleportNames.splice(cpsi, 1, pTpName, pTpName);
+            cpr.segmentModeJunctionCounts.splice(cpsi, 1, pJct, pJct);
+            RP.render();
+            RP.updateRouteSelect();
+            RP.updateSideRouteList();
+            RP.updateInfoPanel();
+            return;
+          }
+        }
+
+        // Endpoint: mark the last waypoint as checkpoint (no split).
+        var lastWp = cpr.waypoints[cpr.waypoints.length - 1];
+        if (RP.screenDist(pCP.x, pCP.y, lastWp.x, lastWp.y) < 18) {
+          var epName = prompt('Checkpoint name:', 'CP-end');
+          if (epName === null) return;
+          if (lastWp.isCheckpoint && lastWp.checkpointName === epName) return;
+          RP.pushHistory('Set endpoint checkpoint');
+          lastWp.isCheckpoint = true;
+          lastWp.checkpointName = epName;
+          RP.render();
+          return;
+        }
+      }
+      // No route segment hit — do nothing (no pan).
       return;
     }
 
@@ -389,35 +470,18 @@ RP.initEvents = function() {
 
       // --- Construction line completion ---
       if (movedFar) {
-        if (!RP.calibration) {
-          // Calibrate FIRST so we don't leak nextLineId / push an empty
-          // undo entry if the user cancels.
-          var pxLenC = RP.dist(RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y);
-          var calibrated = RP.promptCalibration(pxLenC);
-          if (calibrated) {
-            RP.pushHistory('Draw construction line');
-            var lenMmC = pxLenC / RP.calibration.pixelsPerMm;
-            RP.lines.push({
-              id: RP.nextLineId++,
-              x1: RP.lineDrawStart.x, y1: RP.lineDrawStart.y,
-              x2: endPt.x, y2: endPt.y,
-              type: 'construction',
-              label: lenMmC.toFixed(2) + ' mm'
-            });
-          }
-          // If cancelled: nothing committed, no history, no id bump.
-        } else {
-          RP.pushHistory('Draw construction line');
-          var pxLen2 = RP.dist(RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y);
-          var mm2 = pxLen2 / RP.calibration.pixelsPerMm;
-          RP.lines.push({
-            id: RP.nextLineId++,
-            x1: RP.lineDrawStart.x, y1: RP.lineDrawStart.y,
-            x2: endPt.x, y2: endPt.y,
-            type: 'construction',
-            label: mm2.toFixed(2) + ' mm'
-          });
-        }
+        RP.pushHistory('Draw construction line');
+        var pxLen2 = RP.dist(RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y);
+        var mm2 = RP.calibration ? pxLen2 / RP.calibration.pixelsPerMm : pxLen2;
+        RP.lines.push({
+          id: RP.nextLineId++,
+          x1: RP.lineDrawStart.x, y1: RP.lineDrawStart.y,
+          x2: endPt.x, y2: endPt.y,
+          type: 'construction',
+          visible: true,
+          label: mm2.toFixed(2) + ' mm'
+        });
+        if (RP.updateLayerList) RP.updateLayerList();
       }
       RP.lineDrawing = false;
       RP.lineDrawStart = null;
@@ -567,6 +631,9 @@ RP.initEvents = function() {
   if (RP.dom.btnToolSelect) {
     RP.dom.btnToolSelect.addEventListener('click', function() { RP.setTool('select'); });
   }
+  if (RP.dom.btnToolCheckpoint) {
+    RP.dom.btnToolCheckpoint.addEventListener('click', function() { RP.setTool('checkpoint'); });
+  }
   if (RP.dom.btnSidebarConstruction) {
     RP.dom.btnSidebarConstruction.addEventListener('click', function() { RP.setTool('construction'); });
   }
@@ -575,6 +642,9 @@ RP.initEvents = function() {
   }
   if (RP.dom.btnSidebarSelect) {
     RP.dom.btnSidebarSelect.addEventListener('click', function() { RP.setTool('select'); });
+  }
+  if (RP.dom.btnSidebarCheckpoint) {
+    RP.dom.btnSidebarCheckpoint.addEventListener('click', function() { RP.setTool('checkpoint'); });
   }
 
   // Snap toggle
@@ -715,13 +785,12 @@ RP.initEvents = function() {
       var instrPanel = document.getElementById('instr-panel');
       if (instrPanel) instrPanel.style.display = RP.instructionsVisible ? '' : 'none';
       if (RP.instructionsVisible) RP.updateInstructions();
-      else { RP.dom.instrList.innerHTML = ''; RP.dom.instrTotal.textContent = ''; RP.dom.codeOutput.textContent = ''; }
+      else if (RP.dom.codeOutput) RP.dom.codeOutput.textContent = '';
     });
   }
 
   if (RP.dom.btnUndo) RP.dom.btnUndo.addEventListener('click', RP.undo);
   if (RP.dom.btnRedo) RP.dom.btnRedo.addEventListener('click', RP.redo);
-  if (RP.dom.btnRecalibrate) RP.dom.btnRecalibrate.addEventListener('click', RP.recalibrate);
 
   if (RP.dom.btnFlipSegment) {
     RP.dom.btnFlipSegment.addEventListener('click', function() {
@@ -789,23 +858,6 @@ RP.initEvents = function() {
     });
   }
 
-  if (RP.dom.btnCopyInstr) {
-    RP.dom.btnCopyInstr.addEventListener('click', function() {
-      var lis = RP.dom.instrList.querySelectorAll('li');
-      var parts = [];
-      for (var i = 0; i < lis.length; i++) {
-        parts.push(lis[i].textContent.replace(/^\d+\.\s*/, ''));
-      }
-      var text = parts.join('\n');
-      if (text) {
-        navigator.clipboard.writeText(text).then(function() {
-          RP.dom.btnCopyInstr.textContent = '\u2705 Copied!';
-          setTimeout(function() { RP.dom.btnCopyInstr.textContent = '\ud83d\udccb Copy Instructions'; }, 2000);
-        });
-      }
-    });
-  }
-
   if (RP.dom.btnCopyCode) {
     RP.dom.btnCopyCode.addEventListener('click', function() {
       var text = RP.dom.codeOutput.textContent;
@@ -818,14 +870,6 @@ RP.initEvents = function() {
     });
   }
 
-  // Tab switching (instructions/code tabs)
-  var tabBtns = document.querySelectorAll('.tab-btn');
-  for (var ti = 0; ti < tabBtns.length; ti++) {
-    (function(btn) {
-      btn.addEventListener('click', function() { RP.switchTab(btn.dataset.tab); });
-    })(tabBtns[ti]);
-  }
-
   // Robot config value changes
   ['robot-w', 'robot-l', 'robot-wb'].forEach(function(id) {
     var el = document.getElementById(id);
@@ -835,7 +879,7 @@ RP.initEvents = function() {
   });
 
   // Code config value changes (live update as user types)
-  ['code-comment', 'code-forward', 'code-turn-r', 'code-turn-l', 'code-speed', 'code-unit'].forEach(function(id) {
+  ['code-comment', 'code-forward', 'code-turn-r', 'code-turn-l', 'code-lt-dist', 'code-lt-junct', 'code-speed', 'code-unit'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateCodeConfigFromUI);

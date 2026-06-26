@@ -66,9 +66,11 @@ RP.dom.btnClearStart = document.getElementById('btn-clear-start');
 RP.dom.btnToolConstruction = document.getElementById('btn-tool-construction');
 RP.dom.btnToolRoute = document.getElementById('btn-tool-route');
 RP.dom.btnToolSelect = document.getElementById('btn-tool-select');
+RP.dom.btnToolCheckpoint = document.getElementById('btn-tool-checkpoint');
 RP.dom.btnSidebarConstruction = document.getElementById('btn-sidebar-construction');
 RP.dom.btnSidebarRoute = document.getElementById('btn-sidebar-route');
 RP.dom.btnSidebarSelect = document.getElementById('btn-sidebar-select');
+RP.dom.btnSidebarCheckpoint = document.getElementById('btn-sidebar-checkpoint');
 
 // ======================================================================
 // STATE
@@ -167,6 +169,9 @@ RP.robotOverlayVisible = false;
 
 // Debounce
 RP.resizeTimer = null;
+
+// Selected line (from layer list, for resolving overlapping line picks)
+RP.selectedLineId = null;
 
 // Last mouse position
 RP.lastMouseImg = { x: 0, y: 0 };
@@ -532,6 +537,7 @@ RP.setTool = function(tool) {
     if (tool === 'construction') hint.textContent = 'Drag to draw a line';
     else if (tool === 'route') hint.textContent = 'Drag from last dot to extend route';
     else if (tool === 'select') hint.textContent = 'Click dots/endpoints to move';
+    else if (tool === 'checkpoint') hint.textContent = 'Click route mid/end to place checkpoint';
   }
   // Cancel any in-progress drawing when switching tools.
   RP.lineDrawing = false;
@@ -636,7 +642,7 @@ RP.updateSegmentPanel = function() {
 // ======================================================================
 RP.updateInfoPanel = function() {
   if (!RP.dom.infoTool) return;
-  RP.dom.infoTool.textContent = RP.activeTool === 'construction' ? 'Construction' : (RP.activeTool === 'route' ? 'Route' : 'Select / Move');
+  RP.dom.infoTool.textContent = RP.activeTool === 'construction' ? 'Construction' : (RP.activeTool === 'route' ? 'Route' : (RP.activeTool === 'select' ? 'Select / Move' : 'Checkpoint'));
   RP.dom.infoSnap.textContent = RP.snapEnabled ? 'On' : 'Off';
   RP.dom.infoLines.textContent = RP.lines.length;
   RP.dom.infoRoutes.textContent = RP.routes.length;
