@@ -103,8 +103,9 @@ RP.computeSteps = function(route) {
     }
 
     var legMm = RP.dist(a.x, a.y, b.x, b.y) / ppm;
+    var offsetMm = seg.offset || 0;
     if (mode === RP.SEG_MODE_LINETRACE_DIST) {
-      steps.push({ kind: 'linetrace', mm: legMm, reverse: effectiveBackward });
+      steps.push({ kind: 'linetrace', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward });
     } else if (mode === RP.SEG_MODE_LINETRACE_JUNCT) {
       steps.push({ kind: 'linetrace_junct', junctions: seg.junctionCount || 1, reverse: effectiveBackward });
     } else if (mode === RP.SEG_MODE_WALL_ALIGN) {
@@ -114,7 +115,7 @@ RP.computeSteps = function(route) {
       if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
       continue;
     } else {
-      steps.push({ kind: 'forward', mm: legMm, reverse: effectiveBackward });
+      steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward });
     }
 
     prevHeading = heading;
@@ -182,7 +183,7 @@ RP.generateCode = function(route) {
         .replace(/\{speed\}/g, speed));
     } else if (st.kind === 'linetrace') {
       lines_out.push(RP.codeConfig.lineTraceDistTemplate
-        .replace(/\{distance\}/g, (st.mm / uFactor).toFixed(1))
+        .replace(/\{distance\}/g, ((st.mm + (st.offsetMm || 0)) / uFactor).toFixed(1))
         .replace(/\{speed\}/g, speed)
         .replace(/\{angle\}/g, '0'));
     } else if (st.kind === 'linetrace_junct') {
@@ -191,7 +192,7 @@ RP.generateCode = function(route) {
         .replace(/\{speed\}/g, speed));
     } else {
       // forward
-      var mag = st.mm / uFactor;
+      var mag = (st.mm + (st.offsetMm || 0)) / uFactor;
       var distOut = (st.reverse ? -mag : mag).toFixed(1);
       lines_out.push(RP.codeConfig.forwardTemplate
         .replace(/\{distance\}/g, distOut)

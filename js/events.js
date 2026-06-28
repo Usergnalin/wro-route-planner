@@ -843,6 +843,21 @@ RP.initEvents = function() {
     });
   }
 
+  if (RP.dom.segmentOffset) {
+    RP.dom.segmentOffset.addEventListener('change', function() {
+      if (!RP.selectedSegment) return;
+      var route = null;
+      for (var i = 0; i < RP.routes.length; i++) {
+        if (RP.routes[i].id === RP.selectedSegment.routeId) { route = RP.routes[i]; break; }
+      }
+      var seg = route && RP.findSegment ? RP.findSegment(route, RP.selectedSegment.segId) : null;
+      if (!seg) return;
+      var v = parseFloat(this.value);
+      seg.offset = isFinite(v) ? v : 0;
+      if (RP.updateInstructions) RP.updateInstructions();
+    });
+  }
+
   if (RP.dom.btnClearAll) {
     RP.dom.btnClearAll.addEventListener('click', function() {
       if (!confirm('Clear all lines, routes, calibration, robot config, and code templates?')) return;

@@ -60,6 +60,8 @@ RP.dom.segmentModeWallAlign = document.getElementById('seg-mode-wall-align');
 RP.dom.segmentTeleportName = document.getElementById('seg-teleport-name');
 RP.dom.segmentJunctionCount = document.getElementById('seg-junction-count');
 RP.dom.segmentModeParams = document.getElementById('seg-mode-params');
+RP.dom.segmentOffsetRow = document.getElementById('seg-offset-row');
+RP.dom.segmentOffset = document.getElementById('seg-offset');
 RP.dom.btnCopyInstr = document.getElementById('btn-copy-instr');
 RP.dom.btnCopyCode = document.getElementById('btn-copy-code');
 RP.dom.btnSetStart = document.getElementById('btn-set-start');
@@ -641,6 +643,11 @@ RP.updateSegmentPanel = function() {
       RP.dom.segmentModeParams.style.display = 'none';
     }
   }
+
+  // Offset row — shown for normal and linetrace_dist only
+  var hasOffset = mode === RP.SEG_MODE_NORMAL || mode === RP.SEG_MODE_LINETRACE_DIST;
+  if (RP.dom.segmentOffsetRow) RP.dom.segmentOffsetRow.style.display = hasOffset ? '' : 'none';
+  if (RP.dom.segmentOffset && hasOffset) RP.dom.segmentOffset.value = seg.offset || 0;
 
   RP.dom.segmentSection.style.display = '';
 };
