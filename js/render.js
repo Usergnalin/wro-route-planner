@@ -272,6 +272,30 @@ RP.render = function() {
           ctx.fillText(idxLabel, node.x + (5 / RP.scale), node.y - (5 / RP.scale));
         }
 
+        // Extra-turn indicator pip
+        var extraTurns = node.extraTurns || [];
+        if (extraTurns.length > 0) {
+          ctx.save();
+          var pipR = 4 / RP.scale;
+          var pipY = node.y - nodeR - pipR - 2 / RP.scale;
+          ctx.fillStyle = '#ff9944';
+          ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+          ctx.lineWidth = 1 / RP.scale;
+          ctx.beginPath();
+          ctx.arc(node.x, pipY, pipR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          if (extraTurns.length > 1) {
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold ' + (7 / RP.scale) + 'px -apple-system, sans-serif';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+            ctx.fillText(extraTurns.length, node.x, pipY);
+            ctx.textAlign = 'left';
+          }
+          ctx.restore();
+        }
+
         // Turn angle annotation on hover
         if (isHoveredNode && onLongestPath && nodeIdx > 0 && nodeIdx < longestPath.length - 1) {
           var prevNode = longestPath[nodeIdx - 1];
@@ -279,40 +303,64 @@ RP.render = function() {
           var inSeg  = RP.findSegBetween ? RP.findSegBetween(r, prevNode.id, node.id) : null;
           var outSeg = RP.findSegBetween ? RP.findSegBetween(r, node.id, nextNode.id) : null;
           if (inSeg && outSeg) {
-            var inHeading  = RP.toDeg ? RP.toDeg(Math.atan2(node.y - prevNode.y, node.x - prevNode.x)) : 0;
-            var outHeading = RP.toDeg ? RP.toDeg(Math.atan2(nextNode.y - node.y, nextNode.x - node.x)) : 0;
-            var turnDeg = outHeading - inHeading;
-            while (turnDeg > 180) turnDeg -= 360;
-            while (turnDeg < -180) turnDeg += 360;
-            var arcR = 22 / RP.scale;
+            var inHeadingDeg  = RP.toDeg ? RP.toDeg(Math.atan2(node.y - prevNode.y, node.x - prevNode.x)) : 0;
+            var outHeadingDeg = RP.toDeg ? RP.toDeg(Math.atan2(nextNode.y - node.y, nextNode.x - node.x)) : 0;
+            // Account for extra turns that shift prevHeading before the geometric turn
+            var extraSum = 0;
+            var nodeET = node.extraTurns || [];
+            for (var eti3 = 0; eti3 < nodeET.length; eti3++) extraSum += Number(nodeET[eti3]) || 0;
+            var adjustedInDeg = ((inHeadingDeg + extraSum) % 360 + 360) % 360;
+            var geomTurnDeg = outHeadingDeg - adjustedInDeg;
+            while (geomTurnDeg > 180) geomTurnDeg -= 360;
+            while (geomTurnDeg < -180) geomTurnDeg += 360;
             var inRad  = Math.atan2(node.y - prevNode.y, node.x - prevNode.x);
             var outRad = Math.atan2(nextNode.y - node.y, nextNode.x - node.x);
-            // Arc from incoming direction (flipped to show from-node side) to outgoing
+            var arcStart = inRad + Math.PI;
+            var arcEnd   = outRad;
+            var cwSweep = geomTurnDeg >= 0;
             ctx.save();
-            ctx.strokeStyle = turnDeg === 0 ? '#88ffcc' : (turnDeg > 0 ? '#ffaa44' : '#44aaff');
+
+            // Draw extra-turn arcs at a smaller radius first (orange)
+            if (nodeET.length > 0) {
+              var arcR0 = 16 / RP.scale;
+              var curHeadRad = inRad; // incoming direction
+              ctx.lineWidth = 1.5 / RP.scale;
+              for (var eti4 = 0; eti4 < nodeET.length; eti4++) {
+                var etV = Number(nodeET[eti4]) || 0;
+                if (Math.abs(etV) < 0.01) continue;
+                var etEnd = curHeadRad + etV * Math.PI / 180;
+                ctx.strokeStyle = '#ff9944';
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, arcR0, curHeadRad + Math.PI, etEnd + Math.PI, etV < 0);
+                ctx.stroke();
+                curHeadRad = etEnd;
+                arcR0 += 5 / RP.scale;
+              }
+            }
+
+            // Geometric turn arc
+            var arcR = 22 / RP.scale;
+            ctx.strokeStyle = geomTurnDeg === 0 ? '#88ffcc' : (geomTurnDeg > 0 ? '#ffaa44' : '#44aaff');
             ctx.lineWidth = 1.5 / RP.scale;
             ctx.beginPath();
-            // arc from reversed-in-direction to out-direction
-            var arcStart = inRad + Math.PI; // direction robot came from
-            var arcEnd   = outRad;
-            // Determine sweep direction to match sign of turn
-            var cwSweep = turnDeg >= 0;
-            ctx.arc(node.x, node.y, arcR, arcStart, arcEnd, !cwSweep);
+            var adjStart = inRad + Math.PI + extraSum * Math.PI / 180;
+            ctx.arc(node.x, node.y, arcR, adjStart, arcEnd, !cwSweep);
             ctx.stroke();
-            // Label
-            var midArcAngle = arcStart + (cwSweep ? 1 : -1) * (Math.abs(turnDeg * Math.PI / 180) / 2);
+
+            // Label: show extra turns + geometric turn
+            var midArcAngle = adjStart + (cwSweep ? 1 : -1) * (Math.abs(geomTurnDeg * Math.PI / 180) / 2);
             var labR = arcR + 14 / RP.scale;
             var labX = node.x + labR * Math.cos(midArcAngle);
             var labY = node.y + labR * Math.sin(midArcAngle);
-            var turnLabel = (turnDeg === 0 ? 'straight' : (Math.abs(turnDeg).toFixed(0) + '° ' + (turnDeg > 0 ? 'R' : 'L')));
+            var geomLabel = geomTurnDeg === 0 ? 'straight' : (Math.abs(geomTurnDeg).toFixed(0) + '° ' + (geomTurnDeg > 0 ? 'R' : 'L'));
+            var fullLabel = nodeET.length > 0 ? ('[+' + nodeET.length + ' extra] ' + geomLabel) : geomLabel;
             ctx.font = 'bold ' + (11 / RP.scale) + 'px -apple-system, sans-serif';
             ctx.textBaseline = 'middle';
             ctx.strokeStyle = 'rgba(0,0,0,0.85)';
             ctx.lineWidth = 3 / RP.scale;
-            ctx.strokeText(turnLabel, labX, labY);
-            ctx.fillStyle = ctx.strokeStyle = turnDeg === 0 ? '#88ffcc' : (turnDeg > 0 ? '#ffaa44' : '#44aaff');
-            ctx.fillStyle = turnDeg === 0 ? '#88ffcc' : (turnDeg > 0 ? '#ffaa44' : '#44aaff');
-            ctx.fillText(turnLabel, labX, labY);
+            ctx.strokeText(fullLabel, labX, labY);
+            ctx.fillStyle = geomTurnDeg === 0 ? '#88ffcc' : (geomTurnDeg > 0 ? '#ffaa44' : '#44aaff');
+            ctx.fillText(fullLabel, labX, labY);
             ctx.restore();
           }
         }

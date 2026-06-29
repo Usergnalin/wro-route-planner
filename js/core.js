@@ -62,6 +62,10 @@ RP.dom.segmentJunctionCount = document.getElementById('seg-junction-count');
 RP.dom.segmentModeParams = document.getElementById('seg-mode-params');
 RP.dom.segmentOffsetRow = document.getElementById('seg-offset-row');
 RP.dom.segmentOffset = document.getElementById('seg-offset');
+RP.dom.nodeSection = document.getElementById('node-section');
+RP.dom.nodeInfo = document.getElementById('node-info');
+RP.dom.nodeExtraTurnsList = document.getElementById('node-extra-turns-list');
+RP.dom.btnAddNodeTurn = document.getElementById('btn-add-node-turn');
 RP.dom.btnCopyInstr = document.getElementById('btn-copy-instr');
 RP.dom.btnCopyCode = document.getElementById('btn-copy-code');
 RP.dom.btnSetStart = document.getElementById('btn-set-start');
@@ -653,6 +657,62 @@ RP.updateSegmentPanel = function() {
 };
 
 // ======================================================================
+// NODE PANEL
+// ======================================================================
+RP.selectedNode = null;
+
+RP.updateNodePanel = function() {
+  if (!RP.dom.nodeSection) return;
+  if (RP.activeTool !== 'select' || !RP.selectedNode) {
+    RP.dom.nodeSection.style.display = 'none';
+    return;
+  }
+  var route = null;
+  for (var i = 0; i < RP.routes.length; i++) {
+    if (RP.routes[i].id === RP.selectedNode.routeId) { route = RP.routes[i]; break; }
+  }
+  var node = route ? RP.findNode(route, RP.selectedNode.nodeId) : null;
+  if (!node) { RP.selectedNode = null; RP.dom.nodeSection.style.display = 'none'; return; }
+  RP.dom.nodeSection.style.display = '';
+
+  var lp = RP.computeLongestPath ? RP.computeLongestPath(route) : [];
+  var pathIdx = -1;
+  for (var j = 0; j < lp.length; j++) { if (lp[j].id === node.id) { pathIdx = j; break; } }
+  var posLabel = pathIdx >= 0 ? 'Node ' + (pathIdx + 1) + ' of ' + lp.length : 'Off-path node';
+  var typeLabel = pathIdx === 0 ? ' (start)' : (pathIdx === lp.length - 1 ? ' (end)' : (pathIdx > 0 ? ' (interior)' : ''));
+  RP.dom.nodeInfo.textContent = 'Route: ' + route.name + '\n' + posLabel + typeLabel + '\n(' + node.x.toFixed(0) + ', ' + node.y.toFixed(0) + ')';
+
+  RP.rebuildNodeTurnsList(node);
+};
+
+RP.rebuildNodeTurnsList = function(node) {
+  if (!RP.dom.nodeExtraTurnsList || !node) return;
+  var turns = node.extraTurns || [];
+  var html = '';
+  for (var i = 0; i < turns.length; i++) {
+    html += '<div class="node-turn-entry" data-idx="' + i + '" style="display:flex;align-items:center;gap:4px;margin-bottom:3px">' +
+      '<input type="number" class="node-turn-input" value="' + Number(turns[i]).toFixed(1) + '" step="1" ' +
+      'style="flex:1;min-width:0;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px;text-align:right">' +
+      '<span style="color:#aaa;font-size:11px;flex-shrink:0">°</span>' +
+      '<button class="node-turn-del" title="Remove" style="background:#552222;border:1px solid #774444;color:#faa;padding:1px 7px;border-radius:3px;font-size:12px;cursor:pointer;flex-shrink:0">×</button>' +
+      '</div>';
+  }
+  if (turns.length === 0) {
+    html = '<div style="color:#666;font-size:11px;font-style:italic;margin-bottom:3px">No extra turns</div>';
+  }
+  RP.dom.nodeExtraTurnsList.innerHTML = html;
+};
+
+RP.getSelectedNodeObj = function() {
+  if (!RP.selectedNode) return null;
+  for (var i = 0; i < RP.routes.length; i++) {
+    if (RP.routes[i].id === RP.selectedNode.routeId)
+      return RP.findNode(RP.routes[i], RP.selectedNode.nodeId) || null;
+  }
+  return null;
+};
+
+// ======================================================================
 // INFO PANEL
 // ======================================================================
 RP.updateInfoPanel = function() {
@@ -669,6 +729,27 @@ RP.updateInfoPanel = function() {
     RP.dom.routeWpCount.textContent = r ? (r.nodes ? r.nodes.length : 0) + ' nodes' : 'No active route';
   }
   RP.updateSegmentPanel();
+  // Node panel: only refresh info text, not the turns list (avoid clobbering active inputs)
+  if (RP.dom.nodeSection) {
+    if (RP.activeTool !== 'select' || !RP.selectedNode) {
+      RP.dom.nodeSection.style.display = 'none';
+    } else {
+      var _n = RP.getSelectedNodeObj();
+      if (_n && RP.dom.nodeInfo) {
+        var _r = null;
+        for (var _i = 0; _i < RP.routes.length; _i++) {
+          if (RP.routes[_i].id === RP.selectedNode.routeId) { _r = RP.routes[_i]; break; }
+        }
+        if (_r) {
+          var _lp = RP.computeLongestPath ? RP.computeLongestPath(_r) : [];
+          var _pi = -1;
+          for (var _j = 0; _j < _lp.length; _j++) { if (_lp[_j].id === _n.id) { _pi = _j; break; } }
+          var _tl = _pi === 0 ? ' (start)' : (_pi === _lp.length - 1 ? ' (end)' : (_pi > 0 ? ' (interior)' : ''));
+          RP.dom.nodeInfo.textContent = 'Route: ' + _r.name + '\n' + (_pi >= 0 ? 'Node ' + (_pi + 1) + ' of ' + _lp.length : 'Off-path') + _tl + '\n(' + _n.x.toFixed(0) + ', ' + _n.y.toFixed(0) + ')';
+        }
+      }
+    }
+  }
 };
 
 // ======================================================================

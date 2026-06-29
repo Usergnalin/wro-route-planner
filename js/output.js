@@ -80,6 +80,16 @@ RP.computeSteps = function(route) {
     // Effective backward: XOR of segment.direction and traversal order
     var effectiveBackward = (dir === RP.SEG_BACKWARD) !== (!storedForward);
 
+    // Emit extra turns stored on node a, before any geometric turn
+    var aExtras = a.extraTurns || [];
+    for (var eti = 0; eti < aExtras.length; eti++) {
+      var etDeg = Number(aExtras[eti]);
+      if (isFinite(etDeg) && Math.abs(etDeg) > 0.01) {
+        steps.push({ kind: 'turn', deg: etDeg, extra: true });
+        if (prevHeading !== null) prevHeading = ((prevHeading + etDeg) % 360 + 360) % 360;
+      }
+    }
+
     if (mode === RP.SEG_MODE_TELEPORT) {
       var hdgTele = RP.toDeg(RP.angleRad(a.x, a.y, b.x, b.y));
       steps.push({
@@ -120,6 +130,16 @@ RP.computeSteps = function(route) {
 
     prevHeading = heading;
     if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
+  }
+
+  // Extra turns on the last node (appended after the final move)
+  var lastNode = pathNodes[pathNodes.length - 1];
+  var lastExtras = lastNode.extraTurns || [];
+  for (var eti2 = 0; eti2 < lastExtras.length; eti2++) {
+    var etDeg2 = Number(lastExtras[eti2]);
+    if (isFinite(etDeg2) && Math.abs(etDeg2) > 0.01) {
+      steps.push({ kind: 'turn', deg: etDeg2, extra: true });
+    }
   }
 
   return steps;

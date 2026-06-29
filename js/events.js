@@ -60,6 +60,8 @@ RP.initEvents = function() {
           if (RP.screenDist(pSel.x, pSel.y, nd.x, nd.y) < 14) {
             RP.elementDrag = { type: 'node', routeId: rt.id, nodeId: nd.id };
             RP.selectedSegment = null;
+            RP.selectedNode = { routeId: rt.id, nodeId: nd.id };
+            RP.updateNodePanel();
             RP.updateInfoPanel();
             return;
           }
@@ -115,6 +117,7 @@ RP.initEvents = function() {
           var dSq2 = RP.pointToSegDistSq(pSel.x, pSel.y, na2.x, na2.y, nb2.x, nb2.y);
           if (dSq2 < hitThreshSq) {
             RP.selectedSegment = { routeId: rt2.id, segId: seg2.id };
+            RP.selectedNode = null;
             if (RP.activeRouteId !== rt2.id) {
               RP.activeRouteId = rt2.id;
               RP.updateRouteSelect();
@@ -127,8 +130,9 @@ RP.initEvents = function() {
       }
 
       // No element — clear selection and pan
-      if (RP.selectedSegment) {
+      if (RP.selectedSegment || RP.selectedNode) {
         RP.selectedSegment = null;
+        RP.selectedNode = null;
         RP.updateInfoPanel();
         RP.render();
       }
@@ -654,6 +658,52 @@ RP.initEvents = function() {
     reader.readAsDataURL(file);
     RP.dom.fileInput.value = '';
   });
+
+  // ---- Node extra turns ----
+  if (RP.dom.btnAddNodeTurn) {
+    RP.dom.btnAddNodeTurn.addEventListener('click', function() {
+      var node = RP.getSelectedNodeObj();
+      if (!node) return;
+      if (!node.extraTurns) node.extraTurns = [];
+      node.extraTurns.push(0);
+      RP.rebuildNodeTurnsList(node);
+      // Focus the new input
+      var inputs = RP.dom.nodeExtraTurnsList.querySelectorAll('.node-turn-input');
+      if (inputs.length) inputs[inputs.length - 1].select();
+      if (RP.updateInstructions) RP.updateInstructions();
+      RP.render();
+    });
+  }
+
+  if (RP.dom.nodeExtraTurnsList) {
+    // Commit a turn value on change/blur
+    RP.dom.nodeExtraTurnsList.addEventListener('change', function(e) {
+      if (!e.target.classList.contains('node-turn-input')) return;
+      var node = RP.getSelectedNodeObj();
+      if (!node || !node.extraTurns) return;
+      var entry = e.target.closest('.node-turn-entry');
+      var idx = entry ? parseInt(entry.dataset.idx, 10) : -1;
+      if (idx < 0 || idx >= node.extraTurns.length) return;
+      var v = parseFloat(e.target.value);
+      node.extraTurns[idx] = isFinite(v) ? v : 0;
+      if (RP.updateInstructions) RP.updateInstructions();
+      RP.render();
+    });
+
+    // Delete a turn entry
+    RP.dom.nodeExtraTurnsList.addEventListener('click', function(e) {
+      if (!e.target.classList.contains('node-turn-del')) return;
+      var node = RP.getSelectedNodeObj();
+      if (!node || !node.extraTurns) return;
+      var entry = e.target.closest('.node-turn-entry');
+      var idx = entry ? parseInt(entry.dataset.idx, 10) : -1;
+      if (idx < 0 || idx >= node.extraTurns.length) return;
+      node.extraTurns.splice(idx, 1);
+      RP.rebuildNodeTurnsList(node);
+      if (RP.updateInstructions) RP.updateInstructions();
+      RP.render();
+    });
+  }
 
   wrap.addEventListener('mouseleave', function() {
     if (RP.hoveredNode) { RP.hoveredNode = null; RP.render(); }
