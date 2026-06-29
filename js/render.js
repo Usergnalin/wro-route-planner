@@ -134,11 +134,18 @@ RP.render = function() {
       var segColor = (hasLongestPath && !onPath) ? dimColor
         : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isWallAlign ? waColor : (isFollowPath ? fpColor : (isBack ? revColor : baseColor)))));
 
+      // Smoothed render geometry for follow-path (matches the generated code)
+      var fpRenderPts = null;
+      if (isFollowPath) {
+        var fpSmoothN = (RP.codeConfig && RP.codeConfig.followPathSmoothness) || 0;
+        fpRenderPts = (fpSmoothN > 0 && RP.chaikinSmooth) ? RP.chaikinSmooth(seg.pathPoints, fpSmoothN) : seg.pathPoints;
+      }
+
       // Trace either the straight segment or the freehand polyline
       var _segPath = function() {
         ctx.beginPath();
         if (isFollowPath) {
-          var pp = seg.pathPoints;
+          var pp = fpRenderPts;
           ctx.moveTo(pp[0].x, pp[0].y);
           for (var ppi = 1; ppi < pp.length; ppi++) ctx.lineTo(pp[ppi].x, pp[ppi].y);
         } else {
@@ -167,7 +174,7 @@ RP.render = function() {
       if (isFollowPath) {
         // Direction arrow + label at the curve midpoint
         if (RP.scale > 0.05) {
-          var pp2 = seg.pathPoints;
+          var pp2 = fpRenderPts;
           var midI = Math.floor(pp2.length / 2);
           var ma = pp2[Math.max(0, midI - 1)], mb = pp2[Math.min(pp2.length - 1, midI)];
           var fpAng = RP.angleRad(ma.x, ma.y, mb.x, mb.y);

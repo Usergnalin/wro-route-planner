@@ -205,6 +205,10 @@
   <label>Follow Path <input type="text" id="code-follow-path" value="robot.follow_path(headings=[{headings}], path_length={length})"></label>
   <label>Follow Path Samples <input type="number" id="code-fp-samples" value="60" min="2" max="500"></label>
   <label style="display:flex;align-items:center;gap:6px;justify-content:flex-start">
+    Smoothing <input type="range" id="code-fp-smooth" min="0" max="5" step="1" value="2" style="flex:1;width:auto">
+    <span id="code-fp-smooth-val" style="min-width:1ch;text-align:right">2</span>
+  </label>
+  <label style="display:flex;align-items:center;gap:6px;justify-content:flex-start">
     <input type="checkbox" id="code-fp-flip" checked style="width:auto"> Flip dx (y-down canvas)
   </label>
   <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>

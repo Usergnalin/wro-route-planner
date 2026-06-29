@@ -116,7 +116,8 @@ RP.computeSteps = function(route) {
       }
       var nSamp = (RP.codeConfig && RP.codeConfig.followPathSamples) || 60;
       var fpFlip = !(RP.codeConfig && RP.codeConfig.followPathFlip === false);
-      var fpData = RP.computeFollowPathData(fpPts, nSamp, fpFlip, ppm);
+      var fpSmooth = (RP.codeConfig && RP.codeConfig.followPathSmoothness) || 0;
+      var fpData = RP.computeFollowPathData(fpPts, nSamp, fpFlip, ppm, fpSmooth);
       steps.push({ kind: 'follow_path', headings: fpData.headings, mm: fpData.lengthMm, offsetMm: seg.offset || 0 });
       // Robot ends facing the curve's final tangent
       var lp0 = fpPts[fpPts.length - 2], lp1 = fpPts[fpPts.length - 1];

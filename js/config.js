@@ -57,6 +57,7 @@ RP.ensureCodeConfig = function() {
   if (!cfg.followPathTemplate) cfg.followPathTemplate = d.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})';
   if (cfg.followPathSamples === undefined || cfg.followPathSamples === null) cfg.followPathSamples = d.followPathSamples || 60;
   if (cfg.followPathFlip === undefined || cfg.followPathFlip === null) cfg.followPathFlip = (d.followPathFlip !== undefined ? d.followPathFlip : true);
+  if (cfg.followPathSmoothness === undefined || cfg.followPathSmoothness === null) cfg.followPathSmoothness = (d.followPathSmoothness !== undefined ? d.followPathSmoothness : 2);
   if (cfg.defaultSpeed === undefined || cfg.defaultSpeed === null) cfg.defaultSpeed = d.defaultSpeed || 200;
   if (!cfg.defaultUnit) cfg.defaultUnit = d.defaultUnit || 'mm';
 };
@@ -77,6 +78,13 @@ RP.updateCodeConfigFromUI = function() {
   RP.codeConfig.followPathSamples = Math.max(2, _posNum(_el('code-fp-samples'), d.followPathSamples || 60));
   var fpFlipEl = document.getElementById('code-fp-flip');
   if (fpFlipEl) RP.codeConfig.followPathFlip = !!fpFlipEl.checked;
+  var fpSmoothEl = document.getElementById('code-fp-smooth');
+  if (fpSmoothEl) {
+    var sv = parseInt(fpSmoothEl.value, 10);
+    RP.codeConfig.followPathSmoothness = isFinite(sv) && sv >= 0 ? sv : 2;
+    var svLabel = document.getElementById('code-fp-smooth-val');
+    if (svLabel) svLabel.textContent = RP.codeConfig.followPathSmoothness;
+  }
   RP.codeConfig.defaultSpeed = _posNum(_el('code-speed'), d.defaultSpeed || 200);
   RP.codeConfig.defaultUnit = _strOr(_el('code-unit'), d.defaultUnit || 'mm');
   if (RP.render) RP.render();
@@ -95,6 +103,10 @@ RP.updateCodeConfigUI = function() {
   if (fpSampEl) fpSampEl.value = RP.codeConfig.followPathSamples || 60;
   var fpFlipEl2 = document.getElementById('code-fp-flip');
   if (fpFlipEl2) fpFlipEl2.checked = RP.codeConfig.followPathFlip !== false;
+  var fpSmoothEl2 = document.getElementById('code-fp-smooth');
+  if (fpSmoothEl2) fpSmoothEl2.value = (RP.codeConfig.followPathSmoothness != null ? RP.codeConfig.followPathSmoothness : 2);
+  var fpSmoothLab = document.getElementById('code-fp-smooth-val');
+  if (fpSmoothLab) fpSmoothLab.textContent = (RP.codeConfig.followPathSmoothness != null ? RP.codeConfig.followPathSmoothness : 2);
   document.getElementById('code-speed').value = RP.codeConfig.defaultSpeed;
   document.getElementById('code-unit').value = RP.codeConfig.defaultUnit;
 };

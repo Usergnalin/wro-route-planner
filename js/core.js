@@ -168,6 +168,7 @@ RP.DEFAULT_CODE_CONFIG_VALUES = {
   followPathTemplate: 'robot.follow_path(headings=[{headings}], path_length={length})',
   followPathSamples: 60,
   followPathFlip: true,
+  followPathSmoothness: 2,
   defaultSpeed: 200,
   defaultUnit: 'mm'
 };
@@ -606,10 +607,15 @@ RP.updateSegmentPanel = function() {
   var unit = (RP.codeConfig && RP.codeConfig.defaultUnit) || 'mm';
   var uf = (RP.unitFactor ? RP.unitFactor(unit) : 1);
   var lenStr = '';
-  // Follow-path length is the drawn arc length, not the straight node-to-node distance
-  var lenPx = (isFollowPath && seg.pathPoints && RP.polylineLengthPx)
-    ? RP.polylineLengthPx(seg.pathPoints)
-    : RP.dist(a.x, a.y, b.x, b.y);
+  // Follow-path length is the (smoothed) drawn arc length, not the straight node-to-node distance
+  var lenPx;
+  if (isFollowPath && seg.pathPoints && RP.polylineLengthPx) {
+    var fpSmoothPanel = (RP.codeConfig && RP.codeConfig.followPathSmoothness) || 0;
+    var fpLenPts = (fpSmoothPanel > 0 && RP.chaikinSmooth) ? RP.chaikinSmooth(seg.pathPoints, fpSmoothPanel) : seg.pathPoints;
+    lenPx = RP.polylineLengthPx(fpLenPts);
+  } else {
+    lenPx = RP.dist(a.x, a.y, b.x, b.y);
+  }
   if (RP.calibration) {
     lenStr = (lenPx / RP.calibration.pixelsPerMm / uf).toFixed(1) + ' ' + unit;
   } else {

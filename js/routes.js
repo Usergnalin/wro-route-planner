@@ -176,6 +176,27 @@ RP.polylineLengthPx = function(pts) {
   return L;
 };
 
+// Chaikin corner-cutting subdivision for an OPEN polyline. Each iteration
+// replaces every interior corner with two points at 1/4 and 3/4 along its
+// adjacent edges, rounding the curve. The first and last points are kept
+// fixed so the curve stays anchored to its route nodes.
+RP.chaikinSmooth = function(pts, iterations) {
+  if (!pts || pts.length < 3 || !iterations) return pts ? pts.slice() : [];
+  var cur = pts.slice();
+  for (var it = 0; it < iterations; it++) {
+    if (cur.length < 3) break;
+    var out = [{ x: cur[0].x, y: cur[0].y }];
+    for (var i = 0; i < cur.length - 1; i++) {
+      var p = cur[i], q = cur[i + 1];
+      out.push({ x: 0.75 * p.x + 0.25 * q.x, y: 0.75 * p.y + 0.25 * q.y });
+      out.push({ x: 0.25 * p.x + 0.75 * q.x, y: 0.25 * p.y + 0.75 * q.y });
+    }
+    out.push({ x: cur[cur.length - 1].x, y: cur[cur.length - 1].y });
+    cur = out;
+  }
+  return cur;
+};
+
 // Resample a polyline to n points spaced uniformly by ARC LENGTH (not by
 // parameter index). Returns array of {x,y} of length n (n >= 2).
 RP.resamplePolylineByArcLength = function(pts, n) {
@@ -205,11 +226,13 @@ RP.resamplePolylineByArcLength = function(pts, n) {
 //   flip:   negate dx when computing heading (true for y-down canvas)
 //   ppm:    pixels per mm (for length); if absent, length stays in px
 // Returns { headings: [deg...], lengthPx, lengthMm, samples: [{x,y}...] }
+//   smoothing: number of Chaikin iterations applied before resampling
 //   Headings use the robot convention: 0 deg = +y (forward), atan2(dx, dy),
 //   unwrapped (no +/-180 jumps), then rebased so headings[0] === 0.
-RP.computeFollowPathData = function(pts, n, flip, ppm) {
+RP.computeFollowPathData = function(pts, n, flip, ppm, smoothing) {
   n = Math.max(2, n | 0);
-  var samples = RP.resamplePolylineByArcLength(pts, n);
+  var src = (smoothing && smoothing > 0) ? RP.chaikinSmooth(pts, smoothing) : pts;
+  var samples = RP.resamplePolylineByArcLength(src, n);
   var rawDeg = [];
   for (var i = 0; i < samples.length; i++) {
     // forward difference; last point reuses the previous direction

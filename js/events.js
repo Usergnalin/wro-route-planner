@@ -1065,7 +1065,7 @@ RP.initEvents = function() {
     el.addEventListener('input', RP.updateRobotConfigFromUI);
   });
 
-  ['code-comment', 'code-forward', 'code-turn', 'code-wall-align', 'code-lt-dist', 'code-lt-junct', 'code-follow-path', 'code-fp-samples', 'code-fp-flip', 'code-speed', 'code-unit'].forEach(function(id) {
+  ['code-comment', 'code-forward', 'code-turn', 'code-wall-align', 'code-lt-dist', 'code-lt-junct', 'code-follow-path', 'code-fp-samples', 'code-fp-flip', 'code-fp-smooth', 'code-speed', 'code-unit'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateCodeConfigFromUI);
