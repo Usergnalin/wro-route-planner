@@ -59,6 +59,7 @@ RP.dom.segmentModeLTJunct = document.getElementById('seg-mode-lt-junct');
 RP.dom.segmentModeWallAlign = document.getElementById('seg-mode-wall-align');
 RP.dom.segmentTeleportName = document.getElementById('seg-teleport-name');
 RP.dom.segmentJunctionCount = document.getElementById('seg-junction-count');
+RP.dom.segmentModeFollowPath = document.getElementById('seg-mode-follow-path');
 RP.dom.segmentModeParams = document.getElementById('seg-mode-params');
 RP.dom.segmentOffsetRow = document.getElementById('seg-offset-row');
 RP.dom.segmentOffset = document.getElementById('seg-offset');
@@ -74,10 +75,12 @@ RP.dom.btnToolConstruction = document.getElementById('btn-tool-construction');
 RP.dom.btnToolRoute = document.getElementById('btn-tool-route');
 RP.dom.btnToolSelect = document.getElementById('btn-tool-select');
 RP.dom.btnToolCheckpoint = document.getElementById('btn-tool-checkpoint');
+RP.dom.btnToolFreehand = document.getElementById('btn-tool-freehand');
 RP.dom.btnSidebarConstruction = document.getElementById('btn-sidebar-construction');
 RP.dom.btnSidebarRoute = document.getElementById('btn-sidebar-route');
 RP.dom.btnSidebarSelect = document.getElementById('btn-sidebar-select');
 RP.dom.btnSidebarCheckpoint = document.getElementById('btn-sidebar-checkpoint');
+RP.dom.btnSidebarFreehand = document.getElementById('btn-sidebar-freehand');
 
 // ======================================================================
 // STATE
@@ -162,6 +165,9 @@ RP.DEFAULT_CODE_CONFIG_VALUES = {
   wallAlignTemplate: 'robot.wall_align(reversed={reversed}, speed={speed})',
   lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
   lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
+  followPathTemplate: 'robot.follow_path(headings=[{headings}], path_length={length})',
+  followPathSamples: 60,
+  followPathFlip: true,
   defaultSpeed: 200,
   defaultUnit: 'mm'
 };
@@ -552,10 +558,13 @@ RP.setTool = function(tool) {
     else if (tool === 'route') hint.textContent = 'Drag from last dot to extend route';
     else if (tool === 'select') hint.textContent = 'Click dots/endpoints to move';
     else if (tool === 'checkpoint') hint.textContent = 'Click route mid/end to place checkpoint';
+    else if (tool === 'freehand') hint.textContent = 'Hold and drag to draw a curved path';
   }
   // Cancel any in-progress drawing when switching tools.
   RP.lineDrawing = false;
   RP.lineDrawStart = null;
+  RP.freehandDrawing = false;
+  RP.freehandPoints = null;
   RP.hoverSnapPoint = null;
   // Selected segment only makes sense in select mode.
   if (tool !== 'select') RP.selectedSegment = null;
@@ -592,24 +601,35 @@ RP.updateSegmentPanel = function() {
   var isLineTrace = mode === RP.SEG_MODE_LINETRACE_DIST || mode === RP.SEG_MODE_LINETRACE_JUNCT;
   var dirColor = isTeleport ? '#ffaa00' : (isLineTrace ? '#44ff88' : (dir === RP.SEG_BACKWARD ? '#ff8844' : '#44aaff'));
   var dirLabel = dir === RP.SEG_BACKWARD ? 'Backward' : 'Forward';
-  var modeLabel = mode === RP.SEG_MODE_TELEPORT ? 'Teleport' : (mode === RP.SEG_MODE_LINETRACE_DIST ? 'Line Trace (dist)' : (mode === RP.SEG_MODE_LINETRACE_JUNCT ? 'Line Trace (junct)' : 'Normal'));
+  var isFollowPath = mode === RP.SEG_MODE_FOLLOW_PATH;
+  var modeLabel = mode === RP.SEG_MODE_TELEPORT ? 'Teleport' : (mode === RP.SEG_MODE_LINETRACE_DIST ? 'Line Trace (dist)' : (mode === RP.SEG_MODE_LINETRACE_JUNCT ? 'Line Trace (junct)' : (mode === RP.SEG_MODE_WALL_ALIGN ? 'Wall Align' : (isFollowPath ? 'Follow Path' : 'Normal'))));
+  var unit = (RP.codeConfig && RP.codeConfig.defaultUnit) || 'mm';
+  var uf = (RP.unitFactor ? RP.unitFactor(unit) : 1);
   var lenStr = '';
+  // Follow-path length is the drawn arc length, not the straight node-to-node distance
+  var lenPx = (isFollowPath && seg.pathPoints && RP.polylineLengthPx)
+    ? RP.polylineLengthPx(seg.pathPoints)
+    : RP.dist(a.x, a.y, b.x, b.y);
   if (RP.calibration) {
-    var mm = RP.dist(a.x, a.y, b.x, b.y) / RP.calibration.pixelsPerMm;
-    var unit = (RP.codeConfig && RP.codeConfig.defaultUnit) || 'mm';
-    var uf = (RP.unitFactor ? RP.unitFactor(unit) : 1);
-    lenStr = (mm / uf).toFixed(1) + ' ' + unit;
+    lenStr = (lenPx / RP.calibration.pixelsPerMm / uf).toFixed(1) + ' ' + unit;
   } else {
     lenStr = 'no calibration';
   }
   if (RP.dom.segmentInfo) {
+    var fpInfo = '';
+    if (isFollowPath) {
+      var nSamp = (RP.codeConfig && RP.codeConfig.followPathSamples) || 60;
+      fpInfo = '<div style="font-size:10px;color:#cc88ff;margin-top:2px">Drawn path: ' +
+        (seg.pathPoints ? seg.pathPoints.length : 0) + ' pts → ' + nSamp + ' heading samples</div>';
+    }
     RP.dom.segmentInfo.innerHTML =
       '<div>Route: ' + route.name + '</div>' +
       '<div>Segment ' + (route.segments.indexOf(seg) + 1) + ' of ' + route.segments.length + '</div>' +
       '<div>Length: ' + lenStr + '</div>' +
       '<div>Direction: <b style="color:' + dirColor + '">' + dirLabel + '</b></div>' +
       '<div>Mode: <b>' + modeLabel + '</b></div>' +
-      (isTeleport ? '<div style="font-size:10px;color:#ffaa00;margin-top:2px">Turns omitted — insert custom code</div>' : '');
+      (isTeleport ? '<div style="font-size:10px;color:#ffaa00;margin-top:2px">Turns omitted — insert custom code</div>' : '') +
+      fpInfo;
   }
 
   // Mode selector radios.
@@ -618,11 +638,12 @@ RP.updateSegmentPanel = function() {
   if (RP.dom.segmentModeLTDist)    RP.dom.segmentModeLTDist.checked    = (mode === RP.SEG_MODE_LINETRACE_DIST);
   if (RP.dom.segmentModeLTJunct)   RP.dom.segmentModeLTJunct.checked   = (mode === RP.SEG_MODE_LINETRACE_JUNCT);
   if (RP.dom.segmentModeWallAlign) RP.dom.segmentModeWallAlign.checked = (mode === RP.SEG_MODE_WALL_ALIGN);
+  if (RP.dom.segmentModeFollowPath) RP.dom.segmentModeFollowPath.checked = (mode === RP.SEG_MODE_FOLLOW_PATH);
 
   // Direction button — greyed out for teleport and both line trace modes.
   if (RP.dom.btnFlipSegment) {
     RP.dom.btnFlipSegment.textContent = (dir === RP.SEG_BACKWARD ? '\u2190 Backward' : '\u2192 Forward');
-    var blockDir = isTeleport || isLineTrace;
+    var blockDir = isTeleport || isLineTrace || isFollowPath;
     RP.dom.btnFlipSegment.style.opacity = blockDir ? '0.35' : '1';
     RP.dom.btnFlipSegment.style.pointerEvents = blockDir ? 'none' : 'auto';
   }
@@ -648,8 +669,8 @@ RP.updateSegmentPanel = function() {
     }
   }
 
-  // Offset row — shown for normal and linetrace_dist only
-  var hasOffset = mode === RP.SEG_MODE_NORMAL || mode === RP.SEG_MODE_LINETRACE_DIST;
+  // Offset row — shown for normal, linetrace_dist, and follow_path (adds to distance/length)
+  var hasOffset = mode === RP.SEG_MODE_NORMAL || mode === RP.SEG_MODE_LINETRACE_DIST || mode === RP.SEG_MODE_FOLLOW_PATH;
   if (RP.dom.segmentOffsetRow) RP.dom.segmentOffsetRow.style.display = hasOffset ? '' : 'none';
   if (RP.dom.segmentOffset && hasOffset) RP.dom.segmentOffset.value = seg.offset || 0;
 
@@ -717,7 +738,7 @@ RP.getSelectedNodeObj = function() {
 // ======================================================================
 RP.updateInfoPanel = function() {
   if (!RP.dom.infoTool) return;
-  RP.dom.infoTool.textContent = RP.activeTool === 'construction' ? 'Construction' : (RP.activeTool === 'route' ? 'Route' : (RP.activeTool === 'select' ? 'Select' : 'Checkpoint'));
+  RP.dom.infoTool.textContent = RP.activeTool === 'construction' ? 'Construction' : (RP.activeTool === 'route' ? 'Route' : (RP.activeTool === 'select' ? 'Select' : (RP.activeTool === 'freehand' ? 'Freehand' : 'Checkpoint')));
   RP.dom.infoSnap.textContent = RP.snapEnabled ? 'On' : 'Off';
   RP.dom.infoLines.textContent = RP.lines.length;
   RP.dom.infoRoutes.textContent = RP.routes.length;

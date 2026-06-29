@@ -54,6 +54,9 @@ RP.ensureCodeConfig = function() {
   delete cfg.turnRightTemplate; delete cfg.turnLeftTemplate;
   if (!cfg.lineTraceDistTemplate) cfg.lineTraceDistTemplate = d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
   if (!cfg.lineTraceJunctTemplate) cfg.lineTraceJunctTemplate = d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
+  if (!cfg.followPathTemplate) cfg.followPathTemplate = d.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})';
+  if (cfg.followPathSamples === undefined || cfg.followPathSamples === null) cfg.followPathSamples = d.followPathSamples || 60;
+  if (cfg.followPathFlip === undefined || cfg.followPathFlip === null) cfg.followPathFlip = (d.followPathFlip !== undefined ? d.followPathFlip : true);
   if (cfg.defaultSpeed === undefined || cfg.defaultSpeed === null) cfg.defaultSpeed = d.defaultSpeed || 200;
   if (!cfg.defaultUnit) cfg.defaultUnit = d.defaultUnit || 'mm';
 };
@@ -70,6 +73,10 @@ RP.updateCodeConfigFromUI = function() {
   RP.codeConfig.wallAlignTemplate  = _strOr(_el('code-wall-align'), d.wallAlignTemplate  || 'wall_align({reversed}, {speed})');
   RP.codeConfig.lineTraceDistTemplate = _strOr(_el('code-lt-dist'), d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})');
   RP.codeConfig.lineTraceJunctTemplate = _strOr(_el('code-lt-junct'), d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})');
+  RP.codeConfig.followPathTemplate = _strOr(_el('code-follow-path'), d.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})');
+  RP.codeConfig.followPathSamples = Math.max(2, _posNum(_el('code-fp-samples'), d.followPathSamples || 60));
+  var fpFlipEl = document.getElementById('code-fp-flip');
+  if (fpFlipEl) RP.codeConfig.followPathFlip = !!fpFlipEl.checked;
   RP.codeConfig.defaultSpeed = _posNum(_el('code-speed'), d.defaultSpeed || 200);
   RP.codeConfig.defaultUnit = _strOr(_el('code-unit'), d.defaultUnit || 'mm');
   if (RP.render) RP.render();
@@ -82,6 +89,12 @@ RP.updateCodeConfigUI = function() {
   document.getElementById('code-wall-align').value = RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed})';
   document.getElementById('code-lt-dist').value = RP.codeConfig.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
   document.getElementById('code-lt-junct').value = RP.codeConfig.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
+  var fpEl = document.getElementById('code-follow-path');
+  if (fpEl) fpEl.value = RP.codeConfig.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})';
+  var fpSampEl = document.getElementById('code-fp-samples');
+  if (fpSampEl) fpSampEl.value = RP.codeConfig.followPathSamples || 60;
+  var fpFlipEl2 = document.getElementById('code-fp-flip');
+  if (fpFlipEl2) fpFlipEl2.checked = RP.codeConfig.followPathFlip !== false;
   document.getElementById('code-speed').value = RP.codeConfig.defaultSpeed;
   document.getElementById('code-unit').value = RP.codeConfig.defaultUnit;
 };

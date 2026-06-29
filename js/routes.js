@@ -11,6 +11,7 @@ RP.SEG_MODE_TELEPORT = 'teleport';
 RP.SEG_MODE_LINETRACE_DIST = 'linetrace_dist';
 RP.SEG_MODE_LINETRACE_JUNCT = 'linetrace_junct';
 RP.SEG_MODE_WALL_ALIGN = 'wall_align';
+RP.SEG_MODE_FOLLOW_PATH = 'follow_path';
 
 // No-ops kept so any lingering call-sites don't crash
 RP.ensureSegmentDirections = function() {};
@@ -164,6 +165,81 @@ RP._addSegment = function(route, fromNodeId, toNodeId) {
   return seg;
 };
 
+// ----------------------------------------------------------------------
+// FOLLOW PATH geometry (freehand drawn curves)
+// ----------------------------------------------------------------------
+
+// Total arc length (px) of a polyline [{x,y}, ...]
+RP.polylineLengthPx = function(pts) {
+  var L = 0;
+  for (var i = 1; i < pts.length; i++) L += RP.dist(pts[i-1].x, pts[i-1].y, pts[i].x, pts[i].y);
+  return L;
+};
+
+// Resample a polyline to n points spaced uniformly by ARC LENGTH (not by
+// parameter index). Returns array of {x,y} of length n (n >= 2).
+RP.resamplePolylineByArcLength = function(pts, n) {
+  if (!pts || pts.length === 0) return [];
+  if (pts.length === 1) { var out1 = []; for (var k = 0; k < n; k++) out1.push({ x: pts[0].x, y: pts[0].y }); return out1; }
+  // Cumulative arc length at each input vertex
+  var cum = [0];
+  for (var i = 1; i < pts.length; i++) cum.push(cum[i-1] + RP.dist(pts[i-1].x, pts[i-1].y, pts[i].x, pts[i].y));
+  var total = cum[cum.length - 1];
+  var result = [];
+  if (total === 0) { for (var z = 0; z < n; z++) result.push({ x: pts[0].x, y: pts[0].y }); return result; }
+  var seg = 1;
+  for (var s = 0; s < n; s++) {
+    var target = (total * s) / (n - 1);
+    while (seg < cum.length - 1 && cum[seg] < target) seg++;
+    var a = pts[seg - 1], b = pts[seg];
+    var segLen = cum[seg] - cum[seg - 1];
+    var t = segLen > 0 ? (target - cum[seg - 1]) / segLen : 0;
+    result.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  }
+  return result;
+};
+
+// Compute the follow_path output for a drawn polyline.
+//   pts:    raw drawn points (image space), in travel order
+//   n:      number of arc-length samples
+//   flip:   negate dx when computing heading (true for y-down canvas)
+//   ppm:    pixels per mm (for length); if absent, length stays in px
+// Returns { headings: [deg...], lengthPx, lengthMm, samples: [{x,y}...] }
+//   Headings use the robot convention: 0 deg = +y (forward), atan2(dx, dy),
+//   unwrapped (no +/-180 jumps), then rebased so headings[0] === 0.
+RP.computeFollowPathData = function(pts, n, flip, ppm) {
+  n = Math.max(2, n | 0);
+  var samples = RP.resamplePolylineByArcLength(pts, n);
+  var rawDeg = [];
+  for (var i = 0; i < samples.length; i++) {
+    // forward difference; last point reuses the previous direction
+    var j = (i < samples.length - 1) ? i + 1 : i;
+    var k = (i < samples.length - 1) ? i : i - 1;
+    var dx = samples[j].x - samples[k].x;
+    var dy = samples[j].y - samples[k].y;
+    var hx = flip ? -dx : dx;
+    rawDeg.push(Math.atan2(hx, dy) * 180 / Math.PI);
+  }
+  // Unwrap to remove discontinuities
+  var unwrapped = [rawDeg[0]];
+  for (var u = 1; u < rawDeg.length; u++) {
+    var d = rawDeg[u] - rawDeg[u-1];
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    unwrapped.push(unwrapped[u-1] + d);
+  }
+  // Rebase so the first heading is 0
+  var base = unwrapped[0];
+  var headings = unwrapped.map(function(h) { return h - base; });
+  var lengthPx = RP.polylineLengthPx(samples);
+  return {
+    headings: headings,
+    lengthPx: lengthPx,
+    lengthMm: ppm ? lengthPx / ppm : lengthPx,
+    samples: samples
+  };
+};
+
 // Remove a single segment (leaves nodes in place; orphaned nodes are ignored by DFS)
 RP.removeSegment = function(routeId, segId) {
   for (var ri = 0; ri < RP.routes.length; ri++) {
@@ -301,6 +377,11 @@ RP.setSegmentMode = function(routeId, segId, mode) {
       seg.junctionCount = 1;
     if (mode === RP.SEG_MODE_WALL_ALIGN)
       RP.applyWallAlignSnap(r, seg);
+    if (mode === RP.SEG_MODE_FOLLOW_PATH && (!seg.pathPoints || seg.pathPoints.length < 2)) {
+      // Converting a straight segment: seed with a 2-point straight path
+      var fa = RP.findNode(r, seg.fromNodeId), fb = RP.findNode(r, seg.toNodeId);
+      if (fa && fb) seg.pathPoints = [{ x: fa.x, y: fa.y }, { x: fb.x, y: fb.y }];
+    }
     RP.render(); RP.updateInfoPanel();
     if (RP.updateInstructions) RP.updateInstructions();
     return true;

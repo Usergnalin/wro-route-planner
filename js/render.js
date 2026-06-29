@@ -97,6 +97,7 @@ RP.render = function() {
     var teleColor  = '#ffaa00';
     var ltColor    = isActive ? '#44ff88' : '#33cc66';
     var waColor    = '#e0e0e0';
+    var fpColor    = isActive ? '#cc77ff' : '#9955bb';
     var selColor   = '#ffd966';
     var dimColor   = isActive ? 'rgba(68,170,255,0.28)' : 'rgba(68,136,204,0.22)';
 
@@ -127,18 +128,30 @@ RP.render = function() {
       var isTeleport  = sMode === RP.SEG_MODE_TELEPORT;
       var isLineTrace = sMode === RP.SEG_MODE_LINETRACE_DIST || sMode === RP.SEG_MODE_LINETRACE_JUNCT;
       var isWallAlign = sMode === RP.SEG_MODE_WALL_ALIGN;
+      var isFollowPath = sMode === RP.SEG_MODE_FOLLOW_PATH && seg.pathPoints && seg.pathPoints.length >= 2;
       var isSegSel = RP.selectedSegment && RP.selectedSegment.routeId === r.id && RP.selectedSegment.segId === seg.id;
       var onPath = pathSegIds[seg.id];
       var segColor = (hasLongestPath && !onPath) ? dimColor
-        : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isWallAlign ? waColor : (isBack ? revColor : baseColor))));
+        : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isWallAlign ? waColor : (isFollowPath ? fpColor : (isBack ? revColor : baseColor)))));
+
+      // Trace either the straight segment or the freehand polyline
+      var _segPath = function() {
+        ctx.beginPath();
+        if (isFollowPath) {
+          var pp = seg.pathPoints;
+          ctx.moveTo(pp[0].x, pp[0].y);
+          for (var ppi = 1; ppi < pp.length; ppi++) ctx.lineTo(pp[ppi].x, pp[ppi].y);
+        } else {
+          ctx.moveTo(na.x, na.y);
+          ctx.lineTo(nb.x, nb.y);
+        }
+        ctx.stroke();
+      };
 
       if (isSegSel) {
         ctx.strokeStyle = selColor;
         ctx.lineWidth = (isActive ? 6 : 5) / RP.scale;
-        ctx.beginPath();
-        ctx.moveTo(na.x, na.y);
-        ctx.lineTo(nb.x, nb.y);
-        ctx.stroke();
+        _segPath();
       }
 
       ctx.strokeStyle = segColor;
@@ -146,13 +159,29 @@ RP.render = function() {
       ctx.lineWidth = isActive ? 3 / RP.scale : 2 / RP.scale;
       if (isTeleport) ctx.setLineDash([2 / RP.scale, 6 / RP.scale]);
       else if (isBack) ctx.setLineDash([8 / RP.scale, 5 / RP.scale]);
-      ctx.beginPath();
-      ctx.moveTo(na.x, na.y);
-      ctx.lineTo(nb.x, nb.y);
-      ctx.stroke();
+      _segPath();
       ctx.setLineDash([]);
 
       if (hasLongestPath && !onPath) continue; // skip decorations for off-path segs
+
+      if (isFollowPath) {
+        // Direction arrow + label at the curve midpoint
+        if (RP.scale > 0.05) {
+          var pp2 = seg.pathPoints;
+          var midI = Math.floor(pp2.length / 2);
+          var ma = pp2[Math.max(0, midI - 1)], mb = pp2[Math.min(pp2.length - 1, midI)];
+          var fpAng = RP.angleRad(ma.x, ma.y, mb.x, mb.y);
+          var fpArr = 12 / RP.scale;
+          ctx.fillStyle = segColor;
+          ctx.beginPath();
+          ctx.moveTo(mb.x + fpArr * Math.cos(fpAng), mb.y + fpArr * Math.sin(fpAng));
+          ctx.lineTo(mb.x + fpArr * 0.5 * Math.cos(fpAng + 2.5), mb.y + fpArr * 0.5 * Math.sin(fpAng + 2.5));
+          ctx.lineTo(mb.x + fpArr * 0.5 * Math.cos(fpAng - 2.5), mb.y + fpArr * 0.5 * Math.sin(fpAng - 2.5));
+          ctx.closePath();
+          ctx.fill();
+        }
+        continue; // skip the straight-segment decorations below
+      }
 
       if (isWallAlign && RP.scale > 0.03) {
         // Draw a wall-stop block at the end (toNode = nb)
@@ -449,6 +478,23 @@ RP.render = function() {
     ctx.lineTo(previewEnd.x, previewEnd.y);
     ctx.stroke();
     ctx.setLineDash([]);
+  }
+
+  // --- Freehand path preview ---
+  if (RP.freehandDrawing && RP.freehandPoints && RP.freehandPoints.length > 0) {
+    var fhp = RP.freehandPoints;
+    ctx.strokeStyle = '#cc77ff';
+    ctx.lineWidth = 3 / RP.scale;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(fhp[0].x, fhp[0].y);
+    for (var fhi = 1; fhi < fhp.length; fhi++) ctx.lineTo(fhp[fhi].x, fhp[fhi].y);
+    ctx.stroke();
+    // Start dot
+    ctx.fillStyle = '#cc77ff';
+    ctx.beginPath();
+    ctx.arc(fhp[0].x, fhp[0].y, 4 / RP.scale, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   // --- All-node magnet hint (route mode only) ---

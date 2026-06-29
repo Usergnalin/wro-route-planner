@@ -205,6 +205,20 @@ RP.initEvents = function() {
       // Not near any node — fall through (pan)
     }
 
+    // ---- FREEHAND MODE ----
+    if (RP.activeTool === 'freehand') {
+      if (!RP.img) return;
+      var pFh = RP.screenToImage(e.clientX, e.clientY);
+      var sFh = RP.computeSnap(pFh.x, pFh.y, { kind: 'point' });
+      var startFh = sFh || pFh;
+      RP.freehandDrawing = true;
+      RP.freehandPoints = [{ x: startFh.x, y: startFh.y }];
+      RP.mouseMovedSinceDown = false;
+      RP.hoverSnapPoint = null;
+      wrap.classList.add('drawing-route');
+      return;
+    }
+
     // ---- CONSTRUCTION MODE ----
     if (RP.activeTool === 'construction') {
       var p2 = RP.screenToImage(e.clientX, e.clientY);
@@ -277,6 +291,18 @@ RP.initEvents = function() {
   window.addEventListener('mousemove', function(e) {
     RP.lastMouseImg = RP.screenToImage(e.clientX, e.clientY);
 
+    if (RP.freehandDrawing) {
+      RP.mouseMovedSinceDown = true;
+      var pFhm = RP.screenToImage(e.clientX, e.clientY);
+      var lastFh = RP.freehandPoints[RP.freehandPoints.length - 1];
+      // Throttle: only record points >= ~2 screen px apart
+      if (RP.screenDist(lastFh.x, lastFh.y, pFhm.x, pFhm.y) >= 2) {
+        RP.freehandPoints.push({ x: pFhm.x, y: pFhm.y });
+        RP.render();
+      }
+      return;
+    }
+
     if (RP.lineDrawing && RP.lineDrawStart) {
       RP.mouseMovedSinceDown = true;
       var p = RP.screenToImage(e.clientX, e.clientY);
@@ -304,12 +330,20 @@ RP.initEvents = function() {
           var nd_ = RP.findNode(re_, RP.elementDrag.nodeId);
           if (nd_) {
             nd_.x = fED.x; nd_.y = fED.y;
-            // Re-snap if this node is the end of a wall_align segment
+            // Re-snap if this node is the end of a wall_align segment;
+            // keep follow_path curve endpoints attached to their nodes
             if (re_.segments) {
               for (var wse = 0; wse < re_.segments.length; wse++) {
                 var wseg = re_.segments[wse];
                 if (wseg.mode === RP.SEG_MODE_WALL_ALIGN && wseg.toNodeId === nd_.id) {
                   RP.applyWallAlignSnap(re_, wseg);
+                }
+                if (wseg.mode === RP.SEG_MODE_FOLLOW_PATH && wseg.pathPoints && wseg.pathPoints.length >= 2) {
+                  if (wseg.fromNodeId === nd_.id) { wseg.pathPoints[0].x = nd_.x; wseg.pathPoints[0].y = nd_.y; }
+                  if (wseg.toNodeId === nd_.id) {
+                    var lpEnd = wseg.pathPoints[wseg.pathPoints.length - 1];
+                    lpEnd.x = nd_.x; lpEnd.y = nd_.y;
+                  }
                 }
               }
             }
@@ -405,6 +439,55 @@ RP.initEvents = function() {
       RP.startMarkerPlacedPoint = null;
       RP.pushHistory('Set robot start & heading');
       RP.updateRobotUI();
+      RP.render();
+      return;
+    }
+
+    // Finish freehand path drawing
+    if (RP.freehandDrawing) {
+      RP.freehandDrawing = false;
+      wrap.classList.remove('drawing-route');
+      var fhPts = RP.freehandPoints || [];
+      RP.freehandPoints = null;
+
+      if (fhPts.length >= 2 && RP.img) {
+        // Snap the final point to a feature if close
+        var fhEndRaw = fhPts[fhPts.length - 1];
+        var fhEndSnap = RP.computeSnap(fhEndRaw.x, fhEndRaw.y, { kind: 'point' });
+        if (fhEndSnap) fhPts[fhPts.length - 1] = { x: fhEndSnap.x, y: fhEndSnap.y };
+
+        if (RP.polylineLengthPx(fhPts) > 4 / RP.scale) {
+          RP.pushHistory('Draw freehand path');
+          var rFh = RP.getActiveRoute();
+          if (!rFh) { RP.createRoute('Route ' + (RP.routes.length + 1)); rFh = RP.getActiveRoute(); }
+
+          // From node: reuse an existing nearby node, else create one
+          var fhStart = fhPts[0];
+          var existFhStart = RP.findNodeNear(rFh, fhStart.x, fhStart.y, RP.ROUTE_CONTINUE_SCREEN_RADIUS);
+          var fhFromId;
+          if (existFhStart) { fhFromId = existFhStart.id; fhPts[0] = { x: existFhStart.x, y: existFhStart.y }; }
+          else { fhFromId = RP._addNode(rFh, fhStart.x, fhStart.y).id; }
+
+          // To node: reuse an existing nearby node, else create one
+          var fhEnd = fhPts[fhPts.length - 1];
+          var existFhEnd = RP.findNodeNear(rFh, fhEnd.x, fhEnd.y, RP.ROUTE_CONTINUE_SCREEN_RADIUS);
+          var fhToId;
+          if (existFhEnd && existFhEnd.id !== fhFromId) {
+            fhToId = existFhEnd.id; fhPts[fhPts.length - 1] = { x: existFhEnd.x, y: existFhEnd.y };
+          } else {
+            fhToId = RP._addNode(rFh, fhEnd.x, fhEnd.y).id;
+          }
+
+          if (fhToId !== fhFromId && !RP.findSegBetween(rFh, fhFromId, fhToId)) {
+            var fhSeg = RP._addSegment(rFh, fhFromId, fhToId);
+            fhSeg.mode = RP.SEG_MODE_FOLLOW_PATH;
+            fhSeg.pathPoints = fhPts;
+          }
+          RP.updateSideRouteList();
+          RP.updateInfoPanel();
+          if (RP.updateInstructions) RP.updateInstructions();
+        }
+      }
       RP.render();
       return;
     }
@@ -734,6 +817,8 @@ RP.initEvents = function() {
     RP.dom.btnToolSelect.addEventListener('click', function() { RP.setTool('select'); });
   if (RP.dom.btnToolCheckpoint)
     RP.dom.btnToolCheckpoint.addEventListener('click', function() { RP.setTool('checkpoint'); });
+  if (RP.dom.btnToolFreehand)
+    RP.dom.btnToolFreehand.addEventListener('click', function() { RP.setTool('freehand'); });
   if (RP.dom.btnSidebarConstruction)
     RP.dom.btnSidebarConstruction.addEventListener('click', function() { RP.setTool('construction'); });
   if (RP.dom.btnSidebarRoute)
@@ -742,6 +827,8 @@ RP.initEvents = function() {
     RP.dom.btnSidebarSelect.addEventListener('click', function() { RP.setTool('select'); });
   if (RP.dom.btnSidebarCheckpoint)
     RP.dom.btnSidebarCheckpoint.addEventListener('click', function() { RP.setTool('checkpoint'); });
+  if (RP.dom.btnSidebarFreehand)
+    RP.dom.btnSidebarFreehand.addEventListener('click', function() { RP.setTool('freehand'); });
 
   function toggleSnap() {
     RP.snapEnabled = !RP.snapEnabled;
@@ -901,6 +988,8 @@ RP.initEvents = function() {
     RP.dom.segmentModeLTJunct.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_LINETRACE_JUNCT); });
   if (RP.dom.segmentModeWallAlign)
     RP.dom.segmentModeWallAlign.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_WALL_ALIGN); });
+  if (RP.dom.segmentModeFollowPath)
+    RP.dom.segmentModeFollowPath.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_FOLLOW_PATH); });
 
   if (RP.dom.segmentTeleportName) {
     RP.dom.segmentTeleportName.addEventListener('change', function() {
@@ -976,7 +1065,7 @@ RP.initEvents = function() {
     el.addEventListener('input', RP.updateRobotConfigFromUI);
   });
 
-  ['code-comment', 'code-forward', 'code-turn', 'code-wall-align', 'code-lt-dist', 'code-lt-junct', 'code-speed', 'code-unit'].forEach(function(id) {
+  ['code-comment', 'code-forward', 'code-turn', 'code-wall-align', 'code-lt-dist', 'code-lt-junct', 'code-follow-path', 'code-fp-samples', 'code-fp-flip', 'code-speed', 'code-unit'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateCodeConfigFromUI);

@@ -104,6 +104,27 @@ RP.computeSteps = function(route) {
       continue;
     }
 
+    if (mode === RP.SEG_MODE_FOLLOW_PATH && seg.pathPoints && seg.pathPoints.length >= 2) {
+      // Points in travel order (drawn from->to; reverse if we traverse to->from)
+      var fpPts = storedForward ? seg.pathPoints : seg.pathPoints.slice().reverse();
+      // Align robot to the curve's initial tangent before following it, so the
+      // executed curve matches the drawing in absolute terms.
+      var startTangent = RP.toDeg(RP.angleRad(fpPts[0].x, fpPts[0].y, fpPts[1].x, fpPts[1].y));
+      if (prevHeading !== null) {
+        var fpTurn = RP.turnAngle(prevHeading, startTangent);
+        if (Math.abs(fpTurn) > 0.5) steps.push({ kind: 'turn', deg: fpTurn });
+      }
+      var nSamp = (RP.codeConfig && RP.codeConfig.followPathSamples) || 60;
+      var fpFlip = !(RP.codeConfig && RP.codeConfig.followPathFlip === false);
+      var fpData = RP.computeFollowPathData(fpPts, nSamp, fpFlip, ppm);
+      steps.push({ kind: 'follow_path', headings: fpData.headings, mm: fpData.lengthMm, offsetMm: seg.offset || 0 });
+      // Robot ends facing the curve's final tangent
+      var lp0 = fpPts[fpPts.length - 2], lp1 = fpPts[fpPts.length - 1];
+      prevHeading = RP.toDeg(RP.angleRad(lp0.x, lp0.y, lp1.x, lp1.y));
+      if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
+      continue;
+    }
+
     var heading = chassisHeading(a, b, effectiveBackward ? RP.SEG_BACKWARD : RP.SEG_FORWARD);
     if (prevHeading !== null) {
       var turn = RP.turnAngle(prevHeading, heading);
@@ -165,7 +186,7 @@ RP.generateCode = function(route) {
 
   var totalMm = 0;
   for (var i = 0; i < steps.length; i++) {
-    if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace') totalMm += steps[i].mm;
+    if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace' || steps[i].kind === 'follow_path') totalMm += steps[i].mm;
   }
   lines_out.push(cp + ' Total distance: ' + (totalMm / uFactor).toFixed(1) + ' ' + unit);
 
@@ -209,6 +230,13 @@ RP.generateCode = function(route) {
     } else if (st.kind === 'linetrace_junct') {
       lines_out.push(RP.codeConfig.lineTraceJunctTemplate
         .replace(/\{junctions\}/g, st.junctions)
+        .replace(/\{speed\}/g, speed));
+    } else if (st.kind === 'follow_path') {
+      var headingsStr = st.headings.map(function(h) { var v = +h.toFixed(1); return (v === 0 ? 0 : v).toFixed(1); }).join(', ');
+      var fpLen = ((st.mm + (st.offsetMm || 0)) / uFactor).toFixed(1);
+      lines_out.push((RP.codeConfig.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})')
+        .replace(/\{headings\}/g, headingsStr)
+        .replace(/\{length\}/g, fpLen)
         .replace(/\{speed\}/g, speed));
     } else {
       // forward

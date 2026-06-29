@@ -25,6 +25,7 @@
     <div class="tab-dropdown">
       <button id="btn-tool-construction" class="tool-btn active" data-tool="construction">📏 Construction Line</button>
       <button id="btn-tool-route" class="tool-btn" data-tool="route">📍 Route</button>
+      <button id="btn-tool-freehand" class="tool-btn" data-tool="freehand">✏️ Freehand Path</button>
       <button id="btn-tool-select" class="tool-btn" data-tool="select">🖱️ Select</button>
       <button id="btn-tool-checkpoint" class="tool-btn" data-tool="checkpoint">🏁 Checkpoint</button>
       <div class="dropdown-sep"></div>
@@ -62,6 +63,7 @@
       <div class="tool-group">
         <button id="btn-sidebar-construction" class="tool-btn sidebar-tool-btn active" data-tool="construction">📏 Line</button>
         <button id="btn-sidebar-route" class="tool-btn sidebar-tool-btn" data-tool="route">📍 Route</button>
+        <button id="btn-sidebar-freehand" class="tool-btn sidebar-tool-btn" data-tool="freehand">✏️ Freehand</button>
         <button id="btn-sidebar-select" class="tool-btn sidebar-tool-btn" data-tool="select">🖱️ Select</button>
         <button id="btn-sidebar-checkpoint" class="tool-btn sidebar-tool-btn" data-tool="checkpoint">🏁 Checkpoint</button>
       </div>
@@ -118,6 +120,7 @@
         <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-dist"> 📏 LT Dist</label>
         <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-junct"> 🔀 LT Junct</label>
         <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-wall-align"> 🧱 Wall Align</label>
+        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-follow-path"> ✏️ Follow Path</label>
       </div>
       <div id="seg-mode-params" style="margin-top:4px;display:none">
         <input type="text" id="seg-teleport-name" placeholder="teleport name" style="display:none;width:100%;box-sizing:border-box;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px">
@@ -199,9 +202,14 @@
   <label>Wall Align <input type="text" id="code-wall-align" value="robot.wall_align(reversed={reversed}, speed={speed})"></label>
   <label>Line Trace Dist <input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed})"></label>
   <label>Line Trace Junct <input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed})"></label>
+  <label>Follow Path <input type="text" id="code-follow-path" value="robot.follow_path(headings=[{headings}], path_length={length})"></label>
+  <label>Follow Path Samples <input type="number" id="code-fp-samples" value="60" min="2" max="500"></label>
+  <label style="display:flex;align-items:center;gap:6px;justify-content:flex-start">
+    <input type="checkbox" id="code-fp-flip" checked style="width:auto"> Flip dx (y-down canvas)
+  </label>
   <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>
   <label>Unit <input type="text" id="code-unit" value="mm"></label>
-  <div class="hint">Use {distance}, {angle}, {speed}, {reversed}, {junctions} as placeholders.</div>
+  <div class="hint">Use {distance}, {angle}, {speed}, {reversed}, {junctions} as placeholders. Follow Path uses {headings}, {length}, {speed}.</div>
 </div>
 
 <script src="js/core.js"></script>
