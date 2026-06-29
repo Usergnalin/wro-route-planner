@@ -245,21 +245,76 @@ RP.render = function() {
         ctx.strokeText(cpLabel, node.x + (9 / RP.scale), node.y - (1 / RP.scale));
         ctx.fillText(cpLabel, node.x + (9 / RP.scale), node.y - (1 / RP.scale));
       } else {
-        var nodeR = 4.5 / RP.scale;
-        ctx.fillStyle = nodeColor;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, nodeR, 0, Math.PI * 2);
-        ctx.fill();
+        var isHoveredNode = RP.hoveredNode && RP.hoveredNode.routeId === r.id && RP.hoveredNode.nodeId === node.id;
+        var nodeR = (isHoveredNode ? 7 : 4.5) / RP.scale;
+        ctx.fillStyle = isHoveredNode ? '#ffffff' : nodeColor;
+        if (isHoveredNode) {
+          ctx.strokeStyle = baseColor;
+          ctx.lineWidth = 2 / RP.scale;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, nodeR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, nodeR, 0, Math.PI * 2);
+          ctx.fill();
+        }
 
         // Show node index along the longest path, otherwise just a dot
         var idxLabel = onLongestPath ? String(nodeIdx + 1) : '';
         if (idxLabel) {
-          ctx.fillStyle = '#fff';
+          ctx.fillStyle = isHoveredNode ? '#000' : '#fff';
           ctx.font = 'bold ' + fs + 'px -apple-system, sans-serif';
-          ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+          ctx.strokeStyle = isHoveredNode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.7)';
           ctx.lineWidth = 3 / RP.scale;
           ctx.strokeText(idxLabel, node.x + (5 / RP.scale), node.y - (5 / RP.scale));
           ctx.fillText(idxLabel, node.x + (5 / RP.scale), node.y - (5 / RP.scale));
+        }
+
+        // Turn angle annotation on hover
+        if (isHoveredNode && onLongestPath && nodeIdx > 0 && nodeIdx < longestPath.length - 1) {
+          var prevNode = longestPath[nodeIdx - 1];
+          var nextNode = longestPath[nodeIdx + 1];
+          var inSeg  = RP.findSegBetween ? RP.findSegBetween(r, prevNode.id, node.id) : null;
+          var outSeg = RP.findSegBetween ? RP.findSegBetween(r, node.id, nextNode.id) : null;
+          if (inSeg && outSeg) {
+            var inHeading  = RP.toDeg ? RP.toDeg(Math.atan2(node.y - prevNode.y, node.x - prevNode.x)) : 0;
+            var outHeading = RP.toDeg ? RP.toDeg(Math.atan2(nextNode.y - node.y, nextNode.x - node.x)) : 0;
+            var turnDeg = outHeading - inHeading;
+            while (turnDeg > 180) turnDeg -= 360;
+            while (turnDeg < -180) turnDeg += 360;
+            var arcR = 22 / RP.scale;
+            var inRad  = Math.atan2(node.y - prevNode.y, node.x - prevNode.x);
+            var outRad = Math.atan2(nextNode.y - node.y, nextNode.x - node.x);
+            // Arc from incoming direction (flipped to show from-node side) to outgoing
+            ctx.save();
+            ctx.strokeStyle = turnDeg === 0 ? '#88ffcc' : (turnDeg > 0 ? '#ffaa44' : '#44aaff');
+            ctx.lineWidth = 1.5 / RP.scale;
+            ctx.beginPath();
+            // arc from reversed-in-direction to out-direction
+            var arcStart = inRad + Math.PI; // direction robot came from
+            var arcEnd   = outRad;
+            // Determine sweep direction to match sign of turn
+            var cwSweep = turnDeg >= 0;
+            ctx.arc(node.x, node.y, arcR, arcStart, arcEnd, !cwSweep);
+            ctx.stroke();
+            // Label
+            var midArcAngle = arcStart + (cwSweep ? 1 : -1) * (Math.abs(turnDeg * Math.PI / 180) / 2);
+            var labR = arcR + 14 / RP.scale;
+            var labX = node.x + labR * Math.cos(midArcAngle);
+            var labY = node.y + labR * Math.sin(midArcAngle);
+            var turnLabel = (turnDeg === 0 ? 'straight' : (Math.abs(turnDeg).toFixed(0) + '° ' + (turnDeg > 0 ? 'R' : 'L')));
+            ctx.font = 'bold ' + (11 / RP.scale) + 'px -apple-system, sans-serif';
+            ctx.textBaseline = 'middle';
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.lineWidth = 3 / RP.scale;
+            ctx.strokeText(turnLabel, labX, labY);
+            ctx.fillStyle = ctx.strokeStyle = turnDeg === 0 ? '#88ffcc' : (turnDeg > 0 ? '#ffaa44' : '#44aaff');
+            ctx.fillStyle = turnDeg === 0 ? '#88ffcc' : (turnDeg > 0 ? '#ffaa44' : '#44aaff');
+            ctx.fillText(turnLabel, labX, labY);
+            ctx.restore();
+          }
         }
       }
     }

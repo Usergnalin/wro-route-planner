@@ -354,6 +354,27 @@ RP.initEvents = function() {
         RP.hoverSnapPoint = null;
         RP.render();
       }
+
+      // Node hover detection
+      var newHover = null;
+      outer: for (var hri = 0; hri < RP.routes.length; hri++) {
+        var hr = RP.routes[hri];
+        if (!hr.visible || !hr.nodes) continue;
+        for (var hni = 0; hni < hr.nodes.length; hni++) {
+          var hn = hr.nodes[hni];
+          if (RP.screenDist(p4.x, p4.y, hn.x, hn.y) < 12) {
+            newHover = { routeId: hr.id, nodeId: hn.id };
+            break outer;
+          }
+        }
+      }
+      var prevHover = RP.hoveredNode;
+      var changed = (!prevHover && newHover) || (prevHover && !newHover) ||
+        (prevHover && newHover && (prevHover.nodeId !== newHover.nodeId || prevHover.routeId !== newHover.routeId));
+      if (changed) {
+        RP.hoveredNode = newHover;
+        RP.render();
+      }
     }
 
     if (RP.dom.infoHover) {
@@ -632,6 +653,10 @@ RP.initEvents = function() {
     reader.onload = function(ev) { RP.loadImageFromDataUrl(ev.target.result); };
     reader.readAsDataURL(file);
     RP.dom.fileInput.value = '';
+  });
+
+  wrap.addEventListener('mouseleave', function() {
+    if (RP.hoveredNode) { RP.hoveredNode = null; RP.render(); }
   });
 
   wrap.addEventListener('dragover', function(e) { e.preventDefault(); });
