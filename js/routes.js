@@ -537,52 +537,7 @@ RP.updateLayerList = function() {
   if (!el) return;
   el.innerHTML = '';
 
-  // ---- Construction lines ----
-  if (RP.lines.length > 0) {
-    var lh = document.createElement('div');
-    lh.className = 'layer-group-title';
-    lh.textContent = 'Construction Lines';
-    el.appendChild(lh);
-    for (var li = 0; li < RP.lines.length; li++) {
-      (function(line, idx) {
-        var div = document.createElement('div');
-        div.className = 'layer-item' + (RP.selectedLineId === line.id ? ' active' : '');
-
-        var eye = document.createElement('button');
-        eye.className = 'layer-vis-btn';
-        eye.textContent = line.visible === false ? '○' : '●';
-        eye.title = line.visible === false ? 'Show' : 'Hide';
-        eye.onclick = function(e) {
-          e.stopPropagation();
-          line.visible = line.visible === false;
-          RP.updateLayerList(); RP.render();
-        };
-
-        var lbl = document.createElement('span');
-        lbl.className = 'layer-item-label';
-        lbl.textContent = 'Line ' + (idx + 1) + (line.label ? '  ' + line.label : '');
-        lbl.title = lbl.textContent;
-        lbl.onclick = function() {
-          RP.selectedLineId = (RP.selectedLineId === line.id) ? null : line.id;
-          RP.updateLayerList(); RP.render();
-        };
-
-        var del = document.createElement('button');
-        del.className = 'layer-del-btn';
-        del.textContent = '✕';
-        del.title = 'Delete line';
-        del.onclick = function(e) {
-          e.stopPropagation();
-          RP.removeConstructionLine(line.id);
-        };
-
-        div.appendChild(eye); div.appendChild(lbl); div.appendChild(del);
-        el.appendChild(div);
-      })(RP.lines[li], li);
-    }
-  }
-
-  // ---- Routes + segments ----
+  // ---- Routes + segments (listed above construction lines) ----
   if (RP.routes.length > 0) {
     var rh = document.createElement('div');
     rh.className = 'layer-group-title';
@@ -643,6 +598,16 @@ RP.updateLayerList = function() {
               var sdiv = document.createElement('div');
               sdiv.className = 'layer-seg-item' + (isSelSeg ? ' active-seg' : '');
 
+              var seye = document.createElement('button');
+              seye.className = 'layer-vis-btn';
+              seye.textContent = seg.visible === false ? '○' : '●';
+              seye.title = seg.visible === false ? 'Show' : 'Hide';
+              seye.onclick = function(e) {
+                e.stopPropagation();
+                seg.visible = seg.visible === false;
+                RP.updateLayerList(); RP.render();
+              };
+
               var slbl = document.createElement('span');
               slbl.className = 'layer-item-label';
               slbl.textContent = 'Seg ' + (sidx + 1) + lenStr + modeTag;
@@ -667,12 +632,57 @@ RP.updateLayerList = function() {
                 RP.removeSegment(route.id, seg.id);
               };
 
-              sdiv.appendChild(slbl); sdiv.appendChild(sdel);
+              sdiv.appendChild(seye); sdiv.appendChild(slbl); sdiv.appendChild(sdel);
               el.appendChild(sdiv);
             })(route.segments[si], si);
           }
         }
       })(RP.routes[ri]);
+    }
+  }
+
+  // ---- Construction lines (listed below routes) ----
+  if (RP.lines.length > 0) {
+    var lh = document.createElement('div');
+    lh.className = 'layer-group-title';
+    lh.textContent = 'Construction Lines';
+    el.appendChild(lh);
+    for (var li = 0; li < RP.lines.length; li++) {
+      (function(line, idx) {
+        var div = document.createElement('div');
+        div.className = 'layer-item' + (RP.selectedLineId === line.id ? ' active' : '');
+
+        var eye = document.createElement('button');
+        eye.className = 'layer-vis-btn';
+        eye.textContent = line.visible === false ? '○' : '●';
+        eye.title = line.visible === false ? 'Show' : 'Hide';
+        eye.onclick = function(e) {
+          e.stopPropagation();
+          line.visible = line.visible === false;
+          RP.updateLayerList(); RP.render();
+        };
+
+        var lbl = document.createElement('span');
+        lbl.className = 'layer-item-label';
+        lbl.textContent = 'Line ' + (idx + 1) + (line.label ? '  ' + line.label : '');
+        lbl.title = lbl.textContent;
+        lbl.onclick = function() {
+          RP.selectedLineId = (RP.selectedLineId === line.id) ? null : line.id;
+          RP.updateLayerList(); RP.render();
+        };
+
+        var del = document.createElement('button');
+        del.className = 'layer-del-btn';
+        del.textContent = '✕';
+        del.title = 'Delete line';
+        del.onclick = function(e) {
+          e.stopPropagation();
+          RP.removeConstructionLine(line.id);
+        };
+
+        div.appendChild(eye); div.appendChild(lbl); div.appendChild(del);
+        el.appendChild(div);
+      })(RP.lines[li], li);
     }
   }
 

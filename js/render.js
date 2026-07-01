@@ -119,6 +119,7 @@ RP.render = function() {
     // Draw segments
     for (var si = 0; si < r.segments.length; si++) {
       var seg = r.segments[si];
+      if (seg.visible === false) continue;
       var na = RP.findNode(r, seg.fromNodeId);
       var nb = RP.findNode(r, seg.toNodeId);
       if (!na || !nb) continue;
