@@ -17,9 +17,6 @@ function _strOr(raw, fallback) {
 }
 
 RP.updateRobotConfigFromUI = function() {
-  RP.robotConfig.width = _posNum(document.getElementById('robot-w').value, 250);
-  RP.robotConfig.length = _posNum(document.getElementById('robot-l').value, 250);
-  RP.robotConfig.wheelbase = _posNum(document.getElementById('robot-wb').value, 180);
   RP.robotConfig.frontClearance = _posNum(document.getElementById('robot-fc').value, 50);
   RP.robotConfig.rearClearance  = _posNum(document.getElementById('robot-rc').value, 50);
   // Re-snap any wall_align segments whose clearance offset just changed
@@ -27,9 +24,6 @@ RP.updateRobotConfigFromUI = function() {
 };
 
 RP.updateRobotUI = function() {
-  document.getElementById('robot-w').value = RP.robotConfig.width;
-  document.getElementById('robot-l').value = RP.robotConfig.length;
-  document.getElementById('robot-wb').value = RP.robotConfig.wheelbase;
   document.getElementById('robot-fc').value = RP.robotConfig.frontClearance || 50;
   document.getElementById('robot-rc').value = RP.robotConfig.rearClearance  || 50;
   document.getElementById('robot-start-label').textContent = RP.robotConfig.startPos

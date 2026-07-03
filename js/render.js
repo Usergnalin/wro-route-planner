@@ -345,7 +345,7 @@ RP.render = function() {
             // Account for extra turns that shift prevHeading before the geometric turn
             var extraSum = 0;
             var nodeET = node.extraTurns || [];
-            for (var eti3 = 0; eti3 < nodeET.length; eti3++) extraSum += Number(nodeET[eti3]) || 0;
+            for (var eti3 = 0; eti3 < nodeET.length; eti3++) extraSum += (RP.extraTurnDeg ? RP.extraTurnDeg(nodeET[eti3]) : Number(nodeET[eti3])) || 0;
             var adjustedInDeg = ((inHeadingDeg + extraSum) % 360 + 360) % 360;
             var geomTurnDeg = outHeadingDeg - adjustedInDeg;
             while (geomTurnDeg > 180) geomTurnDeg -= 360;
@@ -363,7 +363,7 @@ RP.render = function() {
               var curHeadRad = inRad; // incoming direction
               ctx.lineWidth = 1.5 / RP.scale;
               for (var eti4 = 0; eti4 < nodeET.length; eti4++) {
-                var etV = Number(nodeET[eti4]) || 0;
+                var etV = (RP.extraTurnDeg ? RP.extraTurnDeg(nodeET[eti4]) : Number(nodeET[eti4])) || 0;
                 if (Math.abs(etV) < 0.01) continue;
                 var etEnd = curHeadRad + etV * Math.PI / 180;
                 ctx.strokeStyle = '#ff9944';

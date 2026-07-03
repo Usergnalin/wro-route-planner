@@ -748,7 +748,7 @@ RP.initEvents = function() {
       var node = RP.getSelectedNodeObj();
       if (!node) return;
       if (!node.extraTurns) node.extraTurns = [];
-      node.extraTurns.push(0);
+      node.extraTurns.push({ deg: 0, speed: null });
       RP.rebuildNodeTurnsList(node);
       // Focus the new input
       var inputs = RP.dom.nodeExtraTurnsList.querySelectorAll('.node-turn-input');
@@ -759,16 +759,26 @@ RP.initEvents = function() {
   }
 
   if (RP.dom.nodeExtraTurnsList) {
-    // Commit a turn value on change/blur
+    // Commit a turn angle or turn speed on change/blur
     RP.dom.nodeExtraTurnsList.addEventListener('change', function(e) {
-      if (!e.target.classList.contains('node-turn-input')) return;
+      var isAngle = e.target.classList.contains('node-turn-input');
+      var isSpeed = e.target.classList.contains('node-turn-speed-input');
+      if (!isAngle && !isSpeed) return;
       var node = RP.getSelectedNodeObj();
       if (!node || !node.extraTurns) return;
       var entry = e.target.closest('.node-turn-entry');
       var idx = entry ? parseInt(entry.dataset.idx, 10) : -1;
       if (idx < 0 || idx >= node.extraTurns.length) return;
-      var v = parseFloat(e.target.value);
-      node.extraTurns[idx] = isFinite(v) ? v : 0;
+      // Normalize entry to object form, preserving the other field
+      var cur = node.extraTurns[idx];
+      var deg = RP.extraTurnDeg(cur); if (!isFinite(deg)) deg = 0;
+      var spd = RP.extraTurnSpeed(cur);
+      if (isAngle) {
+        var v = parseFloat(e.target.value); deg = isFinite(v) ? v : 0;
+      } else {
+        var sv = parseFloat(e.target.value); spd = (isFinite(sv) && sv > 0) ? sv : null;
+      }
+      node.extraTurns[idx] = { deg: deg, speed: spd };
       if (RP.updateInstructions) RP.updateInstructions();
       RP.render();
     });
@@ -1022,6 +1032,32 @@ RP.initEvents = function() {
     });
   }
 
+  if (RP.dom.segmentSpeed) {
+    RP.dom.segmentSpeed.addEventListener('change', function() {
+      if (!RP.selectedSegment) return;
+      var route = null;
+      for (var i = 0; i < RP.routes.length; i++) {
+        if (RP.routes[i].id === RP.selectedSegment.routeId) { route = RP.routes[i]; break; }
+      }
+      var seg = route && RP.findSegment ? RP.findSegment(route, RP.selectedSegment.segId) : null;
+      if (!seg) return;
+      var v = parseFloat(this.value);
+      if (isFinite(v) && v > 0) seg.speed = v; else delete seg.speed;
+      if (RP.updateInstructions) RP.updateInstructions();
+    });
+  }
+
+  if (RP.dom.nodeTurnSpeed) {
+    RP.dom.nodeTurnSpeed.addEventListener('change', function() {
+      var node = RP.getSelectedNodeObj();
+      if (!node) return;
+      var v = parseFloat(this.value);
+      if (isFinite(v) && v > 0) node.turnSpeed = v; else delete node.turnSpeed;
+      if (RP.updateInstructions) RP.updateInstructions();
+      RP.render();
+    });
+  }
+
   if (RP.dom.btnClearAll) {
     RP.dom.btnClearAll.addEventListener('click', function() {
       if (!confirm('Clear all lines, routes, calibration, robot config, and code templates?')) return;
@@ -1058,7 +1094,7 @@ RP.initEvents = function() {
     });
   }
 
-  ['robot-w', 'robot-l', 'robot-wb', 'robot-fc', 'robot-rc'].forEach(function(id) {
+  ['robot-fc', 'robot-rc'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateRobotConfigFromUI);

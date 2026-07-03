@@ -63,8 +63,12 @@ RP.dom.segmentModeFollowPath = document.getElementById('seg-mode-follow-path');
 RP.dom.segmentModeParams = document.getElementById('seg-mode-params');
 RP.dom.segmentOffsetRow = document.getElementById('seg-offset-row');
 RP.dom.segmentOffset = document.getElementById('seg-offset');
+RP.dom.segmentSpeedRow = document.getElementById('seg-speed-row');
+RP.dom.segmentSpeed = document.getElementById('seg-speed');
 RP.dom.nodeSection = document.getElementById('node-section');
 RP.dom.nodeInfo = document.getElementById('node-info');
+RP.dom.nodeTurnSpeedRow = document.getElementById('node-turn-speed-row');
+RP.dom.nodeTurnSpeed = document.getElementById('node-turn-speed');
 RP.dom.nodeExtraTurnsList = document.getElementById('node-extra-turns-list');
 RP.dom.btnAddNodeTurn = document.getElementById('btn-add-node-turn');
 RP.dom.btnCopyInstr = document.getElementById('btn-copy-instr');
@@ -150,9 +154,6 @@ RP.redoStack = [];
 
 // Robot config
 RP.DEFAULT_ROBOT_CONFIG = {
-  width: 250,
-  length: 250,
-  wheelbase: 180,
   frontClearance: 50,
   rearClearance: 50,
   startPos: null,
@@ -175,15 +176,22 @@ RP.DEFAULT_CODE_CONFIG_VALUES = {
 RP.freshRobotConfig = function() { return JSON.parse(JSON.stringify(RP.DEFAULT_ROBOT_CONFIG)); };
 RP.freshCodeConfig = function() { return JSON.parse(JSON.stringify(RP.DEFAULT_CODE_CONFIG_VALUES)); };
 RP.robotConfig = {
-  width: 250,
-  length: 250,
-  wheelbase: 180,
   frontClearance: 50,
   rearClearance: 50,
   startPos: null,
   startHeading: 0
 };
 RP.robotOverlayVisible = false;
+
+// Extra-turn entries may be a plain number (legacy) or { deg, speed } object.
+RP.extraTurnDeg = function(t) { return (t && typeof t === 'object') ? Number(t.deg) : Number(t); };
+RP.extraTurnSpeed = function(t) {
+  if (t && typeof t === 'object' && t.speed !== undefined && t.speed !== null && t.speed !== '') {
+    var v = Number(t.speed);
+    return isFinite(v) && v > 0 ? v : null;
+  }
+  return null;
+};
 
 // Debounce
 RP.resizeTimer = null;
@@ -680,6 +688,11 @@ RP.updateSegmentPanel = function() {
   if (RP.dom.segmentOffsetRow) RP.dom.segmentOffsetRow.style.display = hasOffset ? '' : 'none';
   if (RP.dom.segmentOffset && hasOffset) RP.dom.segmentOffset.value = seg.offset || 0;
 
+  // Speed row — every mode emits a {speed} action except teleport (comment block only)
+  var hasSpeed = !isTeleport;
+  if (RP.dom.segmentSpeedRow) RP.dom.segmentSpeedRow.style.display = hasSpeed ? '' : 'none';
+  if (RP.dom.segmentSpeed && hasSpeed) RP.dom.segmentSpeed.value = (seg.speed != null ? seg.speed : '');
+
   RP.dom.segmentSection.style.display = '';
 };
 
@@ -709,6 +722,13 @@ RP.updateNodePanel = function() {
   var typeLabel = pathIdx === 0 ? ' (start)' : (pathIdx === lp.length - 1 ? ' (end)' : (pathIdx > 0 ? ' (interior)' : ''));
   RP.dom.nodeInfo.textContent = 'Route: ' + route.name + '\n' + posLabel + typeLabel + '\n(' + node.x.toFixed(0) + ', ' + node.y.toFixed(0) + ')';
 
+  // Geometric turn speed only meaningful for interior nodes (start/end have no geometric turn)
+  if (RP.dom.nodeTurnSpeedRow) {
+    var interior = pathIdx > 0 && pathIdx < lp.length - 1;
+    RP.dom.nodeTurnSpeedRow.style.display = interior ? '' : 'none';
+    if (RP.dom.nodeTurnSpeed) RP.dom.nodeTurnSpeed.value = (node.turnSpeed != null ? node.turnSpeed : '');
+  }
+
   RP.rebuildNodeTurnsList(node);
 };
 
@@ -717,10 +737,14 @@ RP.rebuildNodeTurnsList = function(node) {
   var turns = node.extraTurns || [];
   var html = '';
   for (var i = 0; i < turns.length; i++) {
+    var tDeg = RP.extraTurnDeg(turns[i]);
+    var tSpd = RP.extraTurnSpeed(turns[i]);
     html += '<div class="node-turn-entry" data-idx="' + i + '" style="display:flex;align-items:center;gap:4px;margin-bottom:3px">' +
-      '<input type="number" class="node-turn-input" value="' + Number(turns[i]).toFixed(1) + '" step="1" ' +
+      '<input type="number" class="node-turn-input" value="' + (isFinite(tDeg) ? tDeg : 0).toFixed(1) + '" step="1" title="Turn angle" ' +
       'style="flex:1;min-width:0;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px;text-align:right">' +
       '<span style="color:#aaa;font-size:11px;flex-shrink:0">°</span>' +
+      '<input type="number" class="node-turn-speed-input" value="' + (tSpd != null ? tSpd : '') + '" min="1" placeholder="spd" title="Turn speed (blank = default)" ' +
+      'style="width:44px;flex-shrink:0;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 4px;border-radius:3px;font-size:11px;text-align:right">' +
       '<button class="node-turn-del" title="Remove" style="background:#552222;border:1px solid #774444;color:#faa;padding:1px 7px;border-radius:3px;font-size:12px;cursor:pointer;flex-shrink:0">×</button>' +
       '</div>';
   }

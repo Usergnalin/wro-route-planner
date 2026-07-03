@@ -51,9 +51,9 @@ RP.computeSteps = function(route) {
       var headingStartLeg = chassisHeading(sp, pathNodes[0], firstDir);
       var turnInit = RP.turnAngle(RP.robotConfig.startHeading, headingStartLeg);
       if (Math.abs(turnInit) > 0.5) {
-        steps.push({ kind: 'turn', deg: turnInit });
+        steps.push({ kind: 'turn', deg: turnInit, speed: pathNodes[0].turnSpeed });
       }
-      steps.push({ kind: 'forward', mm: mmFromStart, reverse: firstDir === RP.SEG_BACKWARD });
+      steps.push({ kind: 'forward', mm: mmFromStart, reverse: firstDir === RP.SEG_BACKWARD, speed: firstSeg && firstSeg.speed });
       prevHeading = headingStartLeg;
     } else {
       prevHeading = RP.robotConfig.startHeading;
@@ -83,9 +83,9 @@ RP.computeSteps = function(route) {
     // Emit extra turns stored on node a, before any geometric turn
     var aExtras = a.extraTurns || [];
     for (var eti = 0; eti < aExtras.length; eti++) {
-      var etDeg = Number(aExtras[eti]);
+      var etDeg = RP.extraTurnDeg(aExtras[eti]);
       if (isFinite(etDeg) && Math.abs(etDeg) > 0.01) {
-        steps.push({ kind: 'turn', deg: etDeg, extra: true });
+        steps.push({ kind: 'turn', deg: etDeg, extra: true, speed: RP.extraTurnSpeed(aExtras[eti]) });
         if (prevHeading !== null) prevHeading = ((prevHeading + etDeg) % 360 + 360) % 360;
       }
     }
@@ -112,13 +112,13 @@ RP.computeSteps = function(route) {
       var startTangent = RP.toDeg(RP.angleRad(fpPts[0].x, fpPts[0].y, fpPts[1].x, fpPts[1].y));
       if (prevHeading !== null) {
         var fpTurn = RP.turnAngle(prevHeading, startTangent);
-        if (Math.abs(fpTurn) > 0.5) steps.push({ kind: 'turn', deg: fpTurn });
+        if (Math.abs(fpTurn) > 0.5) steps.push({ kind: 'turn', deg: fpTurn, speed: a.turnSpeed });
       }
       var nSamp = (RP.codeConfig && RP.codeConfig.followPathSamples) || 60;
       var fpFlip = !(RP.codeConfig && RP.codeConfig.followPathFlip === false);
       var fpSmooth = (RP.codeConfig && RP.codeConfig.followPathSmoothness) || 0;
       var fpData = RP.computeFollowPathData(fpPts, nSamp, fpFlip, ppm, fpSmooth);
-      steps.push({ kind: 'follow_path', headings: fpData.headings, mm: fpData.lengthMm, offsetMm: seg.offset || 0 });
+      steps.push({ kind: 'follow_path', headings: fpData.headings, mm: fpData.lengthMm, offsetMm: seg.offset || 0, speed: seg.speed });
       // Robot ends facing the curve's final tangent
       var lp0 = fpPts[fpPts.length - 2], lp1 = fpPts[fpPts.length - 1];
       prevHeading = RP.toDeg(RP.angleRad(lp0.x, lp0.y, lp1.x, lp1.y));
@@ -130,24 +130,24 @@ RP.computeSteps = function(route) {
     if (prevHeading !== null) {
       var turn = RP.turnAngle(prevHeading, heading);
       if (Math.abs(turn) > 0.5) {
-        steps.push({ kind: 'turn', deg: turn }); // positive = clockwise, negative = anticlockwise
+        steps.push({ kind: 'turn', deg: turn, speed: a.turnSpeed }); // positive = clockwise, negative = anticlockwise
       }
     }
 
     var legMm = RP.dist(a.x, a.y, b.x, b.y) / ppm;
     var offsetMm = seg.offset || 0;
     if (mode === RP.SEG_MODE_LINETRACE_DIST) {
-      steps.push({ kind: 'linetrace', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward });
+      steps.push({ kind: 'linetrace', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward, speed: seg.speed });
     } else if (mode === RP.SEG_MODE_LINETRACE_JUNCT) {
-      steps.push({ kind: 'linetrace_junct', junctions: seg.junctionCount || 1, reverse: effectiveBackward });
+      steps.push({ kind: 'linetrace_junct', junctions: seg.junctionCount || 1, reverse: effectiveBackward, speed: seg.speed });
     } else if (mode === RP.SEG_MODE_WALL_ALIGN) {
-      steps.push({ kind: 'wall_align', reverse: effectiveBackward });
+      steps.push({ kind: 'wall_align', reverse: effectiveBackward, speed: seg.speed });
       // Heading is now guaranteed perpendicular to the hit wall — snap to nearest cardinal
       prevHeading = Math.round(heading / 90) * 90 % 360;
       if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
       continue;
     } else {
-      steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward });
+      steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward, speed: seg.speed });
     }
 
     prevHeading = heading;
@@ -158,9 +158,9 @@ RP.computeSteps = function(route) {
   var lastNode = pathNodes[pathNodes.length - 1];
   var lastExtras = lastNode.extraTurns || [];
   for (var eti2 = 0; eti2 < lastExtras.length; eti2++) {
-    var etDeg2 = Number(lastExtras[eti2]);
+    var etDeg2 = RP.extraTurnDeg(lastExtras[eti2]);
     if (isFinite(etDeg2) && Math.abs(etDeg2) > 0.01) {
-      steps.push({ kind: 'turn', deg: etDeg2, extra: true });
+      steps.push({ kind: 'turn', deg: etDeg2, extra: true, speed: RP.extraTurnSpeed(lastExtras[eti2]) });
     }
   }
 
@@ -179,6 +179,7 @@ RP.generateCode = function(route) {
   var uFactor = RP.unitFactor(unit);
   var steps = RP.computeSteps(route);
   var lines_out = [];
+  function spd(st) { return (st.speed != null && st.speed !== '') ? st.speed : speed; }
 
   lines_out.push(cp + ' Route: ' + route.name);
   if (pathNodes && pathNodes.length >= 2) {
@@ -204,7 +205,7 @@ RP.generateCode = function(route) {
       var turnTmpl = RP.codeConfig.turnTemplate || 'turn({angle}, {speed})';
       lines_out.push(turnTmpl
         .replace(/\{angle\}/g, st.deg.toFixed(1))
-        .replace(/\{speed\}/g, speed)
+        .replace(/\{speed\}/g, spd(st))
         .replace(/\{distance\}/g, '0'));
     } else if (st.kind === 'teleport') {
       var dx2 = st.toX - st.fromX, dy2 = st.toY - st.fromY;
@@ -222,30 +223,30 @@ RP.generateCode = function(route) {
     } else if (st.kind === 'wall_align') {
       lines_out.push((RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed})')
         .replace(/\{reversed\}/g, st.reverse ? 'True' : 'False')
-        .replace(/\{speed\}/g, speed));
+        .replace(/\{speed\}/g, spd(st)));
     } else if (st.kind === 'linetrace') {
       lines_out.push(RP.codeConfig.lineTraceDistTemplate
         .replace(/\{distance\}/g, ((st.mm + (st.offsetMm || 0)) / uFactor).toFixed(1))
-        .replace(/\{speed\}/g, speed)
+        .replace(/\{speed\}/g, spd(st))
         .replace(/\{angle\}/g, '0'));
     } else if (st.kind === 'linetrace_junct') {
       lines_out.push(RP.codeConfig.lineTraceJunctTemplate
         .replace(/\{junctions\}/g, st.junctions)
-        .replace(/\{speed\}/g, speed));
+        .replace(/\{speed\}/g, spd(st)));
     } else if (st.kind === 'follow_path') {
       var headingsStr = st.headings.map(function(h) { var v = +h.toFixed(1); return (v === 0 ? 0 : v).toFixed(1); }).join(', ');
       var fpLen = ((st.mm + (st.offsetMm || 0)) / uFactor).toFixed(1);
       lines_out.push((RP.codeConfig.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})')
         .replace(/\{headings\}/g, headingsStr)
         .replace(/\{length\}/g, fpLen)
-        .replace(/\{speed\}/g, speed));
+        .replace(/\{speed\}/g, spd(st)));
     } else {
       // forward
       var mag = (st.mm + (st.offsetMm || 0)) / uFactor;
       var distOut = (st.reverse ? -mag : mag).toFixed(1);
       lines_out.push(RP.codeConfig.forwardTemplate
         .replace(/\{distance\}/g, distOut)
-        .replace(/\{speed\}/g, speed)
+        .replace(/\{speed\}/g, spd(st))
         .replace(/\{angle\}/g, '0'));
     }
   }
