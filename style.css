@@ -145,15 +145,38 @@ canvas{display:block;width:100%;height:100%}
 #ctx-menu button:hover{background:#c0392b;color:#fff}
 
 /* Robot config overlay */
-#robot-overlay{display:none;position:absolute;top:50px;right:200px;background:#2a2a2a;border:1px solid #555;border-radius:6px;padding:18px;z-index:100;width:460px;box-shadow:0 4px 20px rgba(0,0,0,.5);max-height:85vh;overflow-y:auto}
-#robot-overlay.visible{display:block}
-#robot-overlay h3{margin-bottom:10px;color:#ddd;font-size:14px}
-#robot-overlay label{display:flex;justify-content:space-between;align-items:center;margin:6px 0;font-size:12px}
-#robot-overlay input[type="number"],#robot-overlay input[type="text"]{width:220px;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:3px 8px;border-radius:3px;text-align:right;font-size:12px}
+/* Robot / code config modal. Centred and fixed rather than pinned to the
+   right edge, where it used to sit half off-screen on narrow windows. */
+#robot-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:400}
+#robot-backdrop.visible{display:block}
+#robot-overlay{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:#2a2a2a;border:1px solid #555;border-radius:8px;z-index:401;
+  width:min(760px,92vw);max-height:88vh;box-shadow:0 12px 48px rgba(0,0,0,.6);
+  flex-direction:column;overflow:hidden}
+#robot-overlay.visible{display:flex}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:12px 16px;background:#232323;border-bottom:1px solid #444;flex-shrink:0}
+.modal-head h3{margin:0;color:#eee;font-size:15px}
+.modal-close{width:26px;height:26px;flex-shrink:0;padding:0;line-height:1;
+  background:#3a3a3a;border:1px solid #555;color:#bbb;border-radius:4px;cursor:pointer;font-size:13px}
+.modal-close:hover{background:#c0392b;border-color:#e74c3c;color:#fff}
+.modal-body{padding:14px 16px 18px;overflow-y:auto}
+.modal-section{margin:14px 0 6px;color:#8fc9ee;font-size:11px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #3d3d3d;padding-bottom:4px}
+.modal-section:first-child{margin-top:0}
+/* Templates are the long tail of this dialog; two columns keeps it from
+   turning into a scroll marathon. */
+.tmpl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:2px 18px}
+#robot-overlay label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;font-size:12px;color:#ccc}
+#robot-overlay .tmpl-grid label{flex-direction:column;align-items:stretch;gap:3px;margin:5px 0}
+#robot-overlay input[type="number"],#robot-overlay input[type="text"]{width:220px;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:4px 8px;border-radius:3px;text-align:right;font-size:12px}
+#robot-overlay .tmpl-grid input{width:100%;box-sizing:border-box}
 #robot-overlay input[type="text"]{text-align:left;font-family:'SF Mono','Fira Code',monospace;font-size:11px}
-#robot-overlay .hint{color:#888;font-size:11px;margin-top:4px}
-#robot-overlay button{margin-top:6px;width:100%;padding:6px;background:#3a3a3a;border:1px solid #555;color:#ddd;border-radius:4px;cursor:pointer;font-size:12px}
-#robot-overlay button:hover{background:#4a4a4a}
+#robot-overlay input:focus{outline:none;border-color:#3a8fc7;background:#404040}
+#robot-overlay .hint{color:#888;font-size:11px;margin-top:8px;line-height:1.5}
+#robot-overlay .modal-body>button{margin-top:6px;width:100%;padding:6px;background:#3a3a3a;border:1px solid #555;color:#ddd;border-radius:4px;cursor:pointer;font-size:12px}
+#robot-overlay .modal-body>button:hover{background:#4a4a4a}
+#btn-robot-config.active{background:#2a6f97;border-color:#3a8fc7;color:#fff}
 
 /* Sketch / Route mode switch */
 #mode-switch{display:flex;gap:2px;margin-left:12px;background:#1e1e1e;padding:2px;border-radius:5px}
@@ -173,6 +196,12 @@ canvas{display:block;width:100%;height:100%}
 /* .elp span sets flex:1 on everything, which made the toggle share width
    equally with its label and clip its second button off the sidebar. */
 .elp .seg-toggle{flex:0 0 auto}
+/* Two states, so one button. Tinted to match the segment on the canvas:
+   blue driving forwards, orange driving backwards. */
+.drive-toggle{flex:0 0 auto;background:#2a6f97;border:1px solid #3a8fc7;color:#fff;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px;white-space:nowrap;transition:background .15s}
+.drive-toggle:hover{background:#3a8fc7}
+.drive-toggle.rev{background:#a35427;border-color:#ff8844}
+.drive-toggle.rev:hover{background:#c4652f}
 .elp input[type="checkbox"]{width:auto;accent-color:#2a6f97}
 
 /* Constraint palette */

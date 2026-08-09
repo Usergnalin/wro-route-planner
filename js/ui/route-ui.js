@@ -503,6 +503,10 @@ RP.updateElementList = function() { RP.updateActionList(); };
 
 var INPUT_CSS = 'width:70px;background:#3a3a3a;border:1px solid #555;color:#ddd;' +
                 'padding:2px 4px;border-radius:3px;font-size:11px;text-align:right';
+// Dropdowns hold words, not numbers, so they need more room than the
+// number fields — at 70px "Pivot left" rendered as "Pivot on ⌄".
+var SELECT_CSS = 'width:112px;background:#3a3a3a;border:1px solid #555;color:#ddd;' +
+                 'padding:2px 4px;border-radius:3px;font-size:11px';
 
 function elpOn(id, evt, fn) {
   var node = document.getElementById(id);
@@ -569,7 +573,7 @@ RP.renderTurnParams = function(host, act) {
   html += '<label class="elp"><span>Speed</span><input type="number" id="elp-t-speed" min="1" ' +
           'placeholder="default" value="' + (act.speed != null ? act.speed : '') + '" style="' + INPUT_CSS + '"></label>';
 
-  html += '<label class="elp"><span>Style</span><select id="elp-t-style" style="' + INPUT_CSS + '">';
+  html += '<label class="elp"><span>Style</span><select id="elp-t-style" style="' + SELECT_CSS + '">';
   for (var i = 0; i < RP.TURN_STYLES.length; i++) {
     var st = RP.TURN_STYLES[i];
     html += '<option value="' + st + '"' + ((act.style || RP.DEFAULT_TURN_STYLE) === st ? ' selected' : '') + '>' +
@@ -629,7 +633,7 @@ RP.renderMoveParams = function(host, el) {
   var ent = sk ? sk.entities[el.entityId] : null;
   var moves = RP.movesForEntity(ent ? ent.type : 'line');
 
-  var html = '<label class="elp"><span>Move</span><select id="elp-move" style="' + INPUT_CSS + '">';
+  var html = '<label class="elp"><span>Move</span><select id="elp-move" style="' + SELECT_CSS + '">';
   for (var i = 0; i < moves.length; i++) {
     html += '<option value="' + moves[i] + '"' + (el.move === moves[i] ? ' selected' : '') + '>' +
             (RP.MOVE_LABELS[moves[i]] || moves[i]) + '</option>';
@@ -638,11 +642,12 @@ RP.renderMoveParams = function(host, el) {
 
   // Travel direction is derived from the chain, so it is not offered here.
   // The only direction choice that is genuinely the user's is whether the
-  // robot covers this element nose-first or tail-first.
-  html += '<label class="elp"><span>Drive</span><span class="seg-toggle">' +
-          '<button type="button" id="elp-fwd" class="seg-btn' + (!el.reverse ? ' active' : '') + '">▶ Forwards</button>' +
-          '<button type="button" id="elp-rev" class="seg-btn' + (el.reverse ? ' active' : '') + '">◀ Backwards</button>' +
-          '</span></label>';
+  // robot covers this element nose-first or tail-first. Two states, so one
+  // toggle — and it is tinted to match the segment's colour on the canvas.
+  html += '<label class="elp"><span>Drive</span>' +
+          '<button type="button" id="elp-drive" class="drive-toggle' + (el.reverse ? ' rev' : '') + '" ' +
+          'title="Click to drive the other way along this leg">' +
+          (el.reverse ? '◀ Backwards' : '▶ Forwards') + '</button></label>';
   html += '<label class="elp"><span>Speed</span><input type="number" id="elp-speed" min="1" ' +
           'placeholder="default" value="' + (el.speed != null ? el.speed : '') + '" style="' + INPUT_CSS + '"></label>';
 
@@ -668,8 +673,7 @@ RP.renderMoveParams = function(host, el) {
   host.innerHTML = html;
 
   elpOn('elp-move', 'change', function() { RP.updateSelectedElement({ move: this.value }); });
-  elpOn('elp-fwd', 'click', function() { RP.updateSelectedElement({ reverse: false }); });
-  elpOn('elp-rev', 'click', function() { RP.updateSelectedElement({ reverse: true }); });
+  elpOn('elp-drive', 'click', function() { RP.updateSelectedElement({ reverse: !el.reverse }); });
   elpOn('elp-speed', 'change', function() {
     var v = parseFloat(this.value);
     RP.updateSelectedElement({ speed: isFinite(v) && v > 0 ? v : null });

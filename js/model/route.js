@@ -32,8 +32,8 @@ RP.MOVE_TELEPORT        = 'teleport';
 
 RP.MOVE_LABELS = {
   forward: 'Forward', arc: 'Arc',
-  linetrace_dist: 'Line trace (distance)',
-  linetrace_junct: 'Line trace (junctions)',
+  linetrace_dist: 'Line trace (dist)',
+  linetrace_junct: 'Line trace (junct)',
   wall_align: 'Wall align', teleport: 'Teleport'
 };
 

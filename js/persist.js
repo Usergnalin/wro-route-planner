@@ -93,8 +93,7 @@ RP.loadMapProject = function(name) {
       RP.robotConfig = data.robotConfig ? JSON.parse(JSON.stringify(data.robotConfig)) : RP.freshRobotConfig();
       RP.codeConfig = data.codeConfig ? JSON.parse(JSON.stringify(data.codeConfig)) : RP.freshCodeConfig();
       RP.ensureCodeConfig();  // backfill any fields missing from old saves
-      RP.robotOverlayVisible = false;
-      RP.dom.robotOverlay.classList.remove('visible');
+      RP.setRobotOverlay(false);
       RP.undoStack = [];
       RP.redoStack = [];
 
@@ -216,8 +215,7 @@ RP.importProject = function(file) {
         RP.robotConfig = data.robotConfig ? JSON.parse(JSON.stringify(data.robotConfig)) : RP.freshRobotConfig();
         RP.codeConfig = data.codeConfig ? JSON.parse(JSON.stringify(data.codeConfig)) : RP.freshCodeConfig();
         RP.ensureCodeConfig();  // backfill any fields missing from old saves
-        RP.robotOverlayVisible = false;
-        RP.dom.robotOverlay.classList.remove('visible');
+        RP.setRobotOverlay(false);
         RP.undoStack = [];
         RP.redoStack = [];
 

@@ -23,6 +23,8 @@ RP.dom.codeOutput = document.getElementById('code-output');
 RP.dom.mapListEl = document.getElementById('map-list');
 RP.dom.routeSelect = document.getElementById('route-select');
 RP.dom.robotOverlay = document.getElementById('robot-overlay');
+RP.dom.robotBackdrop = document.getElementById('robot-backdrop');
+RP.dom.btnRobotClose = document.getElementById('btn-robot-close');
 RP.dom.infoTool = document.getElementById('info-tool');
 RP.dom.infoSnap = document.getElementById('info-snap');
 RP.dom.infoHover = document.getElementById('info-hover');
@@ -586,6 +588,22 @@ RP.updateInfoPanel = function() {
   if (RP.dom.routeWpCount) {
     var r = RP.getActiveRoute();
     RP.dom.routeWpCount.textContent = r ? (r.nodes ? r.nodes.length : 0) + ' nodes' : 'No active route';
+  }
+};
+
+// ======================================================================
+// ROBOT / CODE CONFIG MODAL
+// (single entry point so the backdrop and the button state cannot drift
+//  out of sync with the dialog)
+// ======================================================================
+RP.setRobotOverlay = function(open) {
+  RP.robotOverlayVisible = !!open;
+  if (RP.dom.robotOverlay) RP.dom.robotOverlay.classList.toggle('visible', RP.robotOverlayVisible);
+  if (RP.dom.robotBackdrop) RP.dom.robotBackdrop.classList.toggle('visible', RP.robotOverlayVisible);
+  if (RP.dom.btnRobotConfig) RP.dom.btnRobotConfig.classList.toggle('active', RP.robotOverlayVisible);
+  if (RP.robotOverlayVisible) {
+    if (RP.updateRobotUI) RP.updateRobotUI();
+    if (RP.updateCodeConfigUI) RP.updateCodeConfigUI();
   }
 };
 

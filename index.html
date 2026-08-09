@@ -28,7 +28,6 @@
       <button id="btn-tool-constrain" class="tool-btn" data-tool="constrain">📐 Constrain</button>
       <div class="dropdown-sep"></div>
       <button id="btn-snap" class="active">🧲 Snap</button>
-      <button id="btn-robot-config">🤖 Robot Config</button>
     </div>
   </div>
   <div class="tab" id="tab-route">
@@ -41,10 +40,11 @@
     </div>
   </div>
   <div id="mode-switch">
-    <button id="btn-mode-sketch" class="mode-btn active" title="Draw and constrain geometry">📐 Sketch</button>
-    <button id="btn-mode-route" class="mode-btn" title="Assign robot moves to existing geometry">🤖 Route</button>
+    <button id="btn-mode-sketch" class="mode-btn active" title="Draw and constrain geometry (1 · Tab to flip)">📐 Sketch</button>
+    <button id="btn-mode-route" class="mode-btn" title="Assign robot moves to existing geometry (2 · Tab to flip)">🤖 Route</button>
   </div>
   <div id="top-bar-right">
+    <button id="btn-robot-config" title="Robot config and code templates">🤖 Robot &amp; Code</button>
     <button id="btn-zoom-in" title="Zoom in">🔍+</button>
     <button id="btn-zoom-out" title="Zoom out">🔍−</button>
     <button id="btn-fit" title="Fit to view">Fit</button>
@@ -119,7 +119,7 @@
   <!-- Canvas -->
   <div id="canvas-wrap">
     <canvas id="canvas"></canvas>
-    <div class="zoom-hint" id="zoom-hint">Scroll to zoom · Drag to pan · WASD to pan · Route: drag from dot</div>
+    <div class="zoom-hint" id="zoom-hint">Scroll to zoom · Drag to pan · WASD to pan · 1 Sketch / 2 Route · Tab to flip</div>
   </div>
 
   <!-- Right sidebar: Info -->
@@ -203,8 +203,14 @@
 </div>
 
 <!-- Robot config overlay -->
-<div id="robot-overlay">
-  <h3>🤖 Robot Configuration</h3>
+<div id="robot-backdrop"></div>
+<div id="robot-overlay" role="dialog" aria-labelledby="robot-overlay-title">
+  <div class="modal-head">
+    <h3 id="robot-overlay-title">🤖 Robot &amp; Code Configuration</h3>
+    <button id="btn-robot-close" class="modal-close" title="Close (Esc)">✕</button>
+  </div>
+  <div class="modal-body">
+  <h4 class="modal-section">Chassis &amp; start</h4>
   <label>Front Clearance (mm) <input type="number" id="robot-fc" value="50" min="0" max="500"></label>
   <label>Rear Clearance (mm) <input type="number" id="robot-rc" value="50" min="0" max="500"></label>
   <hr style="border-color:#444;margin:8px 0">
@@ -213,11 +219,14 @@
   <button id="btn-set-start">📍 Click on map to set</button>
   <button id="btn-clear-start">🗑️ Clear start</button>
   <div class="hint">Click on canvas to place start marker, then drag to set heading.</div>
-  <hr style="border-color:#444;margin:8px 0">
-  <h3 style="font-size:13px;margin-bottom:6px">📝 Code Templates</h3>
+
+  <h4 class="modal-section">Code templates</h4>
+  <div class="tmpl-grid">
   <label>Comment Prefix <input type="text" id="code-comment" value="#"></label>
   <label>Forward Template <input type="text" id="code-forward" value="robot.move_distance(distance={distance}, speed={speed})"></label>
   <label>Turn <small style="color:#888">(+CW / -CCW)</small> <input type="text" id="code-turn" value="robot.turn_arc(angle={angle}, speed={speed})"></label>
+  <label>Turn · pivot left <small style="color:#888">(blank = same as Turn)</small> <input type="text" id="code-turn-pivot-l" value="" placeholder="robot.pivot_left({angle}, {speed})"></label>
+  <label>Turn · pivot right <small style="color:#888">(blank = same as Turn)</small> <input type="text" id="code-turn-pivot-r" value="" placeholder="robot.pivot_right({angle}, {speed})"></label>
   <label>Arc <small style="color:#888">(angle +fwd/-back, radius +right/-left)</small> <input type="text" id="code-turn-arc" value="robot.turn_arc(angle={angle}, speed={speed}, radius={radius})"></label>
   <label>Wall Align <input type="text" id="code-wall-align" value="robot.wall_align(reversed={reversed}, speed={speed})"></label>
   <label>Line Trace Dist <input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed})"></label>
@@ -225,7 +234,9 @@
   <label>Checkpoint <input type="text" id="code-checkpoint" value="if callable({name}): {name}()"></label>
   <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>
   <label>Unit <input type="text" id="code-unit" value="mm"></label>
-  <div class="hint">Use {distance}, {angle}, {speed}, {reversed}, {junctions} as placeholders. Arc uses {angle}, {radius}, {speed}. Follow Path uses {headings}, {length}, {speed}. Checkpoint uses {name}.</div>
+  </div>
+  <div class="hint">Placeholders: {distance}, {angle}, {speed}, {reversed}, {junctions}, {radius}, {name}. Leave a pivot template blank to fall back to the plain turn.</div>
+  </div>
 </div>
 
 <!-- Context menu -->

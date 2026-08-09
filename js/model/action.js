@@ -51,10 +51,12 @@ RP.TURN_FIXED = 'fixed';
 // about the chassis centre, a pivot locks one wheel and swings about it.
 // Each maps to its own code template.
 RP.TURN_STYLES = ['spin', 'pivot_left', 'pivot_right'];
+// Short enough to survive the 180px sidebar; the panel hint underneath
+// carries the explanation.
 RP.TURN_STYLE_LABELS = {
-  spin: 'Spin (both wheels)',
-  pivot_left: 'Pivot on left wheel',
-  pivot_right: 'Pivot on right wheel'
+  spin: 'Spin',
+  pivot_left: 'Pivot left',
+  pivot_right: 'Pivot right'
 };
 RP.DEFAULT_TURN_STYLE = 'spin';
 

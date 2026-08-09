@@ -52,6 +52,9 @@ RP.ensureCodeConfig = function() {
   if (!cfg.lineTraceDistTemplate) cfg.lineTraceDistTemplate = d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
   if (!cfg.lineTraceJunctTemplate) cfg.lineTraceJunctTemplate = d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
   if (!cfg.checkpointTemplate) cfg.checkpointTemplate = d.checkpointTemplate || 'if callable({name}): {name}()';
+  // Blank is a meaningful value here, so only backfill when absent.
+  if (cfg.turnPivotLeftTemplate === undefined) cfg.turnPivotLeftTemplate = d.turnPivotLeftTemplate || '';
+  if (cfg.turnPivotRightTemplate === undefined) cfg.turnPivotRightTemplate = d.turnPivotRightTemplate || '';
   if (cfg.defaultSpeed === undefined || cfg.defaultSpeed === null) cfg.defaultSpeed = d.defaultSpeed || 200;
   if (!cfg.defaultUnit) cfg.defaultUnit = d.defaultUnit || 'mm';
 };
@@ -65,6 +68,10 @@ RP.updateCodeConfigFromUI = function() {
   RP.codeConfig.commentPrefix = _strOr(_el('code-comment'), d.commentPrefix || '//');
   RP.codeConfig.forwardTemplate = _strOr(_el('code-forward'), d.forwardTemplate || 'move({distance}, {speed})');
   RP.codeConfig.turnTemplate       = _strOr(_el('code-turn'),       d.turnTemplate       || 'turn({angle}, {speed})');
+  // Pivot templates are deliberately allowed to be blank — that is how a
+  // style says "same as a plain turn", so _strOr's default must not apply.
+  RP.codeConfig.turnPivotLeftTemplate  = _el('code-turn-pivot-l');
+  RP.codeConfig.turnPivotRightTemplate = _el('code-turn-pivot-r');
   RP.codeConfig.turnArcTemplate    = _strOr(_el('code-turn-arc'),   d.turnArcTemplate    || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})');
   RP.codeConfig.wallAlignTemplate  = _strOr(_el('code-wall-align'), d.wallAlignTemplate  || 'wall_align({reversed}, {speed})');
   RP.codeConfig.lineTraceDistTemplate = _strOr(_el('code-lt-dist'), d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})');
@@ -79,6 +86,10 @@ RP.updateCodeConfigUI = function() {
   document.getElementById('code-comment').value = RP.codeConfig.commentPrefix;
   document.getElementById('code-forward').value = RP.codeConfig.forwardTemplate;
   document.getElementById('code-turn').value       = RP.codeConfig.turnTemplate      || 'turn({angle}, {speed})';
+  var pvL = document.getElementById('code-turn-pivot-l');
+  if (pvL) pvL.value = RP.codeConfig.turnPivotLeftTemplate || '';
+  var pvR = document.getElementById('code-turn-pivot-r');
+  if (pvR) pvR.value = RP.codeConfig.turnPivotRightTemplate || '';
   var arcTmplEl = document.getElementById('code-turn-arc');
   if (arcTmplEl) arcTmplEl.value = RP.codeConfig.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
   document.getElementById('code-wall-align').value = RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed})';

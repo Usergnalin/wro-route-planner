@@ -590,11 +590,14 @@ RP.initEvents = function() {
 
   if (RP.dom.btnRobotConfig) {
     RP.dom.btnRobotConfig.addEventListener('click', function() {
-      RP.robotOverlayVisible = !RP.robotOverlayVisible;
-      RP.dom.robotOverlay.classList.toggle('visible', RP.robotOverlayVisible);
-      RP.updateRobotUI();
-      RP.updateCodeConfigUI();
+      RP.setRobotOverlay(!RP.robotOverlayVisible);
     });
+  }
+  if (RP.dom.btnRobotClose) {
+    RP.dom.btnRobotClose.addEventListener('click', function() { RP.setRobotOverlay(false); });
+  }
+  if (RP.dom.robotBackdrop) {
+    RP.dom.robotBackdrop.addEventListener('click', function() { RP.setRobotOverlay(false); });
   }
 
   if (RP.dom.btnSetStart) {
@@ -608,8 +611,9 @@ RP.initEvents = function() {
       }
       RP.startMarkerPlacing = true;
       RP.dom.btnSetStart.textContent = 'Click canvas... (click button to cancel)';
-      RP.robotOverlayVisible = true;
-      RP.dom.robotOverlay.classList.add('visible');
+      // Placing the marker means clicking the canvas, which the modal
+      // covers — so get out of the way rather than sitting on top of it.
+      RP.setRobotOverlay(false);
     });
   }
 
@@ -720,7 +724,9 @@ RP.initEvents = function() {
     el.addEventListener('input', RP.updateRobotConfigFromUI);
   });
 
-  ['code-comment', 'code-forward', 'code-turn', 'code-turn-arc', 'code-wall-align', 'code-lt-dist', 'code-lt-junct', 'code-speed', 'code-unit'].forEach(function(id) {
+  ['code-comment', 'code-forward', 'code-turn', 'code-turn-pivot-l', 'code-turn-pivot-r',
+   'code-turn-arc', 'code-wall-align', 'code-lt-dist', 'code-lt-junct',
+   'code-checkpoint', 'code-speed', 'code-unit'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateCodeConfigFromUI);
@@ -740,6 +746,17 @@ RP.initEvents = function() {
 
   window.addEventListener('keydown', function(e) {
     if (e.key === 'Control') { RP.ctrlHeld = true; return; }
+
+    // Escape closes the modal even from inside one of its fields — every
+    // control in that dialog is a text input, so the typing guard below
+    // would otherwise swallow the only key that dismisses it.
+    if (e.key === 'Escape' && RP.robotOverlayVisible) {
+      RP.setRobotOverlay(false);
+      if (e.target && e.target.blur) e.target.blur();
+      e.preventDefault();
+      return;
+    }
+
     if (isTypingTarget(e.target)) return;
 
     // Constraint shortcuts, constrain tool only so they cannot collide with
@@ -780,6 +797,18 @@ RP.initEvents = function() {
         e.preventDefault();
       }
       return;
+    }
+
+    // Mode switching. Digits pick a mode directly, Tab flips between them
+    // — none of these collide with WASD panning or the constraint letters.
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === '1') { e.preventDefault(); RP.setEditMode('sketch'); return; }
+      if (e.key === '2') { e.preventDefault(); RP.setEditMode('route'); return; }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        RP.setEditMode(RP.editMode === 'sketch' ? 'route' : 'sketch');
+        return;
+      }
     }
 
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); RP.undo(); return; }

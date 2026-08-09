@@ -1,3 +1,60 @@
+# Changes — 2026-08-09 (4)
+
+## UI polish
+
+### Drive is one toggle, not two buttons
+
+The move panel's ▶ Forwards / ◀ Backwards pair became a single button that
+flips on click, tinted to match the segment on the canvas — blue driving
+forwards, orange driving backwards. Two states never needed two controls,
+and it buys back the width the pair was fighting over.
+
+### Robot & Code config is a real modal
+
+- **The button moved out of the Insert dropdown into the top bar**, next
+  to the zoom controls, and lights up while the dialog is open. It was
+  buried three levels down in a hover menu.
+- **The dialog is centred and fixed**, not pinned to `right: 200px` where
+  it hung half off-screen on narrower windows. `min(760px, 92vw)` wide, a
+  proper header with a ✕, and the body scrolls rather than the page.
+- **Templates are a two-column grid** under section headers, so the
+  dialog is a page rather than a scroll marathon.
+- **Closes on ✕, on backdrop click, and on Escape.** Escape is handled
+  before the "is the user typing?" guard — every control in that dialog
+  is a text input, so the guard would otherwise have swallowed the only
+  key that dismisses it.
+- **Set-start now closes the dialog** instead of leaving it covering the
+  canvas you have been asked to click.
+- Opening and closing goes through one `RP.setRobotOverlay(open)`, so the
+  backdrop and the button's lit state cannot drift apart from the dialog.
+- The **pivot-left / pivot-right turn templates** added in 10.1 finally
+  have fields. Blank means "same as a plain turn", so they are read
+  without `_strOr`'s default, which would have overwritten the blank.
+  `code-checkpoint` was also never wired to the live-update list — it is
+  now.
+
+### Mode hotkeys
+
+`1` → Sketch, `2` → Route, `Tab` flips between them. None collide with
+WASD panning or the constraint letters, and all three are ignored while
+you are typing in a field. Shown in the mode buttons' tooltips and the
+canvas hint.
+
+### Also
+
+The Style and Move dropdowns were rendering as "Pivot on ⌄" and
+"Line trace (jur" — 70px is fine for numbers, not for words. Widened to
+112px and shortened the longest labels.
+
+### Verification
+
+10 suites pass, goldens byte-identical. Browser: hotkeys in both
+directions and ignored inside a field, modal centred at exactly the
+viewport centre, all three close paths, the drive toggle round-tripping,
+and a filled-in pivot template reaching the generated code.
+
+---
+
 # Changes — 2026-08-09 (3)
 
 ## Phase 10.2 — the action UI
