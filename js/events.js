@@ -146,6 +146,26 @@ RP.initEvents = function() {
 
 
 
+    // ---- POINT TOOL ----
+    // A click, not a drag: a standalone point is a reference mark, and it
+    // snaps like any other drawn geometry so it can land exactly on a
+    // corner or an intersection.
+    if (RP.activeTool === 'point') {
+      if (!RP.img) return;
+      var pPt = RP.screenToImage(e.clientX, e.clientY);
+      var sPt = RP.computeSnap(pPt.x, pPt.y, { kind: 'point' });
+      var finPt = sPt || pPt;
+      RP.pushHistory('Add point');
+      var madePt = RP.addConstructionPoint(finPt.x, finPt.y, { snap: sPt || null });
+      if (!madePt) { RP.undoStack.pop(); return; }
+      RP.selectedLineId = madePt.point.id;
+      RP.hoverSnapPoint = null;
+      if (RP.updateLayerList) RP.updateLayerList();
+      RP.updateInfoPanel();
+      RP.render();
+      return;
+    }
+
     // ---- CONSTRUCTION MODE ----
     // Arcs are drawn by their chord, exactly like a line; the centre is
     // then a normal sketch point you can drag or constrain.

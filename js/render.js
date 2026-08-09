@@ -95,6 +95,37 @@ RP.render = function() {
     }
   }
 
+  // --- Draw standalone points ---
+  // Drawn as a small ring with a centre dot so they read as a marked
+  // position rather than as another line's endpoint.
+  for (var spi = 0; spi < RP.points.length; spi++) {
+    var sp = RP.points[spi];
+    if (sp.visible === false) continue;
+    var spSel = RP.selectedLineId === sp.id ||
+                (RP.isSketchSelected ? RP.isSketchSelected(sp.id) : false);
+    var spColor = spSel ? '#ffee44'
+                        : (inRouteMode ? 'rgba(150,190,150,0.5)'
+                                       : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44'));
+    var spR = (spSel ? 6 : 4.5) / RP.scale;
+    ctx.strokeStyle = spColor;
+    ctx.lineWidth = (spSel ? 2.5 : 1.8) / RP.scale;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, spR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = spColor;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, 1.4 / RP.scale, 0, Math.PI * 2);
+    ctx.fill();
+    if (sp.name && RP.scale > 0.05) {
+      ctx.font = fs + 'px -apple-system, sans-serif';
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineWidth = 3 / RP.scale;
+      ctx.strokeText(sp.name, sp.x + spR + 4 / RP.scale, sp.y - 2 / RP.scale);
+      ctx.fillStyle = spColor;
+      ctx.fillText(sp.name, sp.x + spR + 4 / RP.scale, sp.y - 2 / RP.scale);
+    }
+  }
+
   // --- Field boundary (shown when any wall_align segment exists) ---
   if (RP.imgNaturalW && RP.imgNaturalH && RP.calibration) {
     var hasWallAlign = false;

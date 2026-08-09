@@ -254,6 +254,8 @@ RP.updateLayerList = function() {
     return { view: l, name: 'Line ' + (i + 1), isArc: false };
   }).concat(RP.arcs.map(function(a, i) {
     return { view: a, name: 'Arc ' + (i + 1), isArc: true };
+  })).concat(RP.points.map(function(p, i) {
+    return { view: p, name: p.name || ('Point ' + (i + 1)), isArc: false };
   }));
 
   if (geometry.length > 0) {

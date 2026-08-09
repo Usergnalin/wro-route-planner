@@ -75,6 +75,11 @@ RP.sketchPoints = function() {
     add(arc.p2, arc.x2, arc.y2);
     add(arc.center, arc.cx, arc.cy);
   }
+  for (var k = 0; k < RP.points.length; k++) {
+    var sp = RP.points[k];
+    if (sp.visible === false) continue;
+    add(sp.id, sp.x, sp.y);
+  }
   return out;
 };
 

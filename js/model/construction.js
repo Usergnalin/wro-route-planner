@@ -34,6 +34,8 @@ RP.resetSketch = function() {
   RP.sketch = RP.Sketch.create({ charLength: 100 });
   RP.constructionMeta = {};
   RP.lines = [];
+  RP.arcs = [];
+  RP.points = [];
   RP.selectedLineId = null;
 };
 
@@ -43,9 +45,25 @@ RP.rebuildLines = function() {
   var ids = RP.Sketch.entityIds(sk);
   var out = [];
   var arcsOut = [];
+  var ptsOut = [];
   for (var i = 0; i < ids.length; i++) {
     var e = sk.entities[ids[i]];
     if (!e) continue;
+
+    // A standalone point is a point that carries construction metadata of
+    // its own. Points owned by a line or arc have none, which is what
+    // keeps endpoints out of this view.
+    if (e.type === 'point') {
+      var pm = RP.constructionMeta[e.id];
+      if (!pm || pm.role !== RP.POINT_ROLE) continue;
+      ptsOut.push({
+        id: e.id, x: e.x, y: e.y,
+        role: RP.POINT_ROLE,
+        name: pm.label || null,
+        visible: pm.visible !== false
+      });
+      continue;
+    }
 
     if (e.type === 'arc') {
       var am = RP.constructionMeta[e.id];
@@ -89,7 +107,30 @@ RP.rebuildLines = function() {
   }
   RP.lines = out;
   RP.arcs = arcsOut;
+  RP.points = ptsOut;
   return out;
+};
+
+// A point that exists in its own right rather than as the end of
+// something. Useful for marking a mission object, a drop zone, or any
+// reference you want to constrain other geometry against.
+RP.POINT_ROLE = 'point';
+
+RP.addConstructionPoint = function(x, y, opts) {
+  opts = opts || {};
+  var sk = RP.ensureSketch();
+  var p = RP.Sketch.addPoint(sk, x, y);
+  RP.constructionMeta[p.id] = {
+    label: opts.name || null, visible: true, role: RP.POINT_ROLE
+  };
+  var added = RP.autoConstrainPoint(p.id, opts.snap);
+  var res = RP.solveSketch();
+  if (res && res.status === 'conflict' && added.length) {
+    for (var i = 0; i < added.length; i++) RP.Sketch.removeConstraint(sk, added[i].id);
+    RP.solveSketch();
+    added = [];
+  }
+  return { point: p, constraints: added };
 };
 
 // Create a construction arc. The centre is a real sketch point, so it can
@@ -120,8 +161,21 @@ RP.addConstructionArc = function(x1, y1, x2, y2, opts) {
   if (res && res.status === 'conflict' && added.length) {
     for (var i = 0; i < added.length; i++) RP.Sketch.removeConstraint(sk, added[i].id);
     RP.solveSketch();
+    added = [];
   }
-  return { arc: arc, p1: p1, p2: p2, center: pc };
+
+  // Tangency comes last, and only where the endpoint actually landed on a
+  // straight — it is judged on its own so a rejected tangent cannot take
+  // the coincident that joined the ends down with it.
+  var tangents = [];
+  var t1 = RP.autoConstrainTangent(arc, p1.id, opts.startSnap);
+  if (t1) tangents.push(t1);
+  var t2 = RP.autoConstrainTangent(arc, p2.id, opts.endSnap);
+  if (t2) tangents.push(t2);
+  RP.solveSketch();
+
+  return { arc: arc, p1: p1, p2: p2, center: pc,
+           constraints: added, tangents: tangents };
 };
 
 RP.solveSketch = function(opts) {
@@ -155,6 +209,101 @@ RP.autoConstrainPoint = function(pointId, snap) {
     }
   } catch (err) { /* a rejected auto-constraint is never fatal */ }
   return added;
+};
+
+// Entities that END at the same place as this point (an arc's centre does
+// not count — the centre is a control handle, not somewhere the curve
+// reaches).
+//
+// Compared through the coincidence union-find, not by point id: two lines
+// meeting at a corner keep their OWN endpoints and are joined by a
+// coincident constraint, so an id comparison would see one line where
+// there are two.
+RP.entitiesEndingAt = function(sk, pointId, type) {
+  var find = RP.Sketch.coincidenceClusters(sk);
+  var key = find(pointId);
+  var ids = RP.Sketch.entityIds(sk), out = [];
+  for (var i = 0; i < ids.length; i++) {
+    var e = sk.entities[ids[i]];
+    if (!e || e.type !== type) continue;
+    if (find(e.p1) === key || find(e.p2) === key) out.push(e);
+  }
+  return out;
+};
+
+// A curve meeting a straight at a shared endpoint almost always wants to
+// be TANGENT there — that is what makes the robot's path continuous
+// instead of kinking, and it is the whole reason to draw an arc between
+// two legs. So offer it the same way snap offers coincident.
+//
+// `tangent` constrains the arc's centre to stand one radius off the line.
+// Combined with the coincident that put the endpoints together, the point
+// of tangency IS that shared endpoint, which is the constraint we want.
+//
+// Only applied when exactly one candidate ends at the point: at a corner
+// where two lines already meet, a second tangent would over-constrain and
+// there is no way to guess which line was meant.
+RP.autoConstrainTangent = function(newEntity, pointId, snap) {
+  if (!RP.autoConstrain || !snap || snap.kind !== 'endpoint' || snap.pointId == null) return null;
+  if (!newEntity) return null;
+  var sk = RP.ensureSketch();
+  var lineId = null, arcId = null;
+
+  if (newEntity.type === 'arc') {
+    var lines = RP.entitiesEndingAt(sk, snap.pointId, 'line');
+    if (lines.length !== 1) return null;
+    lineId = lines[0].id;
+    arcId = newEntity.id;
+  } else if (newEntity.type === 'line') {
+    var arcs = RP.entitiesEndingAt(sk, snap.pointId, 'arc');
+    if (arcs.length !== 1) return null;
+    lineId = newEntity.id;
+    arcId = arcs[0].id;
+  } else {
+    return null;
+  }
+
+  // Which entity was already there — the new one should be the one that
+  // moves to satisfy the guess.
+  var existingId = (newEntity.type === 'arc') ? lineId : arcId;
+
+  try {
+    var before = RP.Sketch.solve(sk);
+    var c = RP.Sketch.addConstraint(sk, 'tangent', [lineId, arcId]);
+
+    // Solve once with the pre-existing geometry pinned. Without this the
+    // solver is free to satisfy tangency by swinging the line the user
+    // already drew, which is alarming: you draw a horizontal line, add an
+    // arc, and the line tilts. Pinning steers it to the solution that
+    // moves the NEW arc instead. The pins come straight back off; the
+    // configuration it lands on already satisfies everything, so the
+    // unpinned solve that follows has nothing left to do.
+    var pins = [];
+    var ends = RP.Sketch.pointsOf(sk, existingId) || [];
+    for (var i = 0; i < ends.length; i++) {
+      try { pins.push(RP.Sketch.addConstraint(sk, 'fix', [ends[i]])); } catch (e2) { /* skip */ }
+    }
+    var pinned = pins.length ? RP.Sketch.solve(sk) : null;
+    for (var j = 0; j < pins.length; j++) RP.Sketch.removeConstraint(sk, pins[j].id);
+    // If pinning made it unsolvable, the existing geometry genuinely has
+    // to move — let it, rather than dropping a tangent that is fine.
+    if (pinned && (pinned.status === 'conflict' || !pinned.ok)) RP.Sketch.solve(sk);
+
+    var after = RP.Sketch.solve(sk);
+    // An inferred constraint must never make the sketch worse than it was.
+    // Redundant counts as worse here: it adds a badge and a row for an
+    // equation that changes nothing.
+    if (after.status === 'conflict' || after.status === 'redundant') {
+      if (before.status !== after.status) {
+        RP.Sketch.removeConstraint(sk, c.id);
+        RP.Sketch.solve(sk);
+        return null;
+      }
+    }
+    return c;
+  } catch (err) {
+    return null;   // a rejected guess is never fatal
+  }
 };
 
 // A 90deg snap means the user asked for an axis-aligned line; record that
@@ -198,7 +347,17 @@ RP.addConstructionLine = function(x1, y1, x2, y2, opts) {
     RP.solveSketch();
     added = [];
   }
-  return { line: line, p1: a, p2: b, constraints: added };
+
+  // The mirror of the arc case: a straight drawn away from where an arc
+  // ends should leave that join smooth too.
+  var lineTangents = [];
+  var lt1 = RP.autoConstrainTangent(line, a.id, opts.startSnap);
+  if (lt1) lineTangents.push(lt1);
+  var lt2 = RP.autoConstrainTangent(line, b.id, opts.endSnap);
+  if (lt2) lineTangents.push(lt2);
+  RP.solveSketch();
+
+  return { line: line, p1: a, p2: b, constraints: added, tangents: lineTangents };
 };
 
 // True if any OTHER entity is built on this point.
@@ -215,6 +374,19 @@ RP.removeConstructionLine = function(lineId) {
   var sk = RP.ensureSketch();
   var line = RP.Sketch.get(sk, lineId);
   if (!line) return;
+  // A standalone point has no sub-points to cascade, and deleting it is
+  // only safe if nothing else was built on it.
+  if (line.type === 'point') {
+    if (RP.sketchPointInUse(sk, lineId)) return;
+    RP.pushHistory('Delete point');
+    RP.Sketch.removeEntity(sk, lineId);
+    delete RP.constructionMeta[lineId];
+    if (RP.selectedLineId === lineId) RP.selectedLineId = null;
+    RP.solveSketch();
+    if (RP.updateLayerList) RP.updateLayerList();
+    if (RP.render) RP.render();
+    return;
+  }
   // pointsOf covers arcs too, whose centre would otherwise be orphaned.
   var ends = RP.Sketch.pointsOf(sk, lineId);
 

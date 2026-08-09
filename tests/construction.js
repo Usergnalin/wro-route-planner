@@ -242,4 +242,207 @@ check('undo restores the sketch without re-solving it', () => {
   assertClose(RP.lines[0].x2, 100, 1e-9, 'remaining geometry must be untouched');
 });
 
+// ---- standalone points -----------------------------------------------
+check('a standalone point appears in its own view, not among the lines', () => {
+  const RP = fresh();
+  const made = RP.addConstructionPoint(40, 60);
+  assert(!!made && !!made.point, 'point created');
+  assert(RP.points.length === 1, 'one standalone point, got ' + RP.points.length);
+  assert(RP.lines.length === 0 && RP.arcs.length === 0, 'and no line or arc');
+  assertClose(RP.points[0].x, 40, 1e-9);
+  assertClose(RP.points[0].y, 60, 1e-9);
+});
+
+check('line endpoints do not leak into the points view', () => {
+  const RP = fresh();
+  RP.addConstructionLine(0, 0, 100, 0);
+  assert(RP.points.length === 0,
+    'endpoints belong to the line, got ' + RP.points.length + ' loose points');
+});
+
+check('a standalone point is a snap target', () => {
+  const RP = fresh();
+  const made = RP.addConstructionPoint(120, 80);
+  const s = RP.computeSnap(122, 82, { kind: 'point' });
+  assert(s && s.kind === 'endpoint' && s.pointId === made.point.id,
+    'expected to snap to the point, got ' + JSON.stringify(s));
+});
+
+check('arc ends are snap targets, so a line can start where an arc stops', () => {
+  const RP = fresh();
+  const arc = RP.addConstructionArc(0, 0, 100, 0, { sagitta: 30 });
+  const p2 = RP.sketch.entities[arc.p2.id];
+  const s = RP.computeSnap(p2.x + 2, p2.y + 2, { kind: 'point' });
+  assert(s && s.pointId === arc.p2.id,
+    'expected the arc end, got ' + JSON.stringify(s));
+});
+
+check('a standalone point can be constrained like any other point', () => {
+  const RP = fresh();
+  const line = RP.addConstructionLine(0, 0, 100, 0);
+  // Pin the line, or the solver is free to move it up to the point
+  // instead — both satisfy point_on_line.
+  RP.Sketch.addConstraint(RP.sketch, 'fix', [line.p1.id]);
+  RP.Sketch.addConstraint(RP.sketch, 'fix', [line.p2.id]);
+  const pt = RP.addConstructionPoint(50, 40);
+  RP.Sketch.addConstraint(RP.sketch, 'point_on_line', [pt.point.id, line.line.id]);
+  RP.solveSketch();
+  assertClose(RP.points[0].y, 0, 1e-6, 'the solver pulled it onto the line');
+});
+
+check('deleting a standalone point removes it; one in use is kept', () => {
+  const RP = fresh();
+  const pt = RP.addConstructionPoint(10, 10);
+  RP.removeConstructionLine(pt.point.id);
+  assert(RP.points.length === 0, 'gone');
+
+  const line = RP.addConstructionLine(0, 0, 100, 0);
+  RP.removeConstructionLine(line.p1.id);   // an endpoint, not a loose point
+  assert(RP.lines.length === 1, 'the line must survive an attempt on its endpoint');
+});
+
+// ---- auto-tangency ---------------------------------------------------
+function tangentsIn(RP) {
+  const sk = RP.sketch;
+  return RP.Sketch.constraintIds(sk).filter(id => sk.constraints[id].type === 'tangent');
+}
+
+// The tangent direction of an arc at one of its endpoints.
+function arcTangentAt(RP, arcId, pointId) {
+  const sk = RP.sketch;
+  const arc = sk.entities[arcId];
+  const c = sk.entities[arc.center], p = sk.entities[pointId];
+  return Math.atan2(p.x - c.x, -(p.y - c.y));   // radius rotated 90°
+}
+
+check('an arc drawn onto a line end is made tangent to it', () => {
+  const RP = fresh();
+  const line = RP.addConstructionLine(0, 0, 100, 0);
+  // Pinned so "along the line" still means +X after the solve — an
+  // unconstrained line is free to swing to meet the arc instead.
+  RP.Sketch.addConstraint(RP.sketch, 'fix', [line.p1.id]);
+  RP.Sketch.addConstraint(RP.sketch, 'fix', [line.p2.id]);
+  RP.solveSketch();
+  const endSnap = RP.computeSnap(100, 0, { kind: 'point' });
+  assert(endSnap && endSnap.pointId === line.p2.id, 'the arc should snap to the line end');
+
+  const arc = RP.addConstructionArc(100, 0, 180, 60, { startSnap: endSnap });
+  assert(arc.tangents.length === 1, 'one tangent added, got ' + arc.tangents.length);
+  assert(tangentsIn(RP).length === 1, 'and it is in the sketch');
+
+  // Tangency means the arc leaves along the line's own direction.
+  const t = arcTangentAt(RP, arc.arc.id, arc.p1.id);
+  const along = Math.atan2(0, 100);          // the line runs along +X
+  const diff = Math.abs(Math.atan2(Math.sin(t - along), Math.cos(t - along)));
+  assert(Math.min(diff, Math.PI - diff) < 1e-3,
+    'arc should leave along the line, off by ' + (diff * 180 / Math.PI).toFixed(2) + '°');
+});
+
+check('a line drawn away from an arc end is made tangent too', () => {
+  const RP = fresh();
+  const arc = RP.addConstructionArc(0, 0, 100, 0, { sagitta: 30 });
+  const p2 = RP.sketch.entities[arc.p2.id];
+  const snap = RP.computeSnap(p2.x, p2.y, { kind: 'point' });
+  const line = RP.addConstructionLine(p2.x, p2.y, p2.x + 90, p2.y + 40, { startSnap: snap });
+  assert(line.tangents.length === 1, 'one tangent added, got ' + line.tangents.length);
+});
+
+check('no tangent is guessed at a corner where two lines already meet', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const bSnap = RP.computeSnap(100, 0, { kind: 'point' });
+  RP.addConstructionLine(100, 0, 100, 80, { startSnap: bSnap });
+  const cSnap = RP.computeSnap(100, 0, { kind: 'point' });
+  const arc = RP.addConstructionArc(100, 0, 170, 60, { startSnap: cSnap });
+  assert(arc.tangents.length === 0,
+    'two candidate lines is ambiguous, so nothing should be guessed');
+});
+
+check('an arc drawn in free space gets no tangent', () => {
+  const RP = fresh();
+  const arc = RP.addConstructionArc(200, 200, 300, 260, {});
+  assert(arc.tangents.length === 0, 'nothing to be tangent to');
+  assert(tangentsIn(RP).length === 0, 'and none in the sketch');
+});
+
+check('autoConstrain off suppresses the tangent as well', () => {
+  const RP = fresh();
+  const line = RP.addConstructionLine(0, 0, 100, 0);
+  const snap = RP.computeSnap(100, 0, { kind: 'point' });
+  RP.autoConstrain = false;
+  const arc = RP.addConstructionArc(100, 0, 180, 60, { startSnap: snap });
+  RP.autoConstrain = true;
+  assert(arc.tangents.length === 0, 'the whole auto layer is one switch');
+});
+
+check('tangency survives dragging the line', () => {
+  const RP = fresh();
+  const line = RP.addConstructionLine(0, 0, 100, 0);
+  RP.Sketch.addConstraint(RP.sketch, 'fix', [line.p1.id]);
+  const snap = RP.computeSnap(100, 0, { kind: 'point' });
+  const arc = RP.addConstructionArc(100, 0, 180, 60, { startSnap: snap });
+  assert(arc.tangents.length === 1, 'tangent applied');
+
+  // Swing the line's far end up; the arc must follow and stay smooth.
+  RP.Sketch.dragPoint(RP.sketch, line.p2.id, 100, -40);
+  RP.solveSketch();
+
+  const sk = RP.sketch;
+  const a = sk.entities[line.p1.id], b = sk.entities[line.p2.id];
+  const along = Math.atan2(b.y - a.y, b.x - a.x);
+  const t = arcTangentAt(RP, arc.arc.id, arc.p1.id);
+  const diff = Math.abs(Math.atan2(Math.sin(t - along), Math.cos(t - along)));
+  assert(Math.min(diff, Math.PI - diff) < 1e-3,
+    'still tangent after the drag, off by ' + (diff * 180 / Math.PI).toFixed(2) + '°');
+});
+
+check('an inferred tangent does not move the geometry already drawn', () => {
+  const RP = fresh();
+  const line = RP.addConstructionLine(0, 0, 100, 0);
+  const before = { x: RP.lines[0].x1, y: RP.lines[0].y1,
+                   x2: RP.lines[0].x2, y2: RP.lines[0].y2 };
+  const snap = RP.computeSnap(100, 0, { kind: 'point' });
+  RP.addConstructionArc(100, 0, 180, 60, { startSnap: snap });
+
+  // Nothing pins this line, so the solver COULD have swung it to meet the
+  // arc. Inferring a constraint must not rearrange what is already there.
+  assertClose(RP.lines[0].x1, before.x, 1e-6, 'start x held');
+  assertClose(RP.lines[0].y1, before.y, 1e-6, 'start y held');
+  assertClose(RP.lines[0].x2, before.x2, 1e-6, 'end x held');
+  assertClose(RP.lines[0].y2, before.y2, 1e-6, 'end y held');
+});
+
+check('the temporary pins used to steer the solve are not left behind', () => {
+  const RP = fresh();
+  const line = RP.addConstructionLine(0, 0, 100, 0);
+  const snap = RP.computeSnap(100, 0, { kind: 'point' });
+  RP.addConstructionArc(100, 0, 180, 60, { startSnap: snap });
+  const sk = RP.sketch;
+  const fixes = RP.Sketch.constraintIds(sk).filter(id => sk.constraints[id].type === 'fix');
+  assert(fixes.length === 0, 'expected no fix constraints, got ' + fixes.length);
+});
+
+check('deleting the line takes its tangent constraint with it', () => {
+  const RP = fresh();
+  const line = RP.addConstructionLine(0, 0, 100, 0);
+  const snap = RP.computeSnap(100, 0, { kind: 'point' });
+  RP.addConstructionArc(100, 0, 180, 60, { startSnap: snap });
+  assert(tangentsIn(RP).length === 1, 'tangent applied');
+
+  RP.removeConstructionLine(line.line.id);
+  assert(tangentsIn(RP).length === 0,
+    'a constraint referencing deleted geometry must go too');
+});
+
+check('adding a point is undoable', () => {
+  const RP = fresh();
+  RP.pushHistory('Add point');
+  RP.addConstructionPoint(70, 70);
+  assert(RP.points.length === 1, 'placed');
+  RP.undo();
+  assert(RP.points.length === 0, 'undone, got ' + RP.points.length);
+  RP.redo();
+  assert(RP.points.length === 1, 'redone');
+});
+
 if (!report()) process.exitCode = 1;

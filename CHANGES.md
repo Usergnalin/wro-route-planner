@@ -1,3 +1,79 @@
+# Changes — 2026-08-09 (5)
+
+## Sketcher: standalone points and auto-tangency
+
+### Standalone points
+
+A new **⦁ Point** tool places a point that exists in its own right rather
+than as the end of something — a mission object, a drop zone, any
+reference you want to measure or constrain against.
+
+They are ordinary sketch points, so everything already built works on
+them: they snap on placement, they are draggable and constrainable in
+Constrain mode, they appear in the geometry list, and they persist with
+the rest of the sketch. Deleting one that another entity is built on is
+refused rather than silently orphaning it.
+
+`RP.points` is a rebuilt view alongside `RP.lines` and `RP.arcs`. The
+thing that separates a standalone point from a line's endpoint is simply
+whether it carries construction metadata of its own, so endpoints cannot
+leak into the view.
+
+### Snap now reaches arc ends and points
+
+`computeSnap` only ever offered LINE endpoints. That meant an arc's end
+could not be snapped to at all — so a line drawn away from an arc never
+became coincident with it, and nothing downstream could tell the two were
+joined. Both new features need it, so arc ends and standalone points are
+now first-class snap targets. An arc's *centre* deliberately is not: it is
+a control handle, not a place on the mat.
+
+### Arcs are auto-tangent to the straights they join
+
+Draw an arc onto the end of a line — or a line away from the end of an arc
+— and a `tangent` constraint is added alongside the coincident. That is
+what makes the robot's path continuous instead of kinking, and it is the
+main reason to put an arc between two legs at all.
+
+Details that matter:
+
+- **Only when exactly one candidate ends at that point.** At a corner
+  where two lines already meet there is no way to guess which was meant,
+  and a second tangent would over-constrain. Candidates are compared
+  through the coincidence union-find, not by point id — two lines meeting
+  at a corner keep their *own* endpoints joined by a constraint, so an id
+  comparison would have seen one line where there are two.
+- **It never moves what you already drew.** The tangent is solved once
+  with the pre-existing geometry pinned, which steers the solver to the
+  solution that moves the new arc instead. Without this you draw a
+  horizontal line, add an arc, and the line tilts to meet it. The pins
+  come straight back off; the configuration already satisfies everything,
+  so the unpinned solve that follows has nothing left to do.
+- **A rejected guess is never fatal.** If the tangent conflicts or turns
+  out redundant it is backed out on its own, so it cannot take the
+  coincident that joined the ends down with it. `RP.autoConstrain = false`
+  suppresses the whole inferred layer as before.
+
+### Verification
+
+10 suites pass, goldens byte-identical; `tests/construction.js` is up to
+32 checks. Browser: drew a line, an arc off its end and a line off the
+arc's end with real mouse drags — two coincidents, two tangents, both
+joins tangent to 0.000°, the first line still exactly horizontal at
+200.00 mm — then placed a loose point and one snapped onto a line, which
+picked up a `point_on_line`. No console errors.
+
+### Worth knowing
+
+Tangency is applied unconditionally, so drawing a line at a sharp angle
+from an arc end will swing it round to the tangent direction — that is
+the constraint doing its job, and the constraint can be deleted from the
+Constraints list for any join you want kinked. If that turns out to be
+annoying in practice, the usual CAD answer is to only infer tangency when
+the drawn direction is already close to tangent.
+
+---
+
 # Changes — 2026-08-09 (4)
 
 ## UI polish

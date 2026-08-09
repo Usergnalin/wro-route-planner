@@ -82,7 +82,8 @@ RP.calibration = null;
 // Read-only VIEW over the sketch layer, rebuilt by RP.rebuildLines().
 // Line ids are sketch entity ids — there is no separate line id space.
 RP.lines = [];
-RP.arcs = [];   // sibling view for arc entities
+RP.arcs = [];     // sibling view for arc entities
+RP.points = [];   // standalone points — reference marks, not endpoints
 
 // Routes: { id, name, nodes: [{x,y,id,isCheckpoint,checkpointName}], segments: [{id,fromNodeId,toNodeId,direction,mode,...}], visible }
 RP.routes = [];
@@ -103,7 +104,7 @@ RP.LOCKED_TOOLS = { route: 1, freehand: 1, checkpoint: 1 };
 
 RP.TOOL_LABELS = {
   construction: 'Construction', select: 'Select', arc: 'Arc',
-  constrain: 'Constrain'
+  point: 'Point', constrain: 'Constrain'
 };
 
 // Code configuration
@@ -351,15 +352,34 @@ RP.computeSnap = function(ix, iy, opts) {
   var bestPt = null, bestPtSq = Infinity;
 
   // Endpoints
+  function considerPoint(x, y, pointId) {
+    var dx = ix - x, dy = iy - y;
+    var dSq = dx * dx + dy * dy;
+    if (dSq < threshSq && dSq < bestPtSq) {
+      bestPtSq = dSq;
+      bestPt = { x: x, y: y, kind: 'endpoint', pointId: pointId };
+    }
+  }
   for (var li = 0; li < RP.lines.length; li++) {
     if (li === excludeLineIdx) continue;
     var l = RP.lines[li];
-    var dx1 = ix - l.x1, dy1 = iy - l.y1;
-    var dSq1 = dx1 * dx1 + dy1 * dy1;
-    if (dSq1 < threshSq && dSq1 < bestPtSq) { bestPtSq = dSq1; bestPt = { x: l.x1, y: l.y1, kind: 'endpoint', pointId: l.p1 }; }
-    var dx2 = ix - l.x2, dy2 = iy - l.y2;
-    var dSq2 = dx2 * dx2 + dy2 * dy2;
-    if (dSq2 < threshSq && dSq2 < bestPtSq) { bestPtSq = dSq2; bestPt = { x: l.x2, y: l.y2, kind: 'endpoint', pointId: l.p2 }; }
+    considerPoint(l.x1, l.y1, l.p1);
+    considerPoint(l.x2, l.y2, l.p2);
+  }
+  // Arc ends, so a line can be drawn away from where an arc finishes. The
+  // centre is deliberately not offered: it is a control handle, not a
+  // place on the mat you would measure to.
+  for (var ai2 = 0; ai2 < RP.arcs.length; ai2++) {
+    var sarc = RP.arcs[ai2];
+    if (sarc.visible === false) continue;
+    considerPoint(sarc.x1, sarc.y1, sarc.p1);
+    considerPoint(sarc.x2, sarc.y2, sarc.p2);
+  }
+  // Standalone points exist to be snapped to — that is the whole job.
+  for (var spi2 = 0; spi2 < RP.points.length; spi2++) {
+    var spt = RP.points[spi2];
+    if (spt.visible === false) continue;
+    considerPoint(spt.x, spt.y, spt.id);
   }
 
   // Intersections (still a "precise" construction-line feature)
@@ -548,6 +568,7 @@ RP.setTool = function(tool) {
   if (hint) {
     if (tool === 'construction') hint.textContent = 'Drag to draw a line';
     else if (tool === 'select') hint.textContent = 'Click dots/endpoints to move';
+    else if (tool === 'point') hint.textContent = 'Click to place a reference point';
     else if (tool === 'arc') hint.textContent = 'Drag the chord · then drag the centre to curve it';
     else if (tool === 'constrain') hint.textContent = 'Click geometry to select · shift-click adds · drag points to move';
   }
