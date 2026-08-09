@@ -107,4 +107,44 @@ check('sidebar keeps the tools and palette, not the long lists', () => {
   assert(html.indexOf('id="constraint-section"') < panelsAt, 'palette above the panels');
 });
 
+check('every element the scripts resolve at load time is parsed first', () => {
+  // initEvents / core.js call getElementById while the page is still
+  // parsing, so anything they resolve has to appear ABOVE the <script>
+  // block. #ctx-menu sat below it and silently resolved to null, which
+  // disabled the right-click menu entirely.
+  const firstScript = html.indexOf('<script src=');
+  assert(firstScript >= 0, 'no <script src> block found');
+  const js = scripts
+    .filter(s => fs.existsSync(path.join(ROOT, s)))
+    .map(s => fs.readFileSync(path.join(ROOT, s), 'utf8'))
+    .join('\n');
+  const late = [...new Set([...js.matchAll(/getElementById\('([^']+)'\)/g)].map(m => m[1]))]
+    .filter(id => {
+      const at = html.indexOf('id="' + id + '"');
+      return at >= 0 && at > firstScript;
+    });
+  assert(late.length === 0, 'declared after the scripts: ' + late.join(', '));
+});
+
+check('the dead segment / node panels are gone', () => {
+  for (const id of ['segment-section', 'node-section', 'seg-mode-normal',
+                    'seg-offset', 'seg-speed', 'btn-flip-segment',
+                    'node-turn-speed', 'node-extra-turns-list', 'btn-add-node-turn']) {
+    assert(html.indexOf('id="' + id + '"') < 0, id + ' should be removed');
+  }
+  const ctx = loadApp(scripts);
+  const RP = ctx.RP;
+  // These all wrote to route.nodes / route.segments, which are derived
+  // read-only views — the writes vanished on the next rebuild.
+  for (const fn of ['updateSegmentPanel', 'updateNodePanel', 'getSelectedNodeObj',
+                    'rebuildNodeTurnsList', 'removeSegment', 'removeNode',
+                    'flipSegmentDirection', 'setSegmentMode', 'setSegmentTeleportName',
+                    'setSegmentJunctionCount', 'findSegment', 'arcApex',
+                    'defaultArcSagitta']) {
+    assert(RP[fn] === undefined, 'RP.' + fn + ' should be deleted');
+  }
+  assert(!('selectedSegment' in RP), 'RP.selectedSegment should be deleted');
+  assert(!('selectedNode' in RP), 'RP.selectedNode should be deleted');
+});
+
 if (!report()) process.exitCode = 1;

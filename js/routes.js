@@ -63,12 +63,6 @@ RP.findNode = function(route, nodeId) {
   return null;
 };
 
-RP.findSegment = function(route, segId) {
-  for (var i = 0; i < route.segments.length; i++)
-    if (route.segments[i].id === segId) return route.segments[i];
-  return null;
-};
-
 RP.findSegBetween = function(route, nodeId1, nodeId2) {
   for (var i = 0; i < route.segments.length; i++) {
     var s = route.segments[i];
@@ -128,24 +122,16 @@ RP.computeLongestPath = function(route) {
 };
 
 // ----------------------------------------------------------------------
-// FOLLOW PATH geometry (freehand drawn curves)
+// LEGACY ARC geometry — migration only
 // ----------------------------------------------------------------------
-
-// ----------------------------------------------------------------------
-// ARC geometry (circular-arc route segments -> robot.turn_arc)
-// ----------------------------------------------------------------------
-// Arcs are stored as a signed "sagitta" (perpendicular bulge, in px) of the
-// arc's apex from the chord midpoint. The two endpoints are the segment's
-// from/to nodes. Positive sagitta bulges toward n̂ = chord rotated +90°.
+// Pre-phase-8 saves stored an arc as a chord plus a signed "sagitta" (the
+// perpendicular bulge, in px, of the arc's apex from the chord midpoint,
+// toward n̂ = chord rotated +90°). Live arcs are real sketch entities now;
+// this is only how migrateRoutesToElements turns an old bulge into a centre.
 RP.arcPerp = function(ax, ay, bx, by) {
   var dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy);
   if (L < 1e-9) return { x: 0, y: 0, L: 0 };
   return { x: -dy / L, y: dx / L, L: L };
-};
-
-RP.arcApex = function(ax, ay, bx, by, sag) {
-  var p = RP.arcPerp(ax, ay, bx, by);
-  return { x: (ax + bx) / 2 + p.x * sag, y: (ay + by) / 2 + p.y * sag };
 };
 
 // Full arc geometry from endpoints + signed sagitta (px). Returns null when
@@ -172,145 +158,13 @@ RP.computeArcGeom = function(ax, ay, bx, by, sag) {
 };
 
 // arcPolyline is gone — RP.Sketch.arcPoints draws from the arc entity.
-// computeArcGeom above survives because it is how a chord + bulge is
-// turned into a centre, which both the arc tool and the migration of old
-// sagitta arcs still need.
 
-// Default bulge (px) for a newly created / converted arc segment.
-RP.defaultArcSagitta = function(ax, ay, bx, by) {
-  var L = Math.hypot(bx - ax, by - ay);
-  return Math.max(6, L * 0.2);
-};
-
-// Remove a single segment (leaves nodes in place; orphaned nodes are ignored by DFS)
-RP.removeSegment = function(routeId, segId) {
-  for (var ri = 0; ri < RP.routes.length; ri++) {
-    var r = RP.routes[ri];
-    if (r.id !== routeId) continue;
-    RP.pushHistory('Delete segment');
-    r.segments = r.segments.filter(function(s) { return s.id !== segId; });
-    if (RP.selectedSegment && RP.selectedSegment.routeId === routeId && RP.selectedSegment.segId === segId) {
-      RP.selectedSegment = null;
-    }
-    RP.render();
-    RP.updateSideRouteList();
-    RP.updateInfoPanel();
-    if (RP.updateInstructions) RP.updateInstructions();
-    return;
-  }
-};
-
-// Construction lines are sketch entities now — RP.removeConstructionLine
-// lives in js/model/construction.js so it can cascade the underlying
-// points and constraints.
-
-// Remove a node and all segments connected to it
-RP.removeNode = function(routeId, nodeId) {
-  for (var ri = 0; ri < RP.routes.length; ri++) {
-    var r = RP.routes[ri];
-    if (r.id !== routeId) continue;
-    r.segments = r.segments.filter(function(s) {
-      return s.fromNodeId !== nodeId && s.toNodeId !== nodeId;
-    });
-    r.nodes = r.nodes.filter(function(n) { return n.id !== nodeId; });
-    if (RP.selectedSegment && RP.selectedSegment.routeId === routeId) {
-      if (!RP.findSegment(r, RP.selectedSegment.segId)) RP.selectedSegment = null;
-    }
-    RP.render();
-    RP.updateRouteSelect();
-    RP.updateSideRouteList();
-    RP.updateInfoPanel();
-    return;
-  }
-};
-
-// ---- Selected segment (select mode) — now uses segId ----
-RP.selectedSegment = null; // { routeId, segId } or null
-
-// applyWallAlignSnap / reapplyAllWallAlignSnaps are GONE.
-//
-// They wrote node.x/y directly, which was the one place that competed
-// with the solver for ownership of coordinates. Route nodes are sketch
-// points now, so those writes would land on a derived view and vanish on
-// the next rebuild.
-//
-// Phase 7 replaces this with the honest version: field walls become
-// fixed sketch geometry and a wall_align element's far endpoint is
-// CONSTRAINED to a wall at the robot's clearance distance, solved like
-// everything else. computeWallAlignEndPoint above is kept because that
-// wall-intersection maths is what phase 7 will build the constraint on.
-
-RP.flipSegmentDirection = function(routeId, segId) {
-  for (var i = 0; i < RP.routes.length; i++) {
-    var r = RP.routes[i];
-    if (r.id !== routeId) continue;
-    var seg = RP.findSegment(r, segId);
-    if (!seg) return false;
-    // Only normal, wall_align and arc can be flipped (teleport/linetrace/follow_path can't)
-    if (seg.mode !== RP.SEG_MODE_NORMAL && seg.mode !== RP.SEG_MODE_WALL_ALIGN && seg.mode !== RP.SEG_MODE_ARC) return false;
-    RP.pushHistory('Flip segment direction');
-    seg.direction = (seg.direction === RP.SEG_BACKWARD) ? RP.SEG_FORWARD : RP.SEG_BACKWARD;
-    RP.render(); RP.updateInfoPanel();
-    return true;
-  }
-  return false;
-};
-
-RP.setSegmentMode = function(routeId, segId, mode) {
-  for (var i = 0; i < RP.routes.length; i++) {
-    var r = RP.routes[i];
-    if (r.id !== routeId) continue;
-    var seg = RP.findSegment(r, segId);
-    if (!seg || seg.mode === mode) return false;
-    RP.pushHistory('Set segment mode');
-    seg.mode = mode;
-    if (mode === RP.SEG_MODE_TELEPORT && !seg.teleportName)
-      seg.teleportName = 'teleport_' + seg.id;
-    if (mode === RP.SEG_MODE_LINETRACE_JUNCT && !seg.junctionCount)
-      seg.junctionCount = 1;
-    if (mode === RP.SEG_MODE_FOLLOW_PATH && (!seg.pathPoints || seg.pathPoints.length < 2)) {
-      // Converting a straight segment: seed with a 2-point straight path
-      var fa = RP.findNode(r, seg.fromNodeId), fb = RP.findNode(r, seg.toNodeId);
-      if (fa && fb) seg.pathPoints = [{ x: fa.x, y: fa.y }, { x: fb.x, y: fb.y }];
-    }
-    if (mode === RP.SEG_MODE_ARC && !seg.sagitta) {
-      // Converting a straight segment: seed a visible default bulge
-      var aa = RP.findNode(r, seg.fromNodeId), ab = RP.findNode(r, seg.toNodeId);
-      if (aa && ab) seg.sagitta = RP.defaultArcSagitta(aa.x, aa.y, ab.x, ab.y);
-    }
-    RP.render(); RP.updateInfoPanel();
-    if (RP.updateInstructions) RP.updateInstructions();
-    return true;
-  }
-  return false;
-};
-
-RP.setSegmentTeleportName = function(routeId, segId, name) {
-  for (var i = 0; i < RP.routes.length; i++) {
-    var r = RP.routes[i];
-    if (r.id !== routeId) continue;
-    var seg = RP.findSegment(r, segId);
-    if (!seg) return false;
-    seg.teleportName = name || null;
-    RP.updateInfoPanel();
-    return true;
-  }
-  return false;
-};
-
-RP.setSegmentJunctionCount = function(routeId, segId, count) {
-  for (var i = 0; i < RP.routes.length; i++) {
-    var r = RP.routes[i];
-    if (r.id !== routeId) continue;
-    var seg = RP.findSegment(r, segId);
-    if (!seg) return false;
-    var n = parseInt(count, 10);
-    seg.junctionCount = (isFinite(n) && n > 0) ? n : 1;
-    RP.updateInfoPanel();
-    return true;
-  }
-  return false;
-};
+// The node/segment write path is gone. route.nodes / route.segments are
+// derived READ-ONLY views (js/model/route.js), so the old mutators —
+// removeSegment, removeNode, flipSegmentDirection, setSegmentMode,
+// setSegmentTeleportName, setSegmentJunctionCount and the RP.selectedSegment
+// they hung off — wrote to structures that the next rebuild discarded.
+// Route mode's element panel is the real editor; see RP.setRouteElementProps.
 
 // ---- Route CRUD ----
 // There is exactly ONE route. Multi-route support bought complexity that
@@ -344,7 +198,9 @@ RP.updateLayerList = function() {
   if (!el) return;
   el.innerHTML = '';
 
-  // ---- Routes + segments (listed above construction lines) ----
+  // ---- Routes (listed above construction lines) ----
+  // Visibility only. Per-element editing is Route mode's element list; the
+  // segment sub-rows that used to live here edited a derived view.
   if (RP.routes.length > 0) {
     var rh = document.createElement('div');
     rh.className = 'layer-group-title';
@@ -369,9 +225,8 @@ RP.updateLayerList = function() {
 
         var lbl = document.createElement('span');
         lbl.className = 'layer-item-label';
-        var nodeCount = route.nodes ? route.nodes.length : 0;
-        var segCount  = route.segments ? route.segments.length : 0;
-        lbl.textContent = route.name + ' (' + segCount + ' seg)';
+        var elCount = route.elements ? route.elements.length : 0;
+        lbl.textContent = route.name + ' (' + elCount + ' element' + (elCount === 1 ? '' : 's') + ')';
         lbl.title = lbl.textContent;
         lbl.onclick = function() {
           if (RP.activeRouteId !== route.id) {
@@ -387,63 +242,6 @@ RP.updateLayerList = function() {
         div.appendChild(eye); div.appendChild(lbl);
         el.appendChild(div);
 
-        // Segment sub-rows
-        if (route.segments && route.segments.length > 0) {
-          for (var si = 0; si < route.segments.length; si++) {
-            (function(seg, sidx) {
-              var na = RP.findNode(route, seg.fromNodeId);
-              var nb = RP.findNode(route, seg.toNodeId);
-              var lenStr = '';
-              if (na && nb && RP.calibration) {
-                var mm = RP.dist(na.x, na.y, nb.x, nb.y) / RP.calibration.pixelsPerMm;
-                lenStr = ' ' + mm.toFixed(0) + 'mm';
-              }
-              var modeTag = seg.mode && seg.mode !== RP.SEG_MODE_NORMAL
-                ? ' [' + seg.mode.replace('linetrace_', 'LT-') + ']' : '';
-
-              var isSelSeg = RP.selectedSegment && RP.selectedSegment.routeId === route.id && RP.selectedSegment.segId === seg.id;
-              var sdiv = document.createElement('div');
-              sdiv.className = 'layer-seg-item' + (isSelSeg ? ' active-seg' : '');
-
-              var seye = document.createElement('button');
-              seye.className = 'layer-vis-btn';
-              seye.textContent = seg.visible === false ? '○' : '●';
-              seye.title = seg.visible === false ? 'Show' : 'Hide';
-              seye.onclick = function(e) {
-                e.stopPropagation();
-                seg.visible = seg.visible === false;
-                RP.updateLayerList(); RP.render();
-              };
-
-              var slbl = document.createElement('span');
-              slbl.className = 'layer-item-label';
-              slbl.textContent = 'Seg ' + (sidx + 1) + lenStr + modeTag;
-              slbl.title = slbl.textContent;
-              slbl.onclick = function() {
-                RP.selectedSegment = { routeId: route.id, segId: seg.id };
-                if (RP.activeRouteId !== route.id) {
-                  RP.activeRouteId = route.id;
-                  RP.updateRouteSelect();
-                }
-                RP.updateLayerList();
-                RP.render();
-                RP.updateInfoPanel();
-              };
-
-              var sdel = document.createElement('button');
-              sdel.className = 'layer-del-btn';
-              sdel.textContent = '✕';
-              sdel.title = 'Delete segment';
-              sdel.onclick = function(e) {
-                e.stopPropagation();
-                RP.removeSegment(route.id, seg.id);
-              };
-
-              sdiv.appendChild(seye); sdiv.appendChild(slbl); sdiv.appendChild(sdel);
-              el.appendChild(sdiv);
-            })(route.segments[si], si);
-          }
-        }
       })(RP.routes[ri]);
     }
   }

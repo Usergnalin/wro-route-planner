@@ -76,27 +76,8 @@ RP.initEvents = function() {
     }
 
     // ---- SELECT MODE ----
-    // Arc bulge handle for the currently selected arc — draggable in select OR arc tool
-    // (The old sagitta bulge-handle drag; arcs are sketch entities now.)
-    if (RP.activeTool === 'select' && RP.selectedSegment && RP.img) {
-      var pHandle = RP.screenToImage(e.clientX, e.clientY);
-      var selR = null;
-      for (var sri = 0; sri < RP.routes.length; sri++) {
-        if (RP.routes[sri].id === RP.selectedSegment.routeId) { selR = RP.routes[sri]; break; }
-      }
-      var selSeg = selR && RP.findSegment ? RP.findSegment(selR, RP.selectedSegment.segId) : null;
-      if (selSeg && selSeg.mode === RP.SEG_MODE_ARC && selSeg.sagitta) {
-        var hA = RP.findNode(selR, selSeg.fromNodeId), hB = RP.findNode(selR, selSeg.toNodeId);
-        if (hA && hB) {
-          var apexH = RP.arcApex(hA.x, hA.y, hB.x, hB.y, selSeg.sagitta);
-          if (RP.screenDist(pHandle.x, pHandle.y, apexH.x, apexH.y) < 12) {
-            RP.elementDrag = { type: 'arc-handle', routeId: selR.id, segId: selSeg.id };
-            return;
-          }
-        }
-      }
-    }
-
+    // Moving geometry only. Which piece of geometry a route uses, and what
+    // the robot does along it, are Route mode's job.
     if (RP.activeTool === 'select') {
       if (!RP.img) return;
       var pSel = RP.screenToImage(e.clientX, e.clientY);
@@ -108,10 +89,9 @@ RP.initEvents = function() {
         for (var ni = 0; ni < rt.nodes.length; ni++) {
           var nd = rt.nodes[ni];
           if (RP.screenDist(pSel.x, pSel.y, nd.x, nd.y) < 14) {
+            // A route node is a sketch point; dragging it moves geometry,
+            // which is all Select mode does now.
             RP.elementDrag = { type: 'node', routeId: rt.id, nodeId: nd.id };
-            RP.selectedSegment = null;
-            RP.selectedNode = { routeId: rt.id, nodeId: nd.id };
-            RP.updateNodePanel();
             RP.updateInfoPanel();
             return;
           }
@@ -125,13 +105,11 @@ RP.initEvents = function() {
           var lPri = RP.lines[liPri];
           if (RP.screenDist(pSel.x, pSel.y, lPri.x1, lPri.y1) < 14) {
             RP.elementDrag = { type: 'line-endpoint', lineIdx: liPri, which: 'start' };
-            RP.selectedSegment = null;
             RP.updateInfoPanel();
             return;
           }
           if (RP.screenDist(pSel.x, pSel.y, lPri.x2, lPri.y2) < 14) {
             RP.elementDrag = { type: 'line-endpoint', lineIdx: liPri, which: 'end' };
-            RP.selectedSegment = null;
             RP.updateInfoPanel();
             return;
           }
@@ -146,7 +124,6 @@ RP.initEvents = function() {
             RP.screenDist(pSel.x, pSel.y, l.x2, l.y2) < 14) {
           var which = RP.screenDist(pSel.x, pSel.y, l.x1, l.y1) < 14 ? 'start' : 'end';
           RP.elementDrag = { type: 'line-endpoint', lineIdx: li, which: which };
-          RP.selectedSegment = null;
           RP.selectedLineId = l.id;
           RP.updateLayerList();
           RP.updateInfoPanel();
@@ -154,38 +131,7 @@ RP.initEvents = function() {
         }
       }
 
-      // Route segments (click near segment line)
-      var hitThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
-      for (var ri2 = 0; ri2 < RP.routes.length; ri2++) {
-        var rt2 = RP.routes[ri2];
-        if (!rt2.visible || !rt2.segments) continue;
-        for (var si2 = 0; si2 < rt2.segments.length; si2++) {
-          var seg2 = rt2.segments[si2];
-          var na2 = RP.findNode(rt2, seg2.fromNodeId);
-          var nb2 = RP.findNode(rt2, seg2.toNodeId);
-          if (!na2 || !nb2) continue;
-          var dSq2 = RP.pointToSegDistSq(pSel.x, pSel.y, na2.x, na2.y, nb2.x, nb2.y);
-          if (dSq2 < hitThreshSq) {
-            RP.selectedSegment = { routeId: rt2.id, segId: seg2.id };
-            RP.selectedNode = null;
-            if (RP.activeRouteId !== rt2.id) {
-              RP.activeRouteId = rt2.id;
-              RP.updateRouteSelect();
-            }
-            RP.updateInfoPanel();
-            RP.render();
-            return;
-          }
-        }
-      }
-
-      // No element — clear selection and pan
-      if (RP.selectedSegment || RP.selectedNode) {
-        RP.selectedSegment = null;
-        RP.selectedNode = null;
-        RP.updateInfoPanel();
-        RP.render();
-      }
+      // Nothing grabbable here — pan.
       RP.isDragging = true;
       wrap.classList.add('dragging');
       RP.dragStartX = e.clientX;
@@ -261,32 +207,6 @@ RP.initEvents = function() {
       if (!snapP) snapP = { x: p.x, y: p.y, kind: null };
       RP.hoverSnapPoint = (snapP.x !== p.x || snapP.y !== p.y) ? { x: snapP.x, y: snapP.y } : null;
       RP.render();
-      return;
-    }
-
-    if (RP.elementDrag && RP.elementDrag.type === 'arc-handle') {
-      var pAH = RP.screenToImage(e.clientX, e.clientY);
-      var ahR = null;
-      for (var ahi = 0; ahi < RP.routes.length; ahi++) {
-        if (RP.routes[ahi].id === RP.elementDrag.routeId) { ahR = RP.routes[ahi]; break; }
-      }
-      var ahSeg = ahR && RP.findSegment ? RP.findSegment(ahR, RP.elementDrag.segId) : null;
-      if (ahSeg) {
-        var ahA = RP.findNode(ahR, ahSeg.fromNodeId), ahB = RP.findNode(ahR, ahSeg.toNodeId);
-        if (ahA && ahB) {
-          var perp = RP.arcPerp(ahA.x, ahA.y, ahB.x, ahB.y);
-          var mxAH = (ahA.x + ahB.x) / 2, myAH = (ahA.y + ahB.y) / 2;
-          // Signed perpendicular distance of cursor from chord = new sagitta
-          var sag = (pAH.x - mxAH) * perp.x + (pAH.y - myAH) * perp.y;
-          var maxSag = perp.L * 3;
-          if (sag > maxSag) sag = maxSag; else if (sag < -maxSag) sag = -maxSag;
-          if (Math.abs(sag) < 1) sag = sag < 0 ? -1 : 1;
-          ahSeg.sagitta = sag;
-          RP.render();
-          if (RP.updateInfoPanel) RP.updateInfoPanel();
-          if (RP.updateInstructions) RP.updateInstructions();
-        }
-      }
       return;
     }
 
@@ -481,8 +401,10 @@ RP.initEvents = function() {
   var ctxMenu       = document.getElementById('ctx-menu');
   var ctxTitle      = document.getElementById('ctx-menu-title');
   var ctxDelBtn     = document.getElementById('ctx-menu-delete');
-  var ctxClearCpBtn = document.getElementById('ctx-menu-clear-checkpoint');
-  var ctxTarget     = null; // { kind: 'node'|'segment'|'line', isCheckpoint?, ... }
+  // Only construction geometry is right-clickable. The node and segment
+  // entries deleted here mutated route.nodes / route.segments, which are
+  // derived views — Route mode's element list is the real editor.
+  var ctxTarget     = null; // { kind: 'line', lineId }
 
   function hideCtxMenu() {
     if (ctxMenu) ctxMenu.style.display = 'none';
@@ -493,7 +415,6 @@ RP.initEvents = function() {
     if (!ctxMenu) return;
     ctxTitle.textContent = title;
     ctxTarget = target;
-    if (ctxClearCpBtn) ctxClearCpBtn.style.display = target.isCheckpoint ? '' : 'none';
     ctxMenu.style.left = (x + 4) + 'px';
     ctxMenu.style.top  = (y + 4) + 'px';
     ctxMenu.style.display = 'block';
@@ -503,43 +424,9 @@ RP.initEvents = function() {
     if (mr.bottom > window.innerHeight) ctxMenu.style.top  = (y - mr.height - 4) + 'px';
   }
 
-  if (ctxClearCpBtn) {
-    ctxClearCpBtn.addEventListener('click', function() {
-      if (!ctxTarget || ctxTarget.kind !== 'node') { hideCtxMenu(); return; }
-      for (var i = 0; i < RP.routes.length; i++) {
-        var r = RP.routes[i];
-        if (r.id !== ctxTarget.routeId) continue;
-        for (var j = 0; j < r.nodes.length; j++) {
-          if (r.nodes[j].id === ctxTarget.nodeId) {
-            RP.pushHistory('Clear checkpoint');
-            r.nodes[j].isCheckpoint = false;
-            r.nodes[j].checkpointName = null;
-            RP.render();
-            RP.updateInstructions();
-            break;
-          }
-        }
-        break;
-      }
-      hideCtxMenu();
-    });
-  }
-
   if (ctxDelBtn) {
     ctxDelBtn.addEventListener('click', function() {
-      if (!ctxTarget) { hideCtxMenu(); return; }
-      if (ctxTarget.kind === 'node') {
-        var r = null;
-        for (var i = 0; i < RP.routes.length; i++) if (RP.routes[i].id === ctxTarget.routeId) { r = RP.routes[i]; break; }
-        if (r) {
-          RP.pushHistory('Delete node');
-          RP.removeNode(r.id, ctxTarget.nodeId);
-        }
-      } else if (ctxTarget.kind === 'segment') {
-        RP.removeSegment(ctxTarget.routeId, ctxTarget.segId);
-      } else if (ctxTarget.kind === 'line') {
-        RP.removeConstructionLine(ctxTarget.lineId);
-      }
+      if (ctxTarget && ctxTarget.kind === 'line') RP.removeConstructionLine(ctxTarget.lineId);
       hideCtxMenu();
     });
   }
@@ -557,42 +444,7 @@ RP.initEvents = function() {
     if (!RP.img) return;
     var p = RP.screenToImage(e.clientX, e.clientY);
 
-    // 1. Route nodes (highest priority — small click target)
-    for (var ri = 0; ri < RP.routes.length; ri++) {
-      var r = RP.routes[ri];
-      if (!r.visible || !r.nodes) continue;
-      for (var ni = 0; ni < r.nodes.length; ni++) {
-        var n = r.nodes[ni];
-        if (RP.screenDist(p.x, p.y, n.x, n.y) < 12) {
-          var nodeLabel = n.isCheckpoint ? ('Checkpoint: ' + (n.checkpointName || 'node')) : ('Node in ' + r.name);
-          showCtxMenu(e.clientX, e.clientY, nodeLabel, { kind: 'node', routeId: r.id, nodeId: n.id, isCheckpoint: !!n.isCheckpoint });
-          return;
-        }
-      }
-    }
-
-    // 2. Route segments
-    var segThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
-    for (var ri2 = 0; ri2 < RP.routes.length; ri2++) {
-      var r2 = RP.routes[ri2];
-      if (!r2.visible || !r2.segments) continue;
-      for (var si = 0; si < r2.segments.length; si++) {
-        var seg = r2.segments[si];
-        var na = RP.findNode(r2, seg.fromNodeId);
-        var nb = RP.findNode(r2, seg.toNodeId);
-        if (!na || !nb) continue;
-        var dSq = RP.pointToSegDistSq(p.x, p.y, na.x, na.y, nb.x, nb.y);
-        if (dSq < segThreshSq) {
-          var lenStr = RP.calibration
-            ? (RP.dist(na.x, na.y, nb.x, nb.y) / RP.calibration.pixelsPerMm).toFixed(0) + 'mm'
-            : 'seg ' + (si + 1);
-          showCtxMenu(e.clientX, e.clientY, r2.name + ' › ' + lenStr, { kind: 'segment', routeId: r2.id, segId: seg.id });
-          return;
-        }
-      }
-    }
-
-    // 3. Construction lines
+    // Construction lines are the only right-click target.
     var lineThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
     for (var li = 0; li < RP.lines.length; li++) {
       var l = RP.lines[li];
@@ -663,62 +515,6 @@ RP.initEvents = function() {
     reader.readAsDataURL(file);
     RP.dom.fileInput.value = '';
   });
-
-  // ---- Node extra turns ----
-  if (RP.dom.btnAddNodeTurn) {
-    RP.dom.btnAddNodeTurn.addEventListener('click', function() {
-      var node = RP.getSelectedNodeObj();
-      if (!node) return;
-      if (!node.extraTurns) node.extraTurns = [];
-      node.extraTurns.push({ deg: 0, speed: null });
-      RP.rebuildNodeTurnsList(node);
-      // Focus the new input
-      var inputs = RP.dom.nodeExtraTurnsList.querySelectorAll('.node-turn-input');
-      if (inputs.length) inputs[inputs.length - 1].select();
-      if (RP.updateInstructions) RP.updateInstructions();
-      RP.render();
-    });
-  }
-
-  if (RP.dom.nodeExtraTurnsList) {
-    // Commit a turn angle or turn speed on change/blur
-    RP.dom.nodeExtraTurnsList.addEventListener('change', function(e) {
-      var isAngle = e.target.classList.contains('node-turn-input');
-      var isSpeed = e.target.classList.contains('node-turn-speed-input');
-      if (!isAngle && !isSpeed) return;
-      var node = RP.getSelectedNodeObj();
-      if (!node || !node.extraTurns) return;
-      var entry = e.target.closest('.node-turn-entry');
-      var idx = entry ? parseInt(entry.dataset.idx, 10) : -1;
-      if (idx < 0 || idx >= node.extraTurns.length) return;
-      // Normalize entry to object form, preserving the other field
-      var cur = node.extraTurns[idx];
-      var deg = RP.extraTurnDeg(cur); if (!isFinite(deg)) deg = 0;
-      var spd = RP.extraTurnSpeed(cur);
-      if (isAngle) {
-        var v = parseFloat(e.target.value); deg = isFinite(v) ? v : 0;
-      } else {
-        var sv = parseFloat(e.target.value); spd = (isFinite(sv) && sv > 0) ? sv : null;
-      }
-      node.extraTurns[idx] = { deg: deg, speed: spd };
-      if (RP.updateInstructions) RP.updateInstructions();
-      RP.render();
-    });
-
-    // Delete a turn entry
-    RP.dom.nodeExtraTurnsList.addEventListener('click', function(e) {
-      if (!e.target.classList.contains('node-turn-del')) return;
-      var node = RP.getSelectedNodeObj();
-      if (!node || !node.extraTurns) return;
-      var entry = e.target.closest('.node-turn-entry');
-      var idx = entry ? parseInt(entry.dataset.idx, 10) : -1;
-      if (idx < 0 || idx >= node.extraTurns.length) return;
-      node.extraTurns.splice(idx, 1);
-      RP.rebuildNodeTurnsList(node);
-      if (RP.updateInstructions) RP.updateInstructions();
-      RP.render();
-    });
-  }
 
   wrap.addEventListener('mouseleave', function() {
     if (RP.hoveredNode) { RP.hoveredNode = null; RP.render(); }
@@ -879,88 +675,6 @@ RP.initEvents = function() {
   if (RP.dom.btnUndo) RP.dom.btnUndo.addEventListener('click', RP.undo);
   if (RP.dom.btnRedo) RP.dom.btnRedo.addEventListener('click', RP.redo);
 
-  if (RP.dom.btnFlipSegment) {
-    RP.dom.btnFlipSegment.addEventListener('click', function() {
-      if (!RP.selectedSegment) return;
-      RP.flipSegmentDirection(RP.selectedSegment.routeId, RP.selectedSegment.segId);
-    });
-  }
-
-  function onModeChange(mode) {
-    if (!RP.selectedSegment) return;
-    RP.setSegmentMode(RP.selectedSegment.routeId, RP.selectedSegment.segId, mode);
-  }
-  if (RP.dom.segmentModeNormal)
-    RP.dom.segmentModeNormal.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_NORMAL); });
-  if (RP.dom.segmentModeTeleport)
-    RP.dom.segmentModeTeleport.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_TELEPORT); });
-  if (RP.dom.segmentModeLTDist)
-    RP.dom.segmentModeLTDist.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_LINETRACE_DIST); });
-  if (RP.dom.segmentModeLTJunct)
-    RP.dom.segmentModeLTJunct.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_LINETRACE_JUNCT); });
-  if (RP.dom.segmentModeWallAlign)
-    RP.dom.segmentModeWallAlign.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_WALL_ALIGN); });
-  if (RP.dom.segmentModeFollowPath)
-  if (RP.dom.segmentModeArc)
-    RP.dom.segmentModeArc.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_ARC); });
-
-  if (RP.dom.segmentTeleportName) {
-    RP.dom.segmentTeleportName.addEventListener('change', function() {
-      if (!RP.selectedSegment) return;
-      RP.pushHistory('Edit teleport name');
-      RP.setSegmentTeleportName(RP.selectedSegment.routeId, RP.selectedSegment.segId, this.value);
-    });
-  }
-
-  if (RP.dom.segmentJunctionCount) {
-    RP.dom.segmentJunctionCount.addEventListener('change', function() {
-      if (!RP.selectedSegment) return;
-      RP.pushHistory('Edit junction count');
-      RP.setSegmentJunctionCount(RP.selectedSegment.routeId, RP.selectedSegment.segId, this.value);
-    });
-  }
-
-  if (RP.dom.segmentOffset) {
-    RP.dom.segmentOffset.addEventListener('change', function() {
-      if (!RP.selectedSegment) return;
-      var route = null;
-      for (var i = 0; i < RP.routes.length; i++) {
-        if (RP.routes[i].id === RP.selectedSegment.routeId) { route = RP.routes[i]; break; }
-      }
-      var seg = route && RP.findSegment ? RP.findSegment(route, RP.selectedSegment.segId) : null;
-      if (!seg) return;
-      var v = parseFloat(this.value);
-      seg.offset = isFinite(v) ? v : 0;
-      if (RP.updateInstructions) RP.updateInstructions();
-    });
-  }
-
-  if (RP.dom.segmentSpeed) {
-    RP.dom.segmentSpeed.addEventListener('change', function() {
-      if (!RP.selectedSegment) return;
-      var route = null;
-      for (var i = 0; i < RP.routes.length; i++) {
-        if (RP.routes[i].id === RP.selectedSegment.routeId) { route = RP.routes[i]; break; }
-      }
-      var seg = route && RP.findSegment ? RP.findSegment(route, RP.selectedSegment.segId) : null;
-      if (!seg) return;
-      var v = parseFloat(this.value);
-      if (isFinite(v) && v > 0) seg.speed = v; else delete seg.speed;
-      if (RP.updateInstructions) RP.updateInstructions();
-    });
-  }
-
-  if (RP.dom.nodeTurnSpeed) {
-    RP.dom.nodeTurnSpeed.addEventListener('change', function() {
-      var node = RP.getSelectedNodeObj();
-      if (!node) return;
-      var v = parseFloat(this.value);
-      if (isFinite(v) && v > 0) node.turnSpeed = v; else delete node.turnSpeed;
-      if (RP.updateInstructions) RP.updateInstructions();
-      RP.render();
-    });
-  }
-
   if (RP.dom.btnClearAll) {
     RP.dom.btnClearAll.addEventListener('click', function() {
       if (!confirm('Clear all lines, routes, calibration, robot config, and code templates?')) return;
@@ -972,7 +686,7 @@ RP.initEvents = function() {
       RP.nextWpId = 1;
       RP.nextSegId = 1;
       RP.nextRouteId = 1;
-      RP.selectedSegment = null;
+      RP.selectedElementId = null;
       RP.ensureSingleRoute();
       RP.robotConfig = RP.freshRobotConfig();
       RP.codeConfig = RP.freshCodeConfig();
@@ -1051,7 +765,6 @@ RP.initEvents = function() {
         if (RP.dom.btnSetStart) RP.dom.btnSetStart.textContent = '📍 Click on map to set';
         didCancel = true;
       }
-      if (RP.selectedSegment) { RP.selectedSegment = null; RP.updateInfoPanel(); didCancel = true; }
       if (RP.sketchSelection && RP.sketchSelection.length) {
         RP.clearSketchSelection();
         RP.refreshSketchUI();

@@ -1,10 +1,9 @@
 # Sketch Layer Refactor — Design & Implementation Plan
 
-Status: **phases 0–8 complete, 9 partial**, on branch `refactor/sketch-layer`
+Status: **phases 0–9 complete**, on branch `refactor/sketch-layer`
 The Sketch/Route split is live, every coordinate is solver-owned, and
-arcs are real constrainable entities. `follow_path` and the old route
-tools are gone. Still to remove: the old segment/node panels and
-`RP.selectedSegment`.
+arcs are real constrainable entities. `follow_path`, the old route tools,
+the segment/node side panels and `RP.selectedSegment` are all gone.
 Phases 4+ **re-planned** after phase 3 — routes are now reference-only
 over sketch geometry, with a hard sketch/route mode split (§4, §7).
 Goal: replace ad-hoc construction/route geometry with a real 2D parametric
@@ -441,13 +440,19 @@ solver — no longer exists; routes stop owning positions instead.
 | 6 | ✅ **Mode switching + route mode UI.** `js/ui/route-ui.js`: `RP.editMode`, Sketch/Route switch, tool group hidden in route mode, routes dimmed in sketch mode and geometry dimmed to a guide in route mode, click geometry to append (auto-picking the connecting direction), element list, movement-parameter panel, reorder/remove. Old route/freehand/arc/checkpoint tools removed from the UI. 14 tests. | the two-mode design | high |
 | 7 | ✅ **Preset field geometry + wall_align as a constraint.** New `point_line_distance` constraint (shares its maths with `point_on_line`, which is the same thing with target 0). `RP.createFieldBoundary()` builds four rigid walls from four pinned corners. Setting an element to `wall_align` constrains its exit point to stand `clearance` off a wall — signed, so the side is kept — and clearance changes re-solve. 14 tests. | wall_align stops being magic | med |
 | 8 | ✅ **Arcs in the sketcher.** `point_on_arc`, `radius` and `tangent` constraints; arc tool (drag the chord, then drag the centre); arc view + rendering; arcs are selectable, snappable and constrainable. Route elements can reference arcs and are forced to an arc move. Old `sagitta` arcs migrate into real arc entities with byte-identical codegen; `arcPolyline` and the bulge handle are deleted. 15 tests. | curves | med |
-| 9 | 🟡 **Cleanup (partial).** Deleted: the freehand/route/checkpoint tool handlers, the whole `follow_path` subsystem (helpers, config, UI, codegen branch, rendering), the sagitta bulge handle, and ~20 orphaned functions. 7875 → 7318 lines; `events.js` 1335 → 1094. **Remaining:** the old segment/node side panels and `RP.selectedSegment` (~45 references) — inert, but superseded by Route mode's element panel. | none | low |
+| 9 | ✅ **Cleanup.** First pass deleted the freehand/route/checkpoint tool handlers, the whole `follow_path` subsystem (helpers, config, UI, codegen branch, rendering), the sagitta bulge handle, and ~20 orphaned functions. Second pass finished the job: the segment and node side panels, `RP.selectedSegment` / `RP.selectedNode`, the six node/segment mutators, the layer list's segment sub-rows, and the context menu's node/segment branches — all of which wrote to `route.nodes` / `route.segments`, derived read-only views whose writes vanished on the next rebuild. Also fixed `#ctx-menu` being declared below the `<script>` block, which made `getElementById` return null and had silently disabled the right-click menu. 7875 → 6718 lines; `events.js` 1335 → 807. 2 new boot tests. | right-click menu starts working | low |
 
-**Effort shape**: phases 1 and 3 were the bulk of the solver/UI work;
-phase 6 is the bulk of what remains. Phase 4 is no longer the risky one —
-that risk was designed out — but phase 6 replaces it at the top, because
-it is where the two modes and all existing tool behaviour have to be
-reconciled.
+**Effort shape**: phases 1 and 3 were the bulk of the solver/UI work, and
+phase 6 the bulk of the rest. Phase 4 was never the risky one — that risk
+was designed out — but phase 6 took its place, because it is where the two
+modes and all existing tool behaviour had to be reconciled.
+
+**Known gap after phase 9**: `element.turnSpeed` and
+`element.extraTurnsBefore` are read by codegen and covered by the golden
+suite, but nothing in Route mode's element panel edits them. The node
+panel that used to was writing to a derived view, so the capability was
+already broken when it was deleted; restoring it means adding the two
+fields to `updateElementParams`.
 
 **Reversibility constraint** (§4): nothing in phases 4–6 may entangle
 route-element creation with event handling, so that one-step route

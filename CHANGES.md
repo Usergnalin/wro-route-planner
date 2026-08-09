@@ -1,3 +1,61 @@
+# Changes — 2026-08-09
+
+## Phase 9 cleanup (finishing the sketch-layer refactor)
+
+Deleted the last of the node/segment write path. `route.nodes` and
+`route.segments` became derived read-only views in phase 4, so everything
+below was writing to structures that the next `rebuildRouteViews()` threw
+away — it looked like it worked until you touched anything else.
+
+**Removed**
+
+| | |
+|---|---|
+| UI | The **Selected Segment** and **Selected Node** sidebar panels (`#segment-section`, `#node-section`) and every input in them: the 6-way mode radios, offset, speed, teleport name, junction count, flip-direction button, turn speed, and the extra-turns list. |
+| State | `RP.selectedSegment`, `RP.selectedNode`. Save/load and Clear All now reset `RP.selectedElementId` instead. |
+| Model | `removeSegment`, `removeNode`, `flipSegmentDirection`, `setSegmentMode`, `setSegmentTeleportName`, `setSegmentJunctionCount`, `findSegment`. |
+| Arcs | The sagitta bulge handle's mousedown/mousemove branches, plus `arcApex` and `defaultArcSagitta`, now that arcs are sketch entities. `arcPerp` and `computeArcGeom` stay — they are how `migrateRoutesToElements` turns an old chord+bulge into a centre. |
+| Layer list | The per-segment sub-rows (select / hide / delete). The route row now reports element count and keeps only its visibility toggle. |
+| Context menu | The node and segment branches, including "Clear checkpoint". Construction lines are the only right-click target now; checkpoints are edited in the element panel. |
+| Tool plumbing | `TOOL_LABELS` / `setTool` hints for the deleted `route`, `checkpoint` and `freehand` tools. |
+| CSS | `.layer-seg-item`, `.active-seg`, `.seg-mode-group`, `.seg-mode-radio`. |
+
+Select mode is now purely "move geometry": drag a construction-line
+endpoint or a route node, both of which go through the solver.
+
+**Fixed along the way**
+
+`<div id="ctx-menu">` was declared *after* the `<script>` block, so
+`document.getElementById('ctx-menu')` inside `initEvents()` returned
+`null` and `showCtxMenu()` early-returned every time. The right-click
+menu had never opened. Moved the markup above the scripts; a new boot
+test now fails if any element the scripts resolve at load time is
+declared below them.
+
+Also gone: a dangling `if (RP.dom.segmentModeFollowPath)` with no body,
+left over from the `follow_path` deletion.
+
+**Verification**
+
+- `node tests/run.js` — 9 suites, all pass (boot 10 → 12 checks).
+- Golden codegen output byte-identical.
+- Browser smoke test (Chromium via Playwright): draw + constrain
+  geometry, all four tools, Sketch↔Route switching, append elements,
+  edit them, undo/redo, right-click delete + undo. No console errors.
+
+**Known gap**
+
+`element.turnSpeed` and `element.extraTurnsBefore` are still consumed by
+codegen and covered by the golden suite, but nothing edits them any more.
+The node panel that used to was writing to a derived view, so this was
+already broken before the deletion. Fix is to add both to
+`RP.updateElementParams` in `js/ui/route-ui.js`.
+
+**Line counts** (`js/` + `index.html` + `style.css`): 7515 → 6718.
+`events.js` 1094 → 807, `core.js` 842 → 595, `routes.js` 528 → 326.
+
+---
+
 # Changes — 2026-05-25
 
 Two passes: your snap rework + the audit fixes.

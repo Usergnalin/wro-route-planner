@@ -154,54 +154,6 @@
       <div class="sidebar-title">Calibration</div>
       <div id="info-calib-status">Not set</div>
     </div>
-    <div class="sidebar-section" id="segment-section" style="display:none">
-      <div class="sidebar-title">Selected Segment</div>
-      <div id="segment-info" style="font-size:11px;color:#bbb;line-height:1.5"></div>
-      <div style="margin:6px 0 2px;font-size:10px;color:#888">Mode</div>
-      <div class="seg-mode-group">
-        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-normal" checked> Normal</label>
-        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-teleport"> ✈ Teleport</label>
-        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-dist"> 📏 LT Dist</label>
-        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-junct"> 🔀 LT Junct</label>
-        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-wall-align"> 🧱 Wall Align</label>
-        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-arc"> ◠ Arc</label>
-      </div>
-      <div id="seg-mode-params" style="margin-top:4px;display:none">
-        <input type="text" id="seg-teleport-name" placeholder="teleport name" style="display:none;width:100%;box-sizing:border-box;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px">
-        <input type="number" id="seg-junction-count" value="1" min="1" style="display:none;width:100%;box-sizing:border-box;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px">
-      </div>
-      <div id="seg-offset-row" style="display:none;margin-top:4px">
-        <label style="font-size:11px;color:#bbb;display:flex;justify-content:space-between;align-items:center">
-          Offset (mm)
-          <input type="number" id="seg-offset" value="0" step="1" style="width:80px;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px;text-align:right">
-        </label>
-        <div class="sidebar-hint">Added to distance in code only</div>
-      </div>
-      <div id="seg-speed-row" style="display:none;margin-top:4px">
-        <label style="font-size:11px;color:#bbb;display:flex;justify-content:space-between;align-items:center">
-          Speed
-          <input type="number" id="seg-speed" min="1" placeholder="default" style="width:80px;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px;text-align:right">
-        </label>
-        <div class="sidebar-hint">Overrides default speed for this action</div>
-      </div>
-      <button id="btn-flip-segment" class="sidebar-small-btn" style="margin-top:4px">→ Forward</button>
-      <div class="sidebar-hint">Click a segment in Select mode</div>
-    </div>
-    <div class="sidebar-section" id="node-section" style="display:none">
-      <div class="sidebar-title">Selected Node</div>
-      <div id="node-info" style="font-size:11px;color:#bbb;line-height:1.6;white-space:pre"></div>
-      <div id="node-turn-speed-row" style="margin-top:6px">
-        <label style="font-size:11px;color:#bbb;display:flex;justify-content:space-between;align-items:center">
-          Turn speed
-          <input type="number" id="node-turn-speed" min="1" placeholder="default" style="width:80px;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px;text-align:right">
-        </label>
-        <div class="sidebar-hint">Speed of the geometric turn here</div>
-      </div>
-      <div style="margin:6px 0 2px;font-size:10px;color:#888">Extra Turns <span style="font-weight:normal;color:#666">(before geometric turn)</span></div>
-      <div id="node-extra-turns-list"></div>
-      <button id="btn-add-node-turn" class="sidebar-small-btn" style="margin-top:4px">＋ Add Turn</button>
-      <div class="sidebar-hint">Click a node in Select mode</div>
-    </div>
   </div>
 </div>
 
@@ -270,6 +222,12 @@
   <div class="hint">Use {distance}, {angle}, {speed}, {reversed}, {junctions} as placeholders. Arc uses {angle}, {radius}, {speed}. Follow Path uses {headings}, {length}, {speed}. Checkpoint uses {name}.</div>
 </div>
 
+<!-- Context menu -->
+<div id="ctx-menu" style="display:none">
+  <div id="ctx-menu-title"></div>
+  <button id="ctx-menu-delete">🗑 Delete</button>
+</div>
+
 <script src="js/core.js"></script>
 <!-- Sketch layer: geometry + constraint solver (see docs/sketch-refactor-plan.md) -->
 <script src="js/sketch/linalg.js"></script>
@@ -288,12 +246,5 @@
 <script src="js/ui/route-ui.js"></script>
 <script src="js/events.js"></script>
 <script src="js/main.js"></script>
-
-<!-- Context menu -->
-<div id="ctx-menu" style="display:none">
-  <div id="ctx-menu-title"></div>
-  <button id="ctx-menu-clear-checkpoint" style="display:none">✕ Clear checkpoint</button>
-  <button id="ctx-menu-delete">🗑 Delete</button>
-</div>
 </body>
 </html>

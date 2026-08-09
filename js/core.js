@@ -49,28 +49,6 @@ RP.dom.btnUndo = document.getElementById('btn-undo');
 RP.dom.btnRedo = document.getElementById('btn-redo');
 RP.dom.btnClearAll = document.getElementById('btn-clear-all');
 RP.dom.btnRecalibrate = document.getElementById('btn-recalibrate');
-RP.dom.segmentSection = document.getElementById('segment-section');
-RP.dom.segmentInfo = document.getElementById('segment-info');
-RP.dom.btnFlipSegment = document.getElementById('btn-flip-segment');
-RP.dom.segmentModeNormal = document.getElementById('seg-mode-normal');
-RP.dom.segmentModeTeleport = document.getElementById('seg-mode-teleport');
-RP.dom.segmentModeLTDist = document.getElementById('seg-mode-lt-dist');
-RP.dom.segmentModeLTJunct = document.getElementById('seg-mode-lt-junct');
-RP.dom.segmentModeWallAlign = document.getElementById('seg-mode-wall-align');
-RP.dom.segmentTeleportName = document.getElementById('seg-teleport-name');
-RP.dom.segmentJunctionCount = document.getElementById('seg-junction-count');
-RP.dom.segmentModeArc = document.getElementById('seg-mode-arc');
-RP.dom.segmentModeParams = document.getElementById('seg-mode-params');
-RP.dom.segmentOffsetRow = document.getElementById('seg-offset-row');
-RP.dom.segmentOffset = document.getElementById('seg-offset');
-RP.dom.segmentSpeedRow = document.getElementById('seg-speed-row');
-RP.dom.segmentSpeed = document.getElementById('seg-speed');
-RP.dom.nodeSection = document.getElementById('node-section');
-RP.dom.nodeInfo = document.getElementById('node-info');
-RP.dom.nodeTurnSpeedRow = document.getElementById('node-turn-speed-row');
-RP.dom.nodeTurnSpeed = document.getElementById('node-turn-speed');
-RP.dom.nodeExtraTurnsList = document.getElementById('node-extra-turns-list');
-RP.dom.btnAddNodeTurn = document.getElementById('btn-add-node-turn');
 RP.dom.btnCopyInstr = document.getElementById('btn-copy-instr');
 RP.dom.btnCopyCode = document.getElementById('btn-copy-code');
 RP.dom.btnSetStart = document.getElementById('btn-set-start');
@@ -114,16 +92,15 @@ RP.nextRouteId = 1;
 // Active tool: 'construction' | 'route'
 RP.activeTool = 'construction';
 // The old route CREATION tools spoke the node/segment model, which is now
-// a derived read-only view. They have been removed from the UI and their
-// job belongs to Route mode; this guard just stops anything reactivating
-// them before phase 9 deletes the handlers.
+// a derived read-only view. Their handlers are gone and their job belongs
+// to Route mode; this guard stops a stale save or a bookmarked call from
+// selecting a tool that no longer does anything.
 RP.ROUTE_EDIT_LOCKED = true;
 // `arc` is no longer locked: it now draws a SKETCH arc, not a route arc.
 RP.LOCKED_TOOLS = { route: 1, freehand: 1, checkpoint: 1 };
 
 RP.TOOL_LABELS = {
-  construction: 'Construction', route: 'Route', select: 'Select',
-  checkpoint: 'Checkpoint', freehand: 'Freehand', arc: 'Arc',
+  construction: 'Construction', select: 'Select', arc: 'Arc',
   constrain: 'Constrain'
 };
 
@@ -476,16 +453,12 @@ RP.restoreState = function(s) {
   // nodes/segments are derived views and are not persisted, so they must
   // be rebuilt before anything reads them.
   if (RP.rebuildRouteViews) RP.rebuildRouteViews();
-  // Validate selected segment against restored state; clear if stale.
-  if (RP.selectedSegment) {
-    var stillValid = false;
-    for (var ri = 0; ri < RP.routes.length; ri++) {
-      var r = RP.routes[ri];
-      if (r.id === RP.selectedSegment.routeId && RP.findSegment && RP.findSegment(r, RP.selectedSegment.segId)) {
-        stillValid = true; break;
-      }
+  // Validate the route-mode selection against restored state; clear if stale.
+  if (RP.selectedElementId != null) {
+    var restored = RP.getActiveRoute ? RP.getActiveRoute() : null;
+    if (!restored || !RP.findElement(restored, RP.selectedElementId)) {
+      RP.selectedElementId = null;
     }
-    if (!stillValid) RP.selectedSegment = null;
   }
   RP.updateRouteSelect();
   RP.updateSideRouteList();
@@ -568,9 +541,7 @@ RP.setTool = function(tool) {
   var hint = document.getElementById('sidebar-tool-hint');
   if (hint) {
     if (tool === 'construction') hint.textContent = 'Drag to draw a line';
-    else if (tool === 'route') hint.textContent = 'Drag from last dot to extend route';
     else if (tool === 'select') hint.textContent = 'Click dots/endpoints to move';
-    else if (tool === 'checkpoint') hint.textContent = 'Click route mid/end to place checkpoint';
     else if (tool === 'arc') hint.textContent = 'Drag the chord · then drag the centre to curve it';
     else if (tool === 'constrain') hint.textContent = 'Click geometry to select · shift-click adds · drag points to move';
   }
@@ -578,207 +549,11 @@ RP.setTool = function(tool) {
   RP.lineDrawing = false;
   RP.lineDrawStart = null;
   RP.hoverSnapPoint = null;
-  // Selected segment only makes sense in select mode.
-  if (tool !== 'select') RP.selectedSegment = null;
   // Sketch selection only makes sense in constrain mode.
   if (tool !== 'constrain' && RP.clearSketchSelection) RP.clearSketchSelection();
   if (RP.updateConstraintPanel) RP.updateConstraintPanel();
   RP.updateInfoPanel();
   RP.render();
-};
-
-// ======================================================================
-// SEGMENT PANEL
-// ======================================================================
-RP.updateSegmentPanel = function() {
-  if (!RP.dom.segmentSection) return;
-  // Only show in select mode AND when we have a selection.
-  if (RP.activeTool !== 'select' || !RP.selectedSegment) {
-    RP.dom.segmentSection.style.display = 'none';
-    return;
-  }
-  // Find the route + segment; clear stale selection.
-  var route = null;
-  for (var i = 0; i < RP.routes.length; i++) {
-    if (RP.routes[i].id === RP.selectedSegment.routeId) { route = RP.routes[i]; break; }
-  }
-  var seg = route && RP.findSegment ? RP.findSegment(route, RP.selectedSegment.segId) : null;
-  if (!route || !seg) {
-    RP.selectedSegment = null;
-    RP.dom.segmentSection.style.display = 'none';
-    return;
-  }
-  var a = RP.findNode(route, seg.fromNodeId);
-  var b = RP.findNode(route, seg.toNodeId);
-  var dir  = seg.direction || RP.SEG_FORWARD;
-  var mode = seg.mode || RP.SEG_MODE_NORMAL;
-  var isTeleport = mode === RP.SEG_MODE_TELEPORT;
-  var isLineTrace = mode === RP.SEG_MODE_LINETRACE_DIST || mode === RP.SEG_MODE_LINETRACE_JUNCT;
-  var dirColor = isTeleport ? '#ffaa00' : (isLineTrace ? '#44ff88' : (dir === RP.SEG_BACKWARD ? '#ff8844' : '#44aaff'));
-  var dirLabel = dir === RP.SEG_BACKWARD ? 'Backward' : 'Forward';
-  var isFollowPath = mode === RP.SEG_MODE_FOLLOW_PATH;
-  var isArc = mode === RP.SEG_MODE_ARC && seg.sagitta;
-  var modeLabel = mode === RP.SEG_MODE_TELEPORT ? 'Teleport' : (mode === RP.SEG_MODE_LINETRACE_DIST ? 'Line Trace (dist)' : (mode === RP.SEG_MODE_LINETRACE_JUNCT ? 'Line Trace (junct)' : (mode === RP.SEG_MODE_WALL_ALIGN ? 'Wall Align' : (isFollowPath ? 'Follow Path' : (isArc ? 'Arc' : 'Normal')))));
-  var unit = (RP.codeConfig && RP.codeConfig.defaultUnit) || 'mm';
-  var uf = (RP.unitFactor ? RP.unitFactor(unit) : 1);
-  var lenStr = '';
-  // Follow-path / arc length is the true curved length, not the straight node-to-node distance
-  var lenPx;
-  var arcGeo = null;
-  if (isFollowPath && seg.pathPoints && RP.polylineLengthPx) {
-    var fpSmoothPanel = (RP.codeConfig && RP.codeConfig.followPathSmoothness) || 0;
-    var fpLenPts = (fpSmoothPanel > 0 && RP.chaikinSmooth) ? RP.chaikinSmooth(seg.pathPoints, fpSmoothPanel) : seg.pathPoints;
-    lenPx = RP.polylineLengthPx(fpLenPts);
-  } else if (isArc && RP.computeArcGeom) {
-    arcGeo = RP.computeArcGeom(a.x, a.y, b.x, b.y, seg.sagitta);
-    lenPx = arcGeo ? arcGeo.radiusPx * Math.abs(arcGeo.sweepRad) : RP.dist(a.x, a.y, b.x, b.y);
-  } else {
-    lenPx = RP.dist(a.x, a.y, b.x, b.y);
-  }
-  if (RP.calibration) {
-    lenStr = (lenPx / RP.calibration.pixelsPerMm / uf).toFixed(1) + ' ' + unit;
-  } else {
-    lenStr = 'no calibration';
-  }
-  if (RP.dom.segmentInfo) {
-    var fpInfo = '';
-    if (isFollowPath) {
-      var nSamp = (RP.codeConfig && RP.codeConfig.followPathSamples) || 60;
-      fpInfo = '<div style="font-size:10px;color:#cc88ff;margin-top:2px">Drawn path: ' +
-        (seg.pathPoints ? seg.pathPoints.length : 0) + ' pts → ' + nSamp + ' heading samples</div>';
-    } else if (isArc && arcGeo) {
-      var arcRmm = RP.calibration ? (arcGeo.radiusPx / RP.calibration.pixelsPerMm / uf) : arcGeo.radiusPx;
-      var arcAngDeg = Math.abs(arcGeo.sweepRad) * 180 / Math.PI;
-      var sideTxt = (arcGeo.sweepRad >= 0) === (dir !== RP.SEG_BACKWARD) ? 'right' : 'left';
-      fpInfo = '<div style="font-size:10px;color:#ffcc44;margin-top:2px">Radius: ' + arcRmm.toFixed(1) + ' ' + unit +
-        ' · Sweep: ' + arcAngDeg.toFixed(1) + '° ' + sideTxt + '<br>Drag the handle to reshape</div>';
-    }
-    RP.dom.segmentInfo.innerHTML =
-      '<div>Route: ' + route.name + '</div>' +
-      '<div>Segment ' + (route.segments.indexOf(seg) + 1) + ' of ' + route.segments.length + '</div>' +
-      '<div>Length: ' + lenStr + '</div>' +
-      '<div>Direction: <b style="color:' + dirColor + '">' + dirLabel + '</b></div>' +
-      '<div>Mode: <b>' + modeLabel + '</b></div>' +
-      (isTeleport ? '<div style="font-size:10px;color:#ffaa00;margin-top:2px">Turns omitted — insert custom code</div>' : '') +
-      fpInfo;
-  }
-
-  // Mode selector radios.
-  if (RP.dom.segmentModeNormal)    RP.dom.segmentModeNormal.checked    = (mode === RP.SEG_MODE_NORMAL);
-  if (RP.dom.segmentModeTeleport)  RP.dom.segmentModeTeleport.checked  = (mode === RP.SEG_MODE_TELEPORT);
-  if (RP.dom.segmentModeLTDist)    RP.dom.segmentModeLTDist.checked    = (mode === RP.SEG_MODE_LINETRACE_DIST);
-  if (RP.dom.segmentModeLTJunct)   RP.dom.segmentModeLTJunct.checked   = (mode === RP.SEG_MODE_LINETRACE_JUNCT);
-  if (RP.dom.segmentModeWallAlign) RP.dom.segmentModeWallAlign.checked = (mode === RP.SEG_MODE_WALL_ALIGN);
-  if (RP.dom.segmentModeFollowPath) RP.dom.segmentModeFollowPath.checked = (mode === RP.SEG_MODE_FOLLOW_PATH);
-  if (RP.dom.segmentModeArc) RP.dom.segmentModeArc.checked = (mode === RP.SEG_MODE_ARC);
-
-  // Direction button — greyed out for teleport and both line trace modes.
-  if (RP.dom.btnFlipSegment) {
-    RP.dom.btnFlipSegment.textContent = (dir === RP.SEG_BACKWARD ? '\u2190 Backward' : '\u2192 Forward');
-    var blockDir = isTeleport || isLineTrace || isFollowPath;
-    RP.dom.btnFlipSegment.style.opacity = blockDir ? '0.35' : '1';
-    RP.dom.btnFlipSegment.style.pointerEvents = blockDir ? 'none' : 'auto';
-  }
-
-  // Mode-specific parameter inputs.
-  if (RP.dom.segmentModeParams) {
-    if (isTeleport) {
-      RP.dom.segmentModeParams.style.display = '';
-      if (RP.dom.segmentTeleportName) {
-        RP.dom.segmentTeleportName.style.display = '';
-        RP.dom.segmentTeleportName.value = seg.teleportName || ('teleport_' + seg.id);
-      }
-      if (RP.dom.segmentJunctionCount) RP.dom.segmentJunctionCount.style.display = 'none';
-    } else if (mode === RP.SEG_MODE_LINETRACE_JUNCT) {
-      RP.dom.segmentModeParams.style.display = '';
-      if (RP.dom.segmentTeleportName) RP.dom.segmentTeleportName.style.display = 'none';
-      if (RP.dom.segmentJunctionCount) {
-        RP.dom.segmentJunctionCount.style.display = '';
-        RP.dom.segmentJunctionCount.value = seg.junctionCount || 1;
-      }
-    } else {
-      RP.dom.segmentModeParams.style.display = 'none';
-    }
-  }
-
-  // Offset row — shown for normal, linetrace_dist, and follow_path (adds to distance/length)
-  var hasOffset = mode === RP.SEG_MODE_NORMAL || mode === RP.SEG_MODE_LINETRACE_DIST || mode === RP.SEG_MODE_FOLLOW_PATH;
-  if (RP.dom.segmentOffsetRow) RP.dom.segmentOffsetRow.style.display = hasOffset ? '' : 'none';
-  if (RP.dom.segmentOffset && hasOffset) RP.dom.segmentOffset.value = seg.offset || 0;
-
-  // Speed row — every mode emits a {speed} action except teleport (comment block only)
-  var hasSpeed = !isTeleport;
-  if (RP.dom.segmentSpeedRow) RP.dom.segmentSpeedRow.style.display = hasSpeed ? '' : 'none';
-  if (RP.dom.segmentSpeed && hasSpeed) RP.dom.segmentSpeed.value = (seg.speed != null ? seg.speed : '');
-
-  RP.dom.segmentSection.style.display = '';
-};
-
-// ======================================================================
-// NODE PANEL
-// ======================================================================
-RP.selectedNode = null;
-
-RP.updateNodePanel = function() {
-  if (!RP.dom.nodeSection) return;
-  if (RP.activeTool !== 'select' || !RP.selectedNode) {
-    RP.dom.nodeSection.style.display = 'none';
-    return;
-  }
-  var route = null;
-  for (var i = 0; i < RP.routes.length; i++) {
-    if (RP.routes[i].id === RP.selectedNode.routeId) { route = RP.routes[i]; break; }
-  }
-  var node = route ? RP.findNode(route, RP.selectedNode.nodeId) : null;
-  if (!node) { RP.selectedNode = null; RP.dom.nodeSection.style.display = 'none'; return; }
-  RP.dom.nodeSection.style.display = '';
-
-  var lp = RP.computeLongestPath ? RP.computeLongestPath(route) : [];
-  var pathIdx = -1;
-  for (var j = 0; j < lp.length; j++) { if (lp[j].id === node.id) { pathIdx = j; break; } }
-  var posLabel = pathIdx >= 0 ? 'Node ' + (pathIdx + 1) + ' of ' + lp.length : 'Off-path node';
-  var typeLabel = pathIdx === 0 ? ' (start)' : (pathIdx === lp.length - 1 ? ' (end)' : (pathIdx > 0 ? ' (interior)' : ''));
-  RP.dom.nodeInfo.textContent = 'Route: ' + route.name + '\n' + posLabel + typeLabel + '\n(' + node.x.toFixed(0) + ', ' + node.y.toFixed(0) + ')';
-
-  // Geometric turn speed only meaningful for interior nodes (start/end have no geometric turn)
-  if (RP.dom.nodeTurnSpeedRow) {
-    var interior = pathIdx > 0 && pathIdx < lp.length - 1;
-    RP.dom.nodeTurnSpeedRow.style.display = interior ? '' : 'none';
-    if (RP.dom.nodeTurnSpeed) RP.dom.nodeTurnSpeed.value = (node.turnSpeed != null ? node.turnSpeed : '');
-  }
-
-  RP.rebuildNodeTurnsList(node);
-};
-
-RP.rebuildNodeTurnsList = function(node) {
-  if (!RP.dom.nodeExtraTurnsList || !node) return;
-  var turns = node.extraTurns || [];
-  var html = '';
-  for (var i = 0; i < turns.length; i++) {
-    var tDeg = RP.extraTurnDeg(turns[i]);
-    var tSpd = RP.extraTurnSpeed(turns[i]);
-    html += '<div class="node-turn-entry" data-idx="' + i + '" style="display:flex;align-items:center;gap:4px;margin-bottom:3px">' +
-      '<input type="number" class="node-turn-input" value="' + (isFinite(tDeg) ? tDeg : 0).toFixed(1) + '" step="1" title="Turn angle" ' +
-      'style="flex:1;min-width:0;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px;text-align:right">' +
-      '<span style="color:#aaa;font-size:11px;flex-shrink:0">°</span>' +
-      '<input type="number" class="node-turn-speed-input" value="' + (tSpd != null ? tSpd : '') + '" min="1" placeholder="spd" title="Turn speed (blank = default)" ' +
-      'style="width:44px;flex-shrink:0;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 4px;border-radius:3px;font-size:11px;text-align:right">' +
-      '<button class="node-turn-del" title="Remove" style="background:#552222;border:1px solid #774444;color:#faa;padding:1px 7px;border-radius:3px;font-size:12px;cursor:pointer;flex-shrink:0">×</button>' +
-      '</div>';
-  }
-  if (turns.length === 0) {
-    html = '<div style="color:#666;font-size:11px;font-style:italic;margin-bottom:3px">No extra turns</div>';
-  }
-  RP.dom.nodeExtraTurnsList.innerHTML = html;
-};
-
-RP.getSelectedNodeObj = function() {
-  if (!RP.selectedNode) return null;
-  for (var i = 0; i < RP.routes.length; i++) {
-    if (RP.routes[i].id === RP.selectedNode.routeId)
-      return RP.findNode(RP.routes[i], RP.selectedNode.nodeId) || null;
-  }
-  return null;
 };
 
 // ======================================================================
@@ -807,28 +582,6 @@ RP.updateInfoPanel = function() {
   if (RP.dom.routeWpCount) {
     var r = RP.getActiveRoute();
     RP.dom.routeWpCount.textContent = r ? (r.nodes ? r.nodes.length : 0) + ' nodes' : 'No active route';
-  }
-  RP.updateSegmentPanel();
-  // Node panel: only refresh info text, not the turns list (avoid clobbering active inputs)
-  if (RP.dom.nodeSection) {
-    if (RP.activeTool !== 'select' || !RP.selectedNode) {
-      RP.dom.nodeSection.style.display = 'none';
-    } else {
-      var _n = RP.getSelectedNodeObj();
-      if (_n && RP.dom.nodeInfo) {
-        var _r = null;
-        for (var _i = 0; _i < RP.routes.length; _i++) {
-          if (RP.routes[_i].id === RP.selectedNode.routeId) { _r = RP.routes[_i]; break; }
-        }
-        if (_r) {
-          var _lp = RP.computeLongestPath ? RP.computeLongestPath(_r) : [];
-          var _pi = -1;
-          for (var _j = 0; _j < _lp.length; _j++) { if (_lp[_j].id === _n.id) { _pi = _j; break; } }
-          var _tl = _pi === 0 ? ' (start)' : (_pi === _lp.length - 1 ? ' (end)' : (_pi > 0 ? ' (interior)' : ''));
-          RP.dom.nodeInfo.textContent = 'Route: ' + _r.name + '\n' + (_pi >= 0 ? 'Node ' + (_pi + 1) + ' of ' + _lp.length : 'Off-path') + _tl + '\n(' + _n.x.toFixed(0) + ', ' + _n.y.toFixed(0) + ')';
-        }
-      }
-    }
   }
 };
 
