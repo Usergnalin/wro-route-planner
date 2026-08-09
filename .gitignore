@@ -14,6 +14,11 @@ desktop.ini
 node_modules/
 package-lock.json
 
+# The portable single-file build. Reproduce it with `node build.js`.
+# Un-ignore this if you would rather the built file be downloadable
+# straight from the repo — it is 320 KB and rebuilt by the test suite.
+dist/
+
 # Export artifacts (user project files)
 *.wro.json
 export/

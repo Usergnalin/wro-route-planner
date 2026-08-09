@@ -1,3 +1,68 @@
+# Changes — 2026-08-09 (8)
+
+## Portable single-file build
+
+`node build.js` → `dist/wro-planner.html`, one self-contained ~320 KB
+file. Copy it to a USB stick, double-click, done — no install, no admin
+rights, nothing for a school laptop's policy to block.
+
+`build.js` has no dependencies and never will. It reads `index.html`,
+replaces the stylesheet link and each `<script src>` with the file's
+contents, and writes the result. Load order comes from `index.html`,
+because that is the only place it is defined. Nothing is minified: the
+output is the thing you hand to a teammate, and being able to open it in
+an editor and read real code beats shaving 100 KB off a file that already
+fits on a floppy disk.
+
+The 2.6 MB sample mat photo is deliberately **not** embedded — it is a
+sample, and you load your own.
+
+This also makes the README true again. It has claimed "a single
+self-contained HTML file" since before the code was split into modules.
+
+### Verified from `file://`, not assumed
+
+Loading `dist/wro-planner.html` straight off disk in Chromium:
+
+| | |
+|---|---|
+| boots, all 9 tool buttons wired | ✅ |
+| `isSecureContext` | **true** — so *Copy Code* works |
+| `localStorage` | **works** — *Save Map* wrote and read back 31 KB |
+| Export Project download | ✅ real download fired |
+| draw → constrain → route → generate code | ✅ identical output |
+| console errors | none |
+
+One finding worth knowing, and now in the README: `localStorage` on
+`file://` belongs to the **browser, not the file**. Saved maps survive a
+reload but do **not** travel with the HTML, and they are shared with any
+other local page opened in that browser. *Export Project* is what moves
+between machines — which is what the `.json` export was always for.
+
+### Kept honest
+
+New `tests/build.js` (6 checks) runs the real build and then boots its
+output the same way `boot.js` boots the loose sources:
+
+- nothing is left to fetch from disk
+- every source `index.html` references is actually in the bundle
+- the bundle boots and its solver solves
+- **the bundle generates byte-identical code to the loose sources** for
+  all seven golden fixtures — otherwise the file people carry around is
+  not the thing the rest of the suite has been testing
+- a source containing `</script>` fails the build loudly instead of
+  silently truncating the bundle, which is the one way this could ship
+  something that looks fine and is broken
+
+`loadApp` now takes either paths or `{ name, code }`, so the bundle's
+inlined scripts boot through the same harness without being written back
+to disk.
+
+`dist/` is gitignored — rebuild with one command. Un-ignore it if you
+would rather the built file be downloadable straight from the repo.
+
+---
+
 # Changes — 2026-08-09 (7)
 
 ## Phase 10.3 — one name for one thing

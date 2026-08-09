@@ -45,7 +45,19 @@ This tool replaces estimation with **measured precision**: overlay a photo of th
 
 ### Designed for Offline Use
 
-The competition venue may not have internet access. This is a **single self-contained HTML file** with no external dependencies — open it in any modern browser and everything works offline. Projects (mat image + routes + calibration + robot config) can be saved to `localStorage` or exported as `.json` files.
+The competition venue may not have internet access, so there is nothing to fetch and nothing to install.
+
+Working on the source, open `index.html` directly — it loads its modules as plain `<script src>` tags, so no server and no build step are needed.
+
+To carry it around, run:
+
+```bash
+node build.js          # -> dist/wro-planner.html
+```
+
+That folds the stylesheet and all 18 scripts into **one self-contained ~320 KB HTML file** with no dependencies. Copy it to a USB stick, double-click it, and it works — no install, no admin rights, nothing for a school laptop's policy to block. `build.js` itself has no dependencies either; it is plain Node.
+
+**One thing to know if you are carrying it between machines:** *Save Map* writes to the browser's `localStorage`, which belongs to the browser, not to the file — your saved maps do not travel with the HTML, and they are shared with any other local page you open in that browser. Use **Export Project** for anything you need to move or keep. That is what the `.json` export is for.
 
 ---
 
@@ -99,6 +111,8 @@ wro-route-planner/
 │   │                     prompt, recalibration
 │   ├── events.js       # All mouse/touch/keyboard/button event handlers
 │   └── main.js         # Bootstrap — ResizeObserver, initial state, init call
+├── build.js            # Dependency-free build: inlines everything into
+│                         dist/wro-planner.html for carrying around
 ├── AUDIT.md            # Detailed code audit with severity-ranked bugs (mostly resolved)
 ├── CHANGES.md          # Changelog: snap system rework + audit fix summary
 └── README.md           # This file
@@ -224,7 +238,7 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 ## Usage Quickstart
 
 ### For a Human
-1. Open `index.html` in a modern browser. No server needed.
+1. Open `index.html` in a modern browser — or `node build.js` and open `dist/wro-planner.html`, which is the same app in one portable file. No server needed either way.
 2. **File** → **Open Image** → load your mat photo.
 3. Select the **📏 Construction Line** tool.
 4. Drag to draw a line on a known distance (e.g. the full width of the mat, which is 2362 mm for a standard WRO mat). Enter the known mm value when prompted. This calibrates the image.

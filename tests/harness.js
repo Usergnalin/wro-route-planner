@@ -113,21 +113,29 @@ function loadApp(files) {
 
   vm.createContext(ctx);
 
-  for (const rel of files) {
-    const abs = path.join(ROOT, rel);
-    if (!fs.existsSync(abs)) {
-      throw new Error('harness: missing file ' + rel);
-    }
-    const src = fs.readFileSync(abs, 'utf8');
+  // Entries are either a path relative to ROOT, or { name, code } for
+  // source already in hand — which is how the built single-file bundle
+  // gets booted the same way the loose sources are, without writing its
+  // inlined scripts back out to disk.
+  for (const entry of files) {
+    const src = (typeof entry === 'string')
+      ? { name: entry, code: readSource(entry) }
+      : entry;
     try {
-      vm.runInContext(src, ctx, { filename: rel });
+      vm.runInContext(src.code, ctx, { filename: src.name });
     } catch (e) {
-      throw new Error('harness: failed loading ' + rel + '\n  ' + e.message);
+      throw new Error('harness: failed loading ' + src.name + '\n  ' + e.message);
     }
   }
 
   if (!ctx.RP) throw new Error('harness: RP namespace never created');
   return ctx;
+}
+
+function readSource(rel) {
+  const abs = path.join(ROOT, rel);
+  if (!fs.existsSync(abs)) throw new Error('harness: missing file ' + rel);
+  return fs.readFileSync(abs, 'utf8');
 }
 
 // ----------------------------------------------------------------------
