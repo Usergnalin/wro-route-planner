@@ -458,10 +458,10 @@ RP.restoreState = function(s) {
   // be rebuilt before anything reads them.
   if (RP.rebuildRouteViews) RP.rebuildRouteViews();
   // Validate the route-mode selection against restored state; clear if stale.
-  if (RP.selectedElementId != null) {
+  if (RP.selectedActionId != null) {
     var restored = RP.getActiveRoute ? RP.getActiveRoute() : null;
-    if (!restored || !RP.findElement(restored, RP.selectedElementId)) {
-      RP.selectedElementId = null;
+    if (!restored || !RP.findAction(restored, RP.selectedActionId)) {
+      RP.selectedActionId = null;
     }
   }
   RP.updateRouteSelect();

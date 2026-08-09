@@ -72,43 +72,50 @@ RP.computeSteps = function(route) {
         : RP.toDeg(RP.angleRad(sp.x, sp.y, firstMove.a.x, firstMove.a.y));
       var turnInit = RP.turnAngle(RP.robotConfig.startHeading, legHeading);
       if (Math.abs(turnInit) > 0.5) {
-        steps.push({ kind: 'turn', deg: turnInit, speed: firstTurn ? firstTurn.speed : null,
+        steps.push({ kind: 'turn', deg: turnInit, startLeg: true,
+                     actionId: firstTurn ? firstTurn.id : null,
+                     speed: firstTurn ? firstTurn.speed : null,
                      style: firstTurn ? firstTurn.style : RP.DEFAULT_TURN_STYLE });
       }
-      steps.push({ kind: 'forward', mm: mmFromStart, reverse: backward0, speed: el0.speed });
+      steps.push({ kind: 'forward', mm: mmFromStart, startLeg: true,
+                   actionId: el0.id, reverse: backward0, speed: el0.speed });
       prevHeading = legHeading;
     } else {
       prevHeading = RP.robotConfig.startHeading;
     }
   }
 
-  if (route.startCheckpoint) {
-    steps.push({ kind: 'checkpoint', name: route.startCheckpoint });
-  }
-
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
 
+    if (it.kind === 'checkpoint') {
+      steps.push({ kind: 'checkpoint', actionId: it.action.id, name: it.action.name || 'checkpoint' });
+      continue;
+    }
+
     if (it.kind === 'turn') {
       var t = it.action;
-      if (t.angleMode === RP.TURN_FIXED) {
-        var fixedDeg = Number(t.angle);
-        if (isFinite(fixedDeg) && Math.abs(fixedDeg) > 0.01) {
-          steps.push({ kind: 'turn', deg: fixedDeg, extra: true, speed: t.speed, style: t.style });
-          // A typed turn moves the chassis, so the geometric turn that
-          // follows has to be measured from where it left off.
-          if (prevHeading !== null) prevHeading = ((prevHeading + fixedDeg) % 360 + 360) % 360;
+      // A typed angle wins over the geometry, whether it was inserted
+      // standalone or typed over a junction turn. The chassis ends up
+      // wherever that angle puts it, which is the point of overriding.
+      if (t.angle != null && isFinite(Number(t.angle))) {
+        var typedDeg = Number(t.angle);
+        if (Math.abs(typedDeg) > 0.01) {
+          steps.push({ kind: 'turn', deg: typedDeg, extra: t.angleMode === RP.TURN_FIXED,
+                       actionId: t.id, speed: t.speed, style: t.style });
+          if (prevHeading !== null) prevHeading = ((prevHeading + typedDeg) % 360 + 360) % 360;
         }
         continue;
       }
-      // Auto: swing onto whatever the next move needs. Unknown heading on
+      if (t.angleMode !== RP.TURN_AUTO) continue;   // typed turn with no angle
+      // Swing onto whatever the next move needs. An unknown heading on
       // either side (nothing driven yet, or arriving from a teleport)
       // means there is no angle to derive.
       var next = it.nextMove;
       if (prevHeading === null || !next || next.entryHeading === null) continue;
       var deg = RP.turnAngle(prevHeading, next.entryHeading);
       if (Math.abs(deg) > 0.5) {
-        steps.push({ kind: 'turn', deg: deg, speed: t.speed, style: t.style });
+        steps.push({ kind: 'turn', deg: deg, actionId: t.id, speed: t.speed, style: t.style });
       }
       prevHeading = next.entryHeading;
       continue;
@@ -117,6 +124,7 @@ RP.computeSteps = function(route) {
     var el = it.action;
     var mode = el.move || RP.MOVE_FORWARD;
     var backward = !!el.reverse;
+    var before = steps.length;
 
     if (mode === RP.MOVE_TELEPORT) {
       steps.push({
@@ -151,8 +159,8 @@ RP.computeSteps = function(route) {
       }
     }
 
+    for (var b = before; b < steps.length; b++) steps[b].actionId = el.id;
     prevHeading = it.exitHeading;
-    if (el.checkpoint) steps.push({ kind: 'checkpoint', name: el.checkpoint });
   }
 
   return steps;

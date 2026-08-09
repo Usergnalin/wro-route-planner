@@ -147,6 +147,8 @@ RP.resolveTimeline = function(route) {
       });
     } else if (RP.isTurnAction(act)) {
       items.push({ kind: 'turn', action: act });
+    } else if (RP.isCheckpointAction(act)) {
+      items.push({ kind: 'checkpoint', action: act });
     }
   }
 

@@ -244,4 +244,163 @@ check('a blank pivot template falls back to the spin template', () => {
     'a filled-in pivot template is used instead, got:\n' + pivot);
 });
 
+// ---- phase 10.2: selecting and editing actions ------------------------
+function routeMode(RP) {
+  RP.setEditMode('route');
+  return RP.getActiveRoute();
+}
+
+check('clicking a junction point selects the turn there', () => {
+  const RP = fresh();
+  const { route, a } = lRoute(RP);
+  routeMode(RP);
+  const corner = RP.sketch.entities[a.p2.id];
+
+  const hit = RP.routeHitTest(corner.x, corner.y);
+  assert(hit && hit.kind === 'action', 'expected an action hit, got ' + JSON.stringify(hit));
+  const act = RP.findAction(route, hit.id);
+  assert(RP.isTurnAction(act), 'the corner belongs to a turn');
+});
+
+check('a point hit beats the lines running through it', () => {
+  const RP = fresh();
+  const { a } = lRoute(RP);
+  routeMode(RP);
+  const corner = RP.sketch.entities[a.p2.id];
+  // Dead on the corner both lines are also within range; the turn wins.
+  const hit = RP.routeHitTest(corner.x, corner.y);
+  assert(hit.kind === 'action', 'the small target must win, got ' + hit.kind);
+  // A few px along the line, away from the corner, is the move again.
+  const off = RP.routeHitTest(corner.x - 40, corner.y);
+  assert(off && off.kind === 'element', 'along the line is the move, got ' + JSON.stringify(off));
+});
+
+check('clicking again cycles through actions sharing a junction', () => {
+  const RP = fresh();
+  const { route, a, e2 } = lRoute(RP);
+  routeMode(RP);
+  RP.insertFixedTurn(route.id, e2.id, { angle: 30 });
+  RP.insertCheckpoint(route.id, e2.id, 'grab');
+  const corner = RP.sketch.entities[a.p2.id];
+
+  const seen = [];
+  for (let i = 0; i < 4; i++) {
+    const hit = RP.routeHitTest(corner.x, corner.y);
+    RP.selectedActionId = hit.id;
+    seen.push(hit.id);
+  }
+  assert(new Set(seen).size >= 3,
+    'repeated clicks should walk the actions at that corner, got ' + JSON.stringify(seen));
+});
+
+check('selecting a turn un-highlights every move', () => {
+  const RP = fresh();
+  const { route } = lRoute(RP);
+  routeMode(RP);
+  RP.selectedActionId = autos(route)[1].id;
+  assert(RP.selectedElementId === null,
+    'selectedElementId must read through only for moves');
+  RP.selectedActionId = route.elements[0].id;
+  assert(RP.selectedElementId === route.elements[0].id, 'and read through for a move');
+});
+
+check('typing an angle overrides the junction without adding a second turn', () => {
+  const RP = fresh();
+  const { route } = lRoute(RP);
+  routeMode(RP);
+  const corner = autos(route)[1];
+  RP.selectedActionId = corner.id;
+  RP.updateSelectedAction({ angle: 45 });
+
+  assert(autos(route).length === 2, 'still one auto turn per move, got ' + autos(route).length);
+  assert(turns(route).length === 2, 'no extra turn was created');
+  const ts = RP.computeSteps(route).filter(s => s.kind === 'turn');
+  assert(ts.length === 1 && ts[0].deg === 45, 'the typed angle is what gets emitted');
+});
+
+check('clearing the override returns the junction to the geometry', () => {
+  const RP = fresh();
+  const { route } = lRoute(RP);
+  routeMode(RP);
+  const corner = autos(route)[1];
+  RP.selectedActionId = corner.id;
+  RP.updateSelectedAction({ angle: 45 });
+  RP.updateSelectedAction({ angle: null });
+  const ts = RP.computeSteps(route).filter(s => s.kind === 'turn');
+  assertClose(ts[0].deg, 90, 1e-9, 'back to the 90° corner');
+});
+
+check('emitted steps are tagged with the action that produced them', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  const emitted = RP.emittedStepsByAction(route);
+  assert(emitted[e1.id] && emitted[e1.id][0].kind === 'forward', 'move tagged');
+  const corner = autos(route)[1];
+  assertClose(RP.turnAngleFor(emitted, corner), 90, 1e-9, 'turn tagged and readable');
+  // A turn that emits nothing is simply absent.
+  assert(RP.turnAngleFor(emitted, autos(route)[0]) === null,
+    'the leading turn emits nothing without a start position');
+});
+
+check('add turn / add checkpoint insert in front of the selection', () => {
+  const RP = fresh();
+  const { route, e2 } = lRoute(RP);
+  routeMode(RP);
+  RP.selectedActionId = e2.id;
+  const t = RP.addTurnHere();
+  assert(RP.selectedActionId === t.id, 'the new turn becomes the selection');
+  const cp = RP.addCheckpointHere();
+
+  const seq = route.actions.map(x =>
+    x.type === 'move' ? 'M' : (x.type === 'checkpoint' ? 'C' : x.angleMode[0]));
+  assert(seq.join('') === 'aMfCaM' || seq.join('') === 'aMCfaM',
+    'inserted in front of the second move, got ' + seq.join(''));
+  assert(cp.pointId != null, 'checkpoint got anchored to a point');
+});
+
+check('a user turn can be removed but the junction turn cannot', () => {
+  const RP = fresh();
+  const { route, e2 } = lRoute(RP);
+  routeMode(RP);
+  RP.selectedActionId = e2.id;
+  const t = RP.addTurnHere();
+  assert(RP.removeSelectedAction() === true, 'the inserted turn goes');
+  assert(RP.findAction(route, t.id) === null, 'really gone');
+
+  RP.selectedActionId = autos(route)[1].id;
+  assert(RP.removeSelectedAction() === false, 'the junction turn stays');
+  assert(autos(route).length === 2, 'still there');
+});
+
+check('checkpoint actions round-trip through the move panel field', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  routeMode(RP);
+  RP.selectedActionId = e1.id;
+  RP.updateSelectedElement({ checkpoint: 'grab_block' });
+
+  const cps = route.actions.filter(RP.isCheckpointAction);
+  assert(cps.length === 1 && cps[0].name === 'grab_block', 'one checkpoint action');
+  assert(RP.checkpointAfterMove(route, e1.id) === cps[0], 'found after its move');
+  assert(/grab_block/.test(RP.generateCode(route)), 'and it reaches the code');
+
+  RP.updateSelectedElement({ checkpoint: null });
+  assert(route.actions.filter(RP.isCheckpointAction).length === 0, 'blank removes it');
+});
+
+check('the start checkpoint is just the first action now', () => {
+  const RP = fresh();
+  const { route } = lRoute(RP);
+  routeMode(RP);
+  RP.selectedActionId = route.actions[0].id;
+  RP.addCheckpointHere();
+  RP.setActionProps(route.id, RP.selectedActionId, { name: 'start_cp' });
+
+  const code = RP.generateCode(route);
+  const lines = code.split('\n').filter(l => l.indexOf('#') !== 0);
+  assert(/start_cp/.test(lines[0]), 'fires before anything moves, got:\n' + code);
+  assert(route.startCheckpoint === undefined || route.startCheckpoint === null,
+    'the old field is not used');
+});
+
 if (!report()) process.exitCode = 1;

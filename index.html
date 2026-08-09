@@ -102,9 +102,15 @@
     <div class="sidebar-section" id="route-mode-section" style="display:none">
       <div class="sidebar-title">Route</div>
       <div id="route-mode-status" class="constraint-dof">—</div>
-      <div class="sidebar-hint">Click geometry to add it · click an element to edit</div>
+      <div class="sidebar-hint">Click a line to add a move · click a corner to edit its turn</div>
       <div id="element-list" style="margin-top:6px"></div>
-      <button id="btn-reverse-route" class="sidebar-small-btn" style="margin-top:6px"
+      <div style="display:flex;gap:3px;margin-top:6px">
+        <button id="btn-add-turn" class="sidebar-small-btn"
+                title="Insert an extra turn before the selected action">↻ Turn</button>
+        <button id="btn-add-checkpoint" class="sidebar-small-btn"
+                title="Insert a checkpoint before the selected action">🏁 Checkpoint</button>
+      </div>
+      <button id="btn-reverse-route" class="sidebar-small-btn" style="margin-top:4px"
               title="Walk the whole route the other way">⇄ Reverse route</button>
     </div>
 
@@ -135,7 +141,7 @@
 
     <!-- Selected route element (route mode) -->
     <div class="sidebar-section" id="element-params-section" style="display:none">
-      <div class="sidebar-title">Selected Element</div>
+      <div class="sidebar-title" id="element-params-title">Selected Action</div>
       <div id="element-params"></div>
     </div>
 

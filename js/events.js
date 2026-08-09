@@ -48,23 +48,26 @@ RP.initEvents = function() {
 
     // ---- ROUTE MODE ----
     // Reference-only: pick geometry to add it to the route, or pick an
-    // element to edit it. Nothing here creates or moves geometry.
+    // action to edit it. Nothing here creates or moves geometry.
     if (RP.editMode === 'route') {
       if (!RP.img) return;
       var pRM = RP.screenToImage(e.clientX, e.clientY);
       var hitRM = RP.routeHitTest(pRM.x, pRM.y);
       if (hitRM) {
-        if (hitRM.kind === 'element') {
-          RP.selectedElementId = hitRM.id;
+        if (hitRM.kind === 'action') {
+          // A turn or checkpoint at a junction point.
+          RP.selectedActionId = hitRM.id;
+        } else if (hitRM.kind === 'element') {
+          RP.selectedActionId = hitRM.id;
         } else {
           var addedEl = RP.appendGeometryToRoute(hitRM.id);
-          RP.selectedElementId = addedEl ? addedEl.id : null;
+          RP.selectedActionId = addedEl ? addedEl.id : null;
         }
         RP.refreshRouteUI();
         return;
       }
       // Empty space deselects and falls back to panning.
-      RP.selectedElementId = null;
+      RP.selectedActionId = null;
       RP.refreshRouteUI();
       RP.isDragging = true;
       wrap.classList.add('dragging');
@@ -686,7 +689,7 @@ RP.initEvents = function() {
       RP.nextWpId = 1;
       RP.nextSegId = 1;
       RP.nextRouteId = 1;
-      RP.selectedElementId = null;
+      RP.selectedActionId = null;
       RP.ensureSingleRoute();
       RP.robotConfig = RP.freshRobotConfig();
       RP.codeConfig = RP.freshCodeConfig();

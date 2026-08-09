@@ -131,6 +131,13 @@ canvas{display:block;width:100%;height:100%}
 .layer-del-btn:hover{color:#f66;opacity:1}
 .layer-item:hover .layer-del-btn{opacity:1}
 
+.action-sub{display:flex;align-items:center;gap:4px;padding:1px 3px 1px 14px;border-radius:3px;cursor:default}
+.action-sub:hover{background:#2d2d2d}
+.action-sub .layer-item-label{font-size:10px;color:#9b9b9b}
+.action-sub.active{background:#2a4a5a}
+.action-sub.active .layer-item-label{color:#cfe8ff}
+.elp-readout{font-size:11px;color:#ccc;line-height:1.5;background:#333;border:1px solid #454545;border-radius:3px;padding:4px 6px;margin-bottom:6px}
+
 /* Canvas right-click context menu */
 #ctx-menu{position:fixed;z-index:9999;background:#2a2a2a;border:1px solid #555;border-radius:5px;padding:4px;box-shadow:0 4px 16px rgba(0,0,0,.5);min-width:140px}
 #ctx-menu-title{font-size:10px;color:#888;padding:3px 8px 5px;border-bottom:1px solid #444;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
@@ -163,6 +170,9 @@ canvas{display:block;width:100%;height:100%}
 /* Element parameter rows */
 .elp{display:flex;justify-content:space-between;align-items:center;margin:3px 0;font-size:11px;color:#bbb;gap:6px}
 .elp span{flex:1;min-width:0}
+/* .elp span sets flex:1 on everything, which made the toggle share width
+   equally with its label and clip its second button off the sidebar. */
+.elp .seg-toggle{flex:0 0 auto}
 .elp input[type="checkbox"]{width:auto;accent-color:#2a6f97}
 
 /* Constraint palette */

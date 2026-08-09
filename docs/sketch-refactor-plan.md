@@ -1,7 +1,7 @@
 # Sketch Layer Refactor — Design & Implementation Plan
 
-Status: **phases 0–9 complete, 10 in progress (10.1 done)**, on branch
-`refactor/sketch-layer`
+Status: **phases 0–9 complete, 10 in progress (10.1 and 10.2 done)**, on
+branch `refactor/sketch-layer`
 The Sketch/Route split is live, every coordinate is solver-owned, and
 arcs are real constrainable entities. `follow_path`, the old route tools,
 the segment/node side panels and `RP.selectedSegment` are all gone.
@@ -534,6 +534,7 @@ the sketch entity that suits it:
 |--------|-----------|-------------------------|----------------------|
 | `move` | line or arc | distance, radius, sweep, entry/exit headings | move mode, flip, reverse, speed, offset, junctions, teleport name, checkpoint |
 | `turn` | **point**   | the angle, from the headings either side | angleMode, angle override, speed, style |
+| `checkpoint` | **point** | — | name |
 
 The §1 invariant is untouched: an action stores a reference and the
 parameters that cannot be derived, never a coordinate.
@@ -562,6 +563,14 @@ know them — a teleport arrives pointing somewhere nothing can predict.
 Auto turns against a null heading resolve to nothing instead of being
 silently skipped mid-loop, which is what the old code did.
 
+**angleMode is ownership, not provenance.** `auto` is the junction turn
+the invariant maintains; `fixed` is a standalone turn the user inserted.
+The angle itself is `angle`: `null` derives it from the geometry, a
+number overrides it. An overridden junction turn therefore stays `auto`
+and stays owned by its move — flipping it to `fixed` would leave sync
+free to add a SECOND turn at the same corner, and double the robot's
+rotation.
+
 **Compat.** `route.elements` is a rebuilt array of the LIVE move actions,
 not copies, so the resolver, `recomputeFlips` and the route-mode panel
 keep working and keep writing to the real model. It is not persisted.
@@ -569,16 +578,33 @@ Save format is v5; v4 (`elements`) and older lift through
 `liftElementsToActions`, and all seven golden fixtures still produce
 byte-identical code.
 
-### 10.2 UI (not started)
+### 10.2 UI ✅
 
-Extend `routeHitTest` to return junction points so clicking one selects
-its turn; turn the element list into an action list with turn rows
-between move rows; per-type parameter panels; render the angle at the
-point. Clicking a line still appends a move, unchanged.
-
-This is also where `turnSpeed`/extra turns become editable again — the
-gap phase 9 recorded — and where the standalone `checkpoint` action type
-belongs, retiring `el.checkpoint` and `route.startCheckpoint`.
+- **Selection is an action of any type.** `RP.selectedActionId` is the
+  state; `selectedElementId` survives as an accessor that reads through
+  only when the selection really is a move, so selecting a turn correctly
+  un-highlights every segment.
+- **`routeHitTest` returns point-anchored actions first.** They are small
+  targets and the line underneath is always reachable a few pixels away.
+  Several actions can share one junction, so clicking again advances
+  through them instead of sticking on the first.
+- **The element list is an action list**, turns and checkpoints indented
+  under the move they lead into. A junction turn that emits nothing and
+  carries no settings is hidden — a straight joint, or the leading turn
+  with no start position — and reappears the moment it matters or is
+  selected.
+- **Per-type panels.** A turn gets Derived/Typed, degrees, speed and
+  style; a checkpoint gets its name; a move keeps what it had.
+- **Canvas markers.** Each turn draws at its junction as a sweep arc from
+  the incoming heading to the outgoing one, with the angle, an asterisk
+  when typed, and a white ring when selected. Turns that emit nothing
+  draw a hollow dot so the junction is still clickable.
+- **`computeSteps` tags every step with its `actionId`**, so the list and
+  canvas read what was actually emitted instead of re-deriving the walk
+  and drifting from it.
+- Checkpoints became their own action type; `el.checkpoint` and
+  `route.startCheckpoint` are gone. The move panel keeps a Checkpoint
+  field, routed through `setMoveCheckpoint`.
 
 ### 10.3 Cleanup (not started)
 

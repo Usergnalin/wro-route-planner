@@ -1,3 +1,98 @@
+# Changes — 2026-08-09 (3)
+
+## Phase 10.2 — the action UI
+
+Turns are now things you click, select and configure. 10.1 made them real
+objects; this makes them reachable.
+
+### Selecting
+
+`RP.selectedActionId` is the selection, and it can be any action.
+`selectedElementId` survives as an accessor that reads through **only**
+when the selection really is a move — so selecting a turn correctly
+un-highlights every segment instead of leaving a stale one lit.
+
+`routeHitTest` now returns point-anchored actions ahead of the geometry
+they sit on. They are small targets, and the line underneath is always
+reachable a few pixels away. Several actions can share one junction — a
+typed turn, the geometric turn and a checkpoint all happen at the same
+corner — so clicking again advances through them rather than sticking on
+the first.
+
+Clicking a line still appends a move, exactly as before.
+
+### The action list
+
+The element list is an action list: turns and checkpoints indented under
+the move they lead into, so it reads like the program.
+
+A junction turn that emits nothing *and* carries no settings is hidden —
+a straight joint, or the leading turn when no start position is set. It
+stays clickable on the canvas and reappears the moment it matters or is
+selected.
+
+New **↻ Turn** and **🏁 Checkpoint** buttons insert in front of the
+selection, which is also where the panel's remove button acts.
+
+### Per-type panels
+
+| Selection | Panel |
+|---|---|
+| Turn | readout of what it emits, Derived/Typed, degrees, speed, style |
+| Checkpoint | name |
+| Move | move type, drive direction, speed, offset/junctions/teleport name, checkpoint, reorder, remove |
+
+### Canvas markers
+
+Each turn draws at its junction: a sweep arc from the incoming heading to
+the outgoing one, the angle spelled out, an asterisk when typed, a white
+ring when selected. Turns that emit nothing draw a hollow dot so the
+junction is still clickable. The old hover-only annotation and the
+extra-turn pips are suppressed in route mode, where they would double up.
+
+### Model changes this needed
+
+**Checkpoints became their own action type.** `el.checkpoint` and
+`route.startCheckpoint` are gone — the start checkpoint was only ever a
+special case for "a checkpoint with no move in front of it", which as an
+action is just index 0. The move panel keeps its Checkpoint field, routed
+through `setMoveCheckpoint`.
+
+**A typed angle is an override, not a type change.** This was a real bug
+caught while wiring the panel: converting a junction turn to `fixed`
+would have taken it out of `syncTurnActions`' ownership, and sync would
+then have created a *second* turn at the same corner — doubling the
+robot's rotation. So `angleMode` is ownership (`auto` = the invariant's,
+`fixed` = user-inserted) and `angle` is the value (`null` = derive from
+geometry, a number = use this instead).
+
+**`computeSteps` tags every step with its `actionId`.** The list and the
+canvas read what was actually emitted instead of re-deriving the same
+walk and drifting from it.
+
+### Fixed
+
+`.elp span { flex: 1 }` applied to the toggle widgets too, so they split
+width equally with their label and clipped their second button off the
+sidebar. The Drive toggle in the move panel had the same problem.
+
+### Verification
+
+- 10 suites pass; `tests/action.js` is up to 27 checks.
+- **All seven golden fixtures still byte-identical.**
+- Browser (Chromium via Playwright), driving the real UI with real mouse
+  clicks: click two lines to build a route, click the corner to select
+  its turn, set speed and style through the actual inputs, override the
+  angle, insert a turn and a checkpoint from the buttons, then undo and
+  redo the lot. Undo/redo is exact at every step. No console errors.
+
+### Still to come (phase 10.3)
+
+Delete the `route.elements` compat view and rename the element-era calls
+(`addRouteElement`, `setRouteElementProps`, …) to their action names.
+
+---
+
 # Changes — 2026-08-09 (2)
 
 ## Phase 10.1 — routes become ordered ACTIONS

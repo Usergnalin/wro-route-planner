@@ -386,8 +386,9 @@ RP.render = function() {
           ctx.fillText(idxLabel, node.x + (5 / RP.scale), node.y - (5 / RP.scale));
         }
 
-        // Extra-turn indicator pip
-        var extraTurns = node.extraTurns || [];
+        // Extra-turn indicator pip. Route mode draws real, clickable
+        // action markers instead, so this would only double up there.
+        var extraTurns = inRouteMode ? [] : (node.extraTurns || []);
         if (extraTurns.length > 0) {
           ctx.save();
           var pipR = 4 / RP.scale;
@@ -410,8 +411,9 @@ RP.render = function() {
           ctx.restore();
         }
 
-        // Turn angle annotation on hover
-        if (isHoveredNode && onLongestPath && nodeIdx > 0 && nodeIdx < longestPath.length - 1) {
+        // Turn angle annotation on hover (sketch mode only — in route mode
+        // every turn is drawn permanently as its own marker).
+        if (!inRouteMode && isHoveredNode && onLongestPath && nodeIdx > 0 && nodeIdx < longestPath.length - 1) {
           var prevNode = longestPath[nodeIdx - 1];
           var nextNode = longestPath[nodeIdx + 1];
           var inSeg  = RP.findSegBetween ? RP.findSegBetween(r, prevNode.id, node.id) : null;
@@ -479,6 +481,13 @@ RP.render = function() {
           }
         }
       }
+    }
+
+    // --- Action markers (route mode) ---
+    // Turns and checkpoints are objects you can click now, so they get
+    // drawn where they happen rather than only appearing on hover.
+    if (inRouteMode && r.id === RP.activeRouteId && RP.drawActionMarkers) {
+      RP.drawActionMarkers(ctx, r, fs);
     }
 
     // Route name label at first node
@@ -598,4 +607,91 @@ RP.render = function() {
 
   RP.updateInstructions();
   RP.updateInfoPanel();
+};
+
+// ======================================================================
+// ACTION MARKERS (route mode)
+// ======================================================================
+// A turn is drawn at the junction it happens at, an arc sweeping from the
+// incoming heading to the outgoing one, with the angle spelled out. Turns
+// that emit nothing (legs in line, or an unknowable heading after a
+// teleport) draw a hollow dot so the junction is still clickable.
+RP.ACTION_MARKER_R = 9;
+
+RP.drawActionMarkers = function(ctx, route, fs) {
+  var sk = RP.sketch;
+  if (!sk || !RP.resolveTimeline) return;
+  var tl = RP.resolveTimeline(route);
+  if (!tl.ok) return;
+  var emitted = RP.emittedStepsByAction ? RP.emittedStepsByAction(route) : {};
+
+  var mR = RP.ACTION_MARKER_R / RP.scale;
+  ctx.save();
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+
+  for (var i = 0; i < tl.items.length; i++) {
+    var it = tl.items[i];
+    if (it.kind === 'move') continue;
+    var act = it.action;
+    var pt = act.pointId != null ? sk.entities[act.pointId] : null;
+    if (!pt) continue;
+    var selected = RP.selectedActionId === act.id;
+
+    if (it.kind === 'checkpoint') {
+      // The diamond itself is already drawn off the node view; this is the
+      // selection ring and the click target.
+      if (selected) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2 / RP.scale;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, mR + 3 / RP.scale, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      continue;
+    }
+
+    var steps = emitted[act.id] || [];
+    var deg = null;
+    for (var s = 0; s < steps.length; s++) {
+      if (steps[s].kind === 'turn' && !steps[s].startLeg) { deg = steps[s].deg; break; }
+    }
+    var typed = act.angle != null;
+    var colour = deg === null ? '#667' : (typed ? '#ff9944' : (deg >= 0 ? '#ffcc44' : '#66ccff'));
+
+    // Sweep arc from the incoming heading to the outgoing one.
+    if (deg !== null && it.nextMove && it.nextMove.entryHeading !== null) {
+      var endRad = it.nextMove.entryHeading * Math.PI / 180;
+      var startRad = endRad - deg * Math.PI / 180;
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = (selected ? 2.5 : 1.5) / RP.scale;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, mR + 5 / RP.scale, startRad, endRad, deg < 0);
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, mR, 0, Math.PI * 2);
+    ctx.fillStyle = deg === null ? 'rgba(30,30,34,0.8)' : 'rgba(20,20,24,0.85)';
+    ctx.fill();
+    ctx.strokeStyle = selected ? '#ffffff' : colour;
+    ctx.lineWidth = (selected ? 2.5 : 1.5) / RP.scale;
+    ctx.stroke();
+
+    ctx.fillStyle = selected ? '#ffffff' : colour;
+    ctx.font = 'bold ' + (11 / RP.scale) + 'px -apple-system, sans-serif';
+    ctx.fillText(deg === null ? '·' : (deg >= 0 ? '↻' : '↺'), pt.x, pt.y);
+
+    if (deg !== null && RP.scale > 0.05) {
+      var label = Math.abs(deg).toFixed(0) + '°' + (typed ? '*' : '');
+      ctx.font = 'bold ' + (10 / RP.scale) + 'px -apple-system, sans-serif';
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineWidth = 3 / RP.scale;
+      var ly = pt.y - mR - 8 / RP.scale;
+      ctx.strokeText(label, pt.x, ly);
+      ctx.fillStyle = selected ? '#ffffff' : colour;
+      ctx.fillText(label, pt.x, ly);
+    }
+  }
+  ctx.restore();
 };

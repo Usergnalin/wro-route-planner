@@ -84,7 +84,7 @@ RP.loadMapProject = function(name) {
       RP.routes = data.routes || [];
       RP.migrateAllRoutes();          // v1 waypoints -> nodes/segments
       RP.migrateRoutesToElements();   // nodes/segments -> element references
-      RP.selectedElementId = null;
+      RP.selectedActionId = null;
       RP.nextWpId = data.nextWpId || 1;
       RP.nextElementId = data.nextElementId || 1;
       RP.nextSegId = data.nextSegId || 1;
@@ -199,7 +199,7 @@ RP.importProject = function(file) {
         RP.routes = data.routes || [];
         RP.migrateAllRoutes();            // v1 waypoints -> nodes/segments
         RP.migrateRoutesToElements();   // nodes/segments -> element references
-        RP.selectedElementId = null;
+        RP.selectedActionId = null;
 
         if (data.nextIds) {
           RP.nextWpId = data.nextIds.wp || 1;
@@ -260,7 +260,7 @@ RP.loadImageFromDataUrl = function(dataUrl) {
     RP.nextWpId = 1;
     RP.nextSegId = 1;
     RP.nextRouteId = 1;
-    RP.selectedElementId = null;
+    RP.selectedActionId = null;
     RP.ensureSingleRoute();
     RP.robotConfig.startPos = null;
     RP.robotConfig.startHeading = 0;

@@ -223,7 +223,9 @@ RP.reverseRouteDirection = function(route) {
   for (var i = 0; i < acts.length; i++) {
     var a = acts[i];
     if (RP.isMoveAction(a)) a.flip = !a.flip;
-    else if (RP.isTurnAction(a) && a.angleMode === RP.TURN_FIXED && a.angle != null) {
+    else if (RP.isTurnAction(a) && a.angle != null) {
+      // Typed angles swing the other way when the route is walked
+      // backwards; derived ones re-derive and need no help.
       a.angle = -a.angle;
     }
   }
@@ -289,22 +291,38 @@ RP.rebuildRouteViews = function() {
     // Turn parameters live on turn actions now, but render.js still draws
     // them off the node view, so fold each move's preceding turn run back
     // onto its entry node.
-    var turnsBefore = {}, trailingTurns = [];
-    var run = [];
+    var turnsBefore = {}, cpBefore = {}, cpAfter = {}, trailingTurns = [];
+    var run = [], cpRun = [], lastMoveId = null;
     var acts = RP.routeActions(route);
     for (var t = 0; t < acts.length; t++) {
       if (RP.isTurnAction(acts[t])) { run.push(acts[t]); continue; }
-      if (RP.isMoveAction(acts[t])) { turnsBefore[acts[t].id] = run; run = []; }
+      if (RP.isCheckpointAction(acts[t])) { cpRun.push(acts[t]); continue; }
+      if (RP.isMoveAction(acts[t])) {
+        // A checkpoint sitting between two moves fires on arrival at the
+        // shared point, so it reads as "after" the earlier one.
+        if (lastMoveId !== null) cpAfter[lastMoveId] = cpRun;
+        else cpBefore[acts[t].id] = cpRun;
+        cpRun = [];
+        turnsBefore[acts[t].id] = run;
+        run = [];
+        lastMoveId = acts[t].id;
+      }
     }
     trailingTurns = run;
+    if (lastMoveId !== null && cpRun.length) {
+      cpAfter[lastMoveId] = (cpAfter[lastMoveId] || []).concat(cpRun);
+    }
+
+    function cpName(list) {
+      return (list && list.length) ? list[list.length - 1].name : null;
+    }
 
     for (var i = 0; i < route.elements.length; i++) {
       var el = route.elements[i];
       var ends = RP.elementEndpoints(sk, el);
       if (!ends) continue;
-      var startCp = (i === 0) ? route.startCheckpoint : null;
-      var na = nodeFor(ends.entry, startCp);
-      var nb = nodeFor(ends.exit, el.checkpoint);
+      var na = nodeFor(ends.entry, cpName(cpBefore[el.id]));
+      var nb = nodeFor(ends.exit, cpName(cpAfter[el.id]));
       if (!na || !nb) continue;
       var pre = turnsBefore[el.id] || [];
       na.turnSpeed = null;
@@ -451,6 +469,9 @@ function segBetweenIn(segs, id1, id2) {
 RP.liftElementsToActions = function(route) {
   var acts = [];
   var els = route.elements || [];
+  // The one checkpoint with no move in front of it needed its own field;
+  // as an action it is just the first entry in the list.
+  if (route.startCheckpoint) acts.push(RP.makeCheckpointAction(null, route.startCheckpoint));
   for (var i = 0; i < els.length; i++) {
     var el = els[i];
     var extras = el.extraTurnsBefore || [];
@@ -462,11 +483,14 @@ RP.liftElementsToActions = function(route) {
       }));
     }
     acts.push(RP.makeTurnAction(null, { speed: el.turnSpeed }));
+    var cpName = el.checkpoint;
     el.type = RP.ACTION_MOVE;
     delete el.turnSpeed;
     delete el.extraTurnsBefore;
+    delete el.checkpoint;
     delete el.sagitta;          // arcs became real entities in phase 8
     acts.push(el);
+    if (cpName) acts.push(RP.makeCheckpointAction(null, cpName));
   }
   var tail = route.endExtraTurns || [];
   for (var t = 0; t < tail.length; t++) {
@@ -477,6 +501,7 @@ RP.liftElementsToActions = function(route) {
     }));
   }
   delete route.endExtraTurns;
+  delete route.startCheckpoint;
   route.actions = acts;
 };
 
@@ -499,7 +524,6 @@ RP.migrateRoutesToElements = function() {
     var path = RP.computeLongestPath(route);
     var oldSegments = route.segments.slice();
     route.actions = [];
-    route.startCheckpoint = null;
 
     if (!path || path.length < 2) {
       delete route.nodes; delete route.segments;
@@ -507,7 +531,7 @@ RP.migrateRoutesToElements = function() {
     }
 
     if (path[0].isCheckpoint && path[0].checkpointName) {
-      route.startCheckpoint = path[0].checkpointName;
+      route.actions.push(RP.makeCheckpointAction(null, path[0].checkpointName));
     }
 
     var prevExitPoint = null;
@@ -578,9 +602,11 @@ RP.migrateRoutesToElements = function() {
         speed: seg.speed, offset: seg.offset,
         junctions: seg.junctionCount,
         teleportName: seg.teleportName,
-        checkpoint: (b.isCheckpoint && b.checkpointName) ? b.checkpointName : null,
         hidden: seg.hidden
       });
+      if (b.isCheckpoint && b.checkpointName) {
+        route.actions.push(RP.makeCheckpointAction(exitPoint, b.checkpointName));
+      }
     }
 
     // Turns hanging off the final node become trailing fixed turns.
