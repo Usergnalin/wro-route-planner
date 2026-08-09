@@ -24,10 +24,8 @@
     <span class="tab-label">Insert ▾</span>
     <div class="tab-dropdown">
       <button id="btn-tool-construction" class="tool-btn active" data-tool="construction">📏 Construction Line</button>
-      <button id="btn-tool-route" class="tool-btn" data-tool="route">📍 Route</button>
-      <button id="btn-tool-freehand" class="tool-btn" data-tool="freehand">✏️ Freehand Path</button>
       <button id="btn-tool-select" class="tool-btn" data-tool="select">🖱️ Select</button>
-      <button id="btn-tool-checkpoint" class="tool-btn" data-tool="checkpoint">🏁 Checkpoint</button>
+      <button id="btn-tool-constrain" class="tool-btn" data-tool="constrain">📐 Constrain</button>
       <div class="dropdown-sep"></div>
       <button id="btn-snap" class="active">🧲 Snap</button>
       <button id="btn-robot-config">🤖 Robot Config</button>
@@ -36,14 +34,15 @@
   <div class="tab" id="tab-route">
     <span class="tab-label">Route ▾</span>
     <div class="tab-dropdown">
-      <button id="btn-new-route">➕ New Route</button>
-      <button id="btn-del-route">🗑️ Delete Route</button>
-      <div class="dropdown-sep"></div>
       <button id="btn-undo" title="Undo (Ctrl+Z)">↩ Undo</button>
       <button id="btn-redo" title="Redo (Ctrl+Y)">↪ Redo</button>
       <div class="dropdown-sep"></div>
       <button id="btn-clear-all">🗑️ Clear All</button>
     </div>
+  </div>
+  <div id="mode-switch">
+    <button id="btn-mode-sketch" class="mode-btn active" title="Draw and constrain geometry">📐 Sketch</button>
+    <button id="btn-mode-route" class="mode-btn" title="Assign robot moves to existing geometry">🤖 Route</button>
   </div>
   <div id="top-bar-right">
     <button id="btn-zoom-in" title="Zoom in">🔍+</button>
@@ -58,31 +57,57 @@
 <div id="main-area">
   <!-- Left sidebar: Tools + Layers -->
   <div id="left-sidebar">
-    <div class="sidebar-section">
+    <div class="sidebar-section" id="tool-section">
       <div class="sidebar-title">Tool</div>
       <div class="tool-group">
         <button id="btn-sidebar-construction" class="tool-btn sidebar-tool-btn active" data-tool="construction">📏 Line</button>
-        <button id="btn-sidebar-route" class="tool-btn sidebar-tool-btn" data-tool="route">📍 Route</button>
-        <button id="btn-sidebar-freehand" class="tool-btn sidebar-tool-btn" data-tool="freehand">✏️ Freehand</button>
+        <button id="btn-sidebar-arc" class="tool-btn sidebar-tool-btn" data-tool="arc">◠ Arc</button>
         <button id="btn-sidebar-select" class="tool-btn sidebar-tool-btn" data-tool="select">🖱️ Select</button>
-        <button id="btn-sidebar-checkpoint" class="tool-btn sidebar-tool-btn" data-tool="checkpoint">🏁 Checkpoint</button>
+        <button id="btn-sidebar-constrain" class="tool-btn sidebar-tool-btn" data-tool="constrain">📐 Constrain</button>
       </div>
       <div class="sidebar-hint" id="sidebar-tool-hint">Drag to draw a line</div>
+    </div>
+    <div class="sidebar-section" id="field-section">
+      <div class="sidebar-title">Field</div>
+      <button id="btn-field-boundary" class="sidebar-small-btn">⬜ Add field walls</button>
+      <div class="sidebar-hint">Fixed geometry that wall aligns stand off from</div>
     </div>
     <div class="sidebar-section" id="snap-section">
       <div class="sidebar-title">Snap</div>
       <button id="btn-sidebar-snap" class="active sidebar-small-btn">🧲 Snap On</button>
       <div class="sidebar-hint">Ctrl = temporary off</div>
     </div>
-    <div class="sidebar-section layers-section">
-      <div class="sidebar-title">Layers</div>
-      <div id="layer-list"></div>
+    <!-- Constraints (sketch mode) -->
+    <div class="sidebar-section" id="constraint-section" style="display:none">
+      <div class="sidebar-title">Constraints</div>
+      <div id="constraint-dof" class="constraint-dof">Empty</div>
+      <div id="constraint-selection" class="sidebar-hint">Nothing selected</div>
+      <div class="constraint-palette">
+        <button class="constraint-btn" data-constraint="coincident"    title="Coincident (C) — select 2 points"></button>
+        <button class="constraint-btn" data-constraint="point_on_line" title="Point on line (O) — select a point and a line"></button>
+        <button class="constraint-btn" data-constraint="point_line_distance" title="Distance to line — select a point and a line"></button>
+        <button class="constraint-btn" data-constraint="horizontal"    title="Horizontal (H) — select 1 line"></button>
+        <button class="constraint-btn" data-constraint="vertical"      title="Vertical (V) — select 1 line"></button>
+        <button class="constraint-btn" data-constraint="distance"      title="Distance (D) — select a line or 2 points"></button>
+        <button class="constraint-btn" data-constraint="angle"         title="Angle (A) — select 1 or 2 lines"></button>
+        <button class="constraint-btn" data-constraint="fix"           title="Lock (L) — select 1 point"></button>
+        <button class="constraint-btn" data-constraint="point_on_arc"  title="Point on arc — select a point and an arc"></button>
+        <button class="constraint-btn" data-constraint="radius"        title="Radius — select an arc"></button>
+        <button class="constraint-btn" data-constraint="tangent"       title="Tangent — select a line and an arc"></button>
+      </div>
+      <button id="btn-auto-constrain" class="sidebar-small-btn active">✓ Auto-constrain</button>
     </div>
-    <!-- Hidden route select kept for internal use -->
-    <select id="route-select" style="display:none">
-      <option value="__new__">+ New Route</option>
-    </select>
-    <div id="route-wp-count" style="display:none">0 waypoints</div>
+
+    <!-- Route elements (route mode) -->
+    <div class="sidebar-section" id="route-mode-section" style="display:none">
+      <div class="sidebar-title">Route</div>
+      <div id="route-mode-status" class="constraint-dof">—</div>
+      <div class="sidebar-hint">Click geometry to add it · click an element to edit</div>
+      <div id="element-list" style="margin-top:6px"></div>
+      <button id="btn-reverse-route" class="sidebar-small-btn" style="margin-top:6px"
+              title="Walk the whole route the other way">⇄ Reverse route</button>
+    </div>
+
   </div>
 
   <!-- Canvas -->
@@ -103,8 +128,27 @@
         <div class="info-row"><span class="info-label">Click:</span><span class="info-value" id="info-click">-</span></div>
         <hr style="border-color:#444;margin:4px 0">
         <div class="info-row"><span class="info-label">Lines:</span><span class="info-value" id="info-lines">0</span></div>
-        <div class="info-row"><span class="info-label">Routes:</span><span class="info-value" id="info-routes">0</span></div>
+        <div class="info-row"><span class="info-label">Elements:</span><span class="info-value" id="info-routes">0</span></div>
+        <div class="info-row"><span class="info-label">Sketch:</span><span class="info-value" id="info-dof">-</span></div>
       </div>
+    </div>
+
+    <!-- Selected route element (route mode) -->
+    <div class="sidebar-section" id="element-params-section" style="display:none">
+      <div class="sidebar-title">Selected Element</div>
+      <div id="element-params"></div>
+    </div>
+
+    <!-- Selected geometry (sketch mode) -->
+    <div class="sidebar-section" id="geometry-detail-section" style="display:none">
+      <div class="sidebar-title">Selected Geometry</div>
+      <div id="geometry-detail"></div>
+    </div>
+
+    <!-- Selected constraint (sketch mode) -->
+    <div class="sidebar-section" id="constraint-detail-section" style="display:none">
+      <div class="sidebar-title">Selected Constraint</div>
+      <div id="constraint-detail"></div>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-title">Calibration</div>
@@ -120,7 +164,7 @@
         <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-dist"> 📏 LT Dist</label>
         <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-lt-junct"> 🔀 LT Junct</label>
         <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-wall-align"> 🧱 Wall Align</label>
-        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-follow-path"> ✏️ Follow Path</label>
+        <label class="seg-mode-radio"><input type="radio" name="seg-mode" id="seg-mode-arc"> ◠ Arc</label>
       </div>
       <div id="seg-mode-params" style="margin-top:4px;display:none">
         <input type="text" id="seg-teleport-name" placeholder="teleport name" style="display:none;width:100%;box-sizing:border-box;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:2px 6px;border-radius:3px;font-size:11px">
@@ -165,7 +209,22 @@
 <div id="bottom-panels">
   <button id="btn-instr-toggle" class="active">📋 Route Instructions</button>
   <div id="side-panels">
-    <!-- Code panel -->
+    <!-- ---- SKETCH MODE ---- -->
+    <div class="side-panel" id="panel-geometry">
+      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">📏 Construction Lines <span>▼</span></div>
+      <div class="side-panel-body">
+        <div id="layer-list"></div>
+      </div>
+    </div>
+
+    <div class="side-panel" id="panel-constraints">
+      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">📐 Constraints <span>▼</span></div>
+      <div class="side-panel-body">
+        <div id="constraint-list"></div>
+      </div>
+    </div>
+
+    <!-- ---- ROUTE MODE ---- -->
     <div id="instr-panel" class="side-panel">
       <div class="side-panel-header" onclick="togglePanel(this.parentElement)">📋 Generated Code <span>▼</span></div>
       <div class="side-panel-body">
@@ -176,16 +235,7 @@
       </div>
     </div>
 
-    <!-- Saved routes panel -->
-    <div class="side-panel">
-      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">🗺️ Saved Routes <span>▼</span></div>
-      <div class="side-panel-body">
-        <div id="route-list"></div>
-      </div>
-    </div>
-
-    <!-- Saved maps panel -->
-    <div class="side-panel">
+    <div class="side-panel" id="panel-maps">
       <div class="side-panel-header" onclick="togglePanel(this.parentElement)">💾 Saved Maps <span>▼</span></div>
       <div class="side-panel-body">
         <div id="map-list"></div>
@@ -210,35 +260,39 @@
   <label>Comment Prefix <input type="text" id="code-comment" value="#"></label>
   <label>Forward Template <input type="text" id="code-forward" value="robot.move_distance(distance={distance}, speed={speed})"></label>
   <label>Turn <small style="color:#888">(+CW / -CCW)</small> <input type="text" id="code-turn" value="robot.turn_arc(angle={angle}, speed={speed})"></label>
+  <label>Arc <small style="color:#888">(angle +fwd/-back, radius +right/-left)</small> <input type="text" id="code-turn-arc" value="robot.turn_arc(angle={angle}, speed={speed}, radius={radius})"></label>
   <label>Wall Align <input type="text" id="code-wall-align" value="robot.wall_align(reversed={reversed}, speed={speed})"></label>
   <label>Line Trace Dist <input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed})"></label>
   <label>Line Trace Junct <input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed})"></label>
-  <label>Follow Path <input type="text" id="code-follow-path" value="robot.follow_path(headings=[{headings}], path_length={length})"></label>
-  <label>Follow Path Samples <input type="number" id="code-fp-samples" value="60" min="2" max="500"></label>
-  <label style="display:flex;align-items:center;gap:6px;justify-content:flex-start">
-    Smoothing <input type="range" id="code-fp-smooth" min="0" max="5" step="1" value="2" style="flex:1;width:auto">
-    <span id="code-fp-smooth-val" style="min-width:1ch;text-align:right">2</span>
-  </label>
-  <label style="display:flex;align-items:center;gap:6px;justify-content:flex-start">
-    <input type="checkbox" id="code-fp-flip" checked style="width:auto"> Flip dx (y-down canvas)
-  </label>
+  <label>Checkpoint <input type="text" id="code-checkpoint" value="if callable({name}): {name}()"></label>
   <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>
   <label>Unit <input type="text" id="code-unit" value="mm"></label>
-  <div class="hint">Use {distance}, {angle}, {speed}, {reversed}, {junctions} as placeholders. Follow Path uses {headings}, {length}, {speed}.</div>
+  <div class="hint">Use {distance}, {angle}, {speed}, {reversed}, {junctions} as placeholders. Arc uses {angle}, {radius}, {speed}. Follow Path uses {headings}, {length}, {speed}. Checkpoint uses {name}.</div>
 </div>
 
 <script src="js/core.js"></script>
+<!-- Sketch layer: geometry + constraint solver (see docs/sketch-refactor-plan.md) -->
+<script src="js/sketch/linalg.js"></script>
+<script src="js/sketch/sketch.js"></script>
+<script src="js/sketch/constraints.js"></script>
+<script src="js/sketch/solver.js"></script>
 <script src="js/render.js"></script>
 <script src="js/routes.js"></script>
+<script src="js/model/construction.js"></script>
+<script src="js/model/route.js"></script>
+<script src="js/model/resolver.js"></script>
 <script src="js/output.js"></script>
 <script src="js/persist.js"></script>
 <script src="js/config.js"></script>
+<script src="js/ui/sketch-ui.js"></script>
+<script src="js/ui/route-ui.js"></script>
 <script src="js/events.js"></script>
 <script src="js/main.js"></script>
 
 <!-- Context menu -->
 <div id="ctx-menu" style="display:none">
   <div id="ctx-menu-title"></div>
+  <button id="ctx-menu-clear-checkpoint" style="display:none">✕ Clear checkpoint</button>
   <button id="ctx-menu-delete">🗑 Delete</button>
 </div>
 </body>

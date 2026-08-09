@@ -154,6 +154,34 @@ canvas{display:block;width:100%;height:100%}
 #robot-overlay button{margin-top:6px;width:100%;padding:6px;background:#3a3a3a;border:1px solid #555;color:#ddd;border-radius:4px;cursor:pointer;font-size:12px}
 #robot-overlay button:hover{background:#4a4a4a}
 
+/* Sketch / Route mode switch */
+#mode-switch{display:flex;gap:2px;margin-left:12px;background:#1e1e1e;padding:2px;border-radius:5px}
+.mode-btn{background:transparent;border:1px solid transparent;color:#888;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s,color .15s}
+.mode-btn:hover{color:#ddd}
+.mode-btn.active{background:#2a6f97;border-color:#3a8fc7;color:#fff}
+
+/* Segmented two-state control (e.g. drive forwards / backwards) */
+.seg-toggle{display:flex;gap:2px;flex-shrink:0}
+.seg-btn{background:#3a3a3a;border:1px solid #555;color:#999;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:10px;white-space:nowrap}
+.seg-btn:hover{background:#4a4a4a;color:#ddd}
+.seg-btn.active{background:#2a6f97;border-color:#3a8fc7;color:#fff}
+
+/* Element parameter rows */
+.elp{display:flex;justify-content:space-between;align-items:center;margin:3px 0;font-size:11px;color:#bbb;gap:6px}
+.elp span{flex:1;min-width:0}
+.elp input[type="checkbox"]{width:auto;accent-color:#2a6f97}
+
+/* Constraint palette */
+.constraint-dof{font-size:11px;font-weight:600;margin-bottom:2px}
+.constraint-palette{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin:6px 0}
+.constraint-btn{background:#3a3a3a;border:1px solid #555;color:#666;padding:6px 0;border-radius:4px;font-size:13px;cursor:not-allowed;transition:background .15s,color .15s}
+.constraint-btn.enabled{color:#ddd;cursor:pointer}
+.constraint-btn.enabled:hover{background:#2a6f97;border-color:#3a8fc7;color:#fff}
+.constraint-glyph{font-size:12px;color:#ffd166;width:16px;text-align:center;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.cicon{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;vertical-align:middle}
+.constraint-btn .cicon{width:15px;height:15px}
+.layer-item.active .constraint-glyph{color:#ffee44}
+
 /* Misc */
 .seg-mode-group{display:flex;flex-direction:column;gap:1px}
 .seg-mode-radio{cursor:pointer;font-size:11px;color:#ccc;display:flex;align-items:center;gap:3px;padding:1px 4px;border-radius:3px}

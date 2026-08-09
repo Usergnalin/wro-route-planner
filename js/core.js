@@ -19,7 +19,7 @@ RP.dom.sidePanels = document.getElementById('side-panels');
 RP.dom.instrList = document.getElementById('instr-list');
 RP.dom.instrTotal = document.getElementById('instr-total');
 RP.dom.codeOutput = document.getElementById('code-output');
-RP.dom.routeListEl = document.getElementById('route-list');
+// (Saved Routes panel removed — there is only one route.)
 RP.dom.mapListEl = document.getElementById('map-list');
 RP.dom.routeSelect = document.getElementById('route-select');
 RP.dom.robotOverlay = document.getElementById('robot-overlay');
@@ -59,7 +59,7 @@ RP.dom.segmentModeLTJunct = document.getElementById('seg-mode-lt-junct');
 RP.dom.segmentModeWallAlign = document.getElementById('seg-mode-wall-align');
 RP.dom.segmentTeleportName = document.getElementById('seg-teleport-name');
 RP.dom.segmentJunctionCount = document.getElementById('seg-junction-count');
-RP.dom.segmentModeFollowPath = document.getElementById('seg-mode-follow-path');
+RP.dom.segmentModeArc = document.getElementById('seg-mode-arc');
 RP.dom.segmentModeParams = document.getElementById('seg-mode-params');
 RP.dom.segmentOffsetRow = document.getElementById('seg-offset-row');
 RP.dom.segmentOffset = document.getElementById('seg-offset');
@@ -76,15 +76,11 @@ RP.dom.btnCopyCode = document.getElementById('btn-copy-code');
 RP.dom.btnSetStart = document.getElementById('btn-set-start');
 RP.dom.btnClearStart = document.getElementById('btn-clear-start');
 RP.dom.btnToolConstruction = document.getElementById('btn-tool-construction');
-RP.dom.btnToolRoute = document.getElementById('btn-tool-route');
 RP.dom.btnToolSelect = document.getElementById('btn-tool-select');
-RP.dom.btnToolCheckpoint = document.getElementById('btn-tool-checkpoint');
-RP.dom.btnToolFreehand = document.getElementById('btn-tool-freehand');
+RP.dom.btnToolArc = document.getElementById('btn-tool-arc');
+RP.dom.btnSidebarArc = document.getElementById('btn-sidebar-arc');
 RP.dom.btnSidebarConstruction = document.getElementById('btn-sidebar-construction');
-RP.dom.btnSidebarRoute = document.getElementById('btn-sidebar-route');
 RP.dom.btnSidebarSelect = document.getElementById('btn-sidebar-select');
-RP.dom.btnSidebarCheckpoint = document.getElementById('btn-sidebar-checkpoint');
-RP.dom.btnSidebarFreehand = document.getElementById('btn-sidebar-freehand');
 
 // ======================================================================
 // STATE
@@ -103,8 +99,10 @@ RP.imgNaturalH = 0;
 RP.calibration = null;
 
 // Lines (construction lines only now): [{ id, x1, y1, x2, y2, type: 'construction', label }]
+// Read-only VIEW over the sketch layer, rebuilt by RP.rebuildLines().
+// Line ids are sketch entity ids — there is no separate line id space.
 RP.lines = [];
-RP.nextLineId = 1;
+RP.arcs = [];   // sibling view for arc entities
 
 // Routes: { id, name, nodes: [{x,y,id,isCheckpoint,checkpointName}], segments: [{id,fromNodeId,toNodeId,direction,mode,...}], visible }
 RP.routes = [];
@@ -115,12 +113,26 @@ RP.nextRouteId = 1;
 
 // Active tool: 'construction' | 'route'
 RP.activeTool = 'construction';
+// The old route CREATION tools spoke the node/segment model, which is now
+// a derived read-only view. They have been removed from the UI and their
+// job belongs to Route mode; this guard just stops anything reactivating
+// them before phase 9 deletes the handlers.
+RP.ROUTE_EDIT_LOCKED = true;
+// `arc` is no longer locked: it now draws a SKETCH arc, not a route arc.
+RP.LOCKED_TOOLS = { route: 1, freehand: 1, checkpoint: 1 };
+
+RP.TOOL_LABELS = {
+  construction: 'Construction', route: 'Route', select: 'Select',
+  checkpoint: 'Checkpoint', freehand: 'Freehand', arc: 'Arc',
+  constrain: 'Constrain'
+};
 
 // Code configuration
 RP.codeConfig = {
   commentPrefix: '#',
   forwardTemplate: 'robot.move_distance(distance={distance}, speed={speed})',
   turnTemplate: 'robot.turn_arc(angle={angle}, speed={speed})',
+  turnArcTemplate: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})',
   wallAlignTemplate: 'robot.wall_align(reversed={reversed}, speed={speed})',
   lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
   lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
@@ -136,8 +148,8 @@ RP.dragStartOffX = 0;
 RP.dragStartOffY = 0;
 RP.lineDrawing = false;
 RP.lineDrawStart = null;
-RP.waypointDrag = null;
 RP.elementDrag = null;
+RP.sketchDrag = null;   // { pointId, moved } while dragging in constrain mode
 RP.startMarkerPlacing = false;
 RP.startMarkerPlacingHeading = false;
 RP.startMarkerPlacedPoint = null;
@@ -145,7 +157,6 @@ RP.hoverSnapPoint = null;
 RP.snapEnabled = true;
 RP.ctrlHeld = false;     // Track Ctrl key state
 RP.instructionsVisible = true;
-RP.activeTab = 'instr';
 
 // Undo/Redo
 RP.MAX_HISTORY = 80;
@@ -163,13 +174,11 @@ RP.DEFAULT_CODE_CONFIG_VALUES = {
   commentPrefix: '#',
   forwardTemplate: 'robot.move_distance(distance={distance}, speed={speed})',
   turnTemplate: 'robot.turn_arc(angle={angle}, speed={speed})',
+  turnArcTemplate: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})',
   wallAlignTemplate: 'robot.wall_align(reversed={reversed}, speed={speed})',
   lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
   lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
-  followPathTemplate: 'robot.follow_path(headings=[{headings}], path_length={length})',
-  followPathSamples: 60,
-  followPathFlip: true,
-  followPathSmoothness: 2,
+  checkpointTemplate: 'if callable({name}): {name}()',
   defaultSpeed: 200,
   defaultUnit: 'mm'
 };
@@ -262,8 +271,6 @@ RP.snapThresholdImg = function(pxScreen) {
 // GEOMETRY HELPERS
 // ======================================================================
 RP.dist = function(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); };
-RP.midpoint = function(x1, y1, x2, y2) { return { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }; };
-RP.lerp = function(x1, y1, x2, y2, t) { return { x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t }; };
 RP.angleRad = function(x1, y1, x2, y2) { return Math.atan2(y2 - y1, x2 - x1); };
 RP.toDeg = function(r) { return ((r * 180 / Math.PI) % 360 + 360) % 360; };
 RP.turnAngle = function(aDeg, bDeg) {
@@ -288,12 +295,6 @@ RP.perpendicularProject = function(px, py, x1, y1, x2, y2) {
   var t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
   if (t < 0 || t > 1) return null;
   return { x: x1 + t * dx, y: y1 + t * dy };
-};
-RP.lineIntersect = function(x1, y1, x2, y2, x3, y3, x4, y4) {
-  var d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-  if (Math.abs(d) < 1e-10) return null;
-  var t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d;
-  return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
 };
 RP.segIntersect = function(x1, y1, x2, y2, x3, y3, x4, y4) {
   var d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
@@ -372,10 +373,10 @@ RP.computeSnap = function(ix, iy, opts) {
     var l = RP.lines[li];
     var dx1 = ix - l.x1, dy1 = iy - l.y1;
     var dSq1 = dx1 * dx1 + dy1 * dy1;
-    if (dSq1 < threshSq && dSq1 < bestPtSq) { bestPtSq = dSq1; bestPt = { x: l.x1, y: l.y1, kind: 'endpoint' }; }
+    if (dSq1 < threshSq && dSq1 < bestPtSq) { bestPtSq = dSq1; bestPt = { x: l.x1, y: l.y1, kind: 'endpoint', pointId: l.p1 }; }
     var dx2 = ix - l.x2, dy2 = iy - l.y2;
     var dSq2 = dx2 * dx2 + dy2 * dy2;
-    if (dSq2 < threshSq && dSq2 < bestPtSq) { bestPtSq = dSq2; bestPt = { x: l.x2, y: l.y2, kind: 'endpoint' }; }
+    if (dSq2 < threshSq && dSq2 < bestPtSq) { bestPtSq = dSq2; bestPt = { x: l.x2, y: l.y2, kind: 'endpoint', pointId: l.p2 }; }
   }
 
   // Intersections (still a "precise" construction-line feature)
@@ -388,11 +389,13 @@ RP.computeSnap = function(ix, iy, opts) {
       if (!p) continue;
       var ddx = ix - p.x, ddy = iy - p.y;
       var dSq = ddx * ddx + ddy * ddy;
-      if (dSq < threshSq && dSq < bestPtSq) { bestPtSq = dSq; bestPt = { x: p.x, y: p.y, kind: 'intersection' }; }
+      if (dSq < threshSq && dSq < bestPtSq) { bestPtSq = dSq; bestPt = { x: p.x, y: p.y, kind: 'intersection', lineIds: [a.id, b.id] }; }
     }
   }
 
-  if (bestPt) return { x: bestPt.x, y: bestPt.y, kind: bestPt.kind };
+  // Returned as-is so callers also get the snapped feature's identity
+  // (pointId / lineIds), which is what auto-constraints are derived from.
+  if (bestPt) return bestPt;
 
   // ---------- PRIORITY 2: 90deg from anchor (line-end only) ----------
   // The 90deg snap is only valid when we already know the start of the
@@ -409,7 +412,7 @@ RP.computeSnap = function(ix, iy, opts) {
   if (ninetyPt) return ninetyPt;
 
   // ---------- PRIORITY 3: along a construction line (perpendicular projection) ----------
-  var bestProj = null, bestProjSq = Infinity;
+  var bestProj = null, bestProjSq = Infinity, bestProjLineId = null;
   for (var li2 = 0; li2 < RP.lines.length; li2++) {
     if (li2 === excludeLineIdx) continue;
     var l2 = RP.lines[li2];
@@ -417,9 +420,9 @@ RP.computeSnap = function(ix, iy, opts) {
     if (!proj) continue;
     var pdx = ix - proj.x, pdy = iy - proj.y;
     var pSq = pdx * pdx + pdy * pdy;
-    if (pSq < threshSq && pSq < bestProjSq) { bestProjSq = pSq; bestProj = proj; }
+    if (pSq < threshSq && pSq < bestProjSq) { bestProjSq = pSq; bestProj = proj; bestProjLineId = l2.id; }
   }
-  if (bestProj) return { x: bestProj.x, y: bestProj.y, kind: 'along-line' };
+  if (bestProj) return { x: bestProj.x, y: bestProj.y, kind: 'along-line', lineId: bestProjLineId };
 
   return null;
 };
@@ -427,30 +430,17 @@ RP.computeSnap = function(ix, iy, opts) {
 // Screen-space distance from a point to the nearest node of the active
 // route. ANY node can be a drag anchor for a new segment.
 RP.ROUTE_CONTINUE_SCREEN_RADIUS = 20;
-RP.tryRouteContinueAnchor = function(ix, iy) {
-  var r = RP.getActiveRoute();
-  if (!r || !r.nodes || r.nodes.length === 0) return null;
-  var best = null, bestD = Infinity;
-  for (var ni = 0; ni < r.nodes.length; ni++) {
-    var n = r.nodes[ni];
-    var screenD = RP.screenDist(ix, iy, n.x, n.y);
-    if (screenD < RP.ROUTE_CONTINUE_SCREEN_RADIUS && screenD < bestD) {
-      bestD = screenD;
-      best = { x: n.x, y: n.y, nodeId: n.id };
-    }
-  }
-  return best;
-};
 
 // ======================================================================
 // UNDO / REDO
 // ======================================================================
 RP.snapshotState = function() {
   return {
-    lines: JSON.parse(JSON.stringify(RP.lines)),
-    nextLineId: RP.nextLineId,
-    routes: JSON.parse(JSON.stringify(RP.routes)),
+    sketch: RP.serializeSketch(),
+    construction: JSON.parse(JSON.stringify(RP.constructionMeta)),
+    routes: RP.serializeRoutes ? RP.serializeRoutes() : JSON.parse(JSON.stringify(RP.routes)),
     activeRouteId: RP.activeRouteId,
+    nextElementId: RP.nextElementId,
     nextWpId: RP.nextWpId,
     nextSegId: RP.nextSegId,
     nextRouteId: RP.nextRouteId,
@@ -464,10 +454,15 @@ RP.restoreState = function(s) {
   // Deep-clone on the way out so the live state can't ever share refs
   // with anything still sitting in the undo/redo stacks (defense in depth
   // against future refactors).
-  RP.lines = JSON.parse(JSON.stringify(s.lines));
-  RP.nextLineId = s.nextLineId;
+  // Restored positions are already consistent, so the sketch is NOT
+  // re-solved here — that would be free to pick a different valid
+  // configuration and quietly move geometry on undo.
+  RP.deserializeSketch(s.sketch);
+  RP.constructionMeta = JSON.parse(JSON.stringify(s.construction || {}));
+  RP.rebuildLines();
   RP.routes = JSON.parse(JSON.stringify(s.routes));
   RP.activeRouteId = s.activeRouteId;
+  RP.nextElementId = s.nextElementId || RP.nextElementId || 1;
   RP.nextWpId = s.nextWpId;
   RP.nextSegId = s.nextSegId || 1;
   RP.nextRouteId = s.nextRouteId;
@@ -477,6 +472,10 @@ RP.restoreState = function(s) {
   // Migrate restored routes in case the snapshot pre-dates the
   // direction field (no-op otherwise).
   if (RP.migrateAllRoutes) RP.migrateAllRoutes();
+  if (RP.migrateRoutesToElements) RP.migrateRoutesToElements();
+  // nodes/segments are derived views and are not persisted, so they must
+  // be rebuilt before anything reads them.
+  if (RP.rebuildRouteViews) RP.rebuildRouteViews();
   // Validate selected segment against restored state; clear if stale.
   if (RP.selectedSegment) {
     var stillValid = false;
@@ -554,6 +553,11 @@ RP.resetView = function() {
 // (single source of truth - events.js used to have its own copy)
 // ======================================================================
 RP.setTool = function(tool) {
+  if (RP.ROUTE_EDIT_LOCKED && RP.LOCKED_TOOLS[tool]) {
+    var lockHint = document.getElementById('sidebar-tool-hint');
+    if (lockHint) lockHint.textContent = 'Route editing lives in Route mode now';
+    return;
+  }
   RP.activeTool = tool;
   // Update top-bar tool buttons and sidebar tool buttons in one pass.
   var btns = document.querySelectorAll('.tool-btn[data-tool], .sidebar-tool-btn[data-tool]');
@@ -567,16 +571,18 @@ RP.setTool = function(tool) {
     else if (tool === 'route') hint.textContent = 'Drag from last dot to extend route';
     else if (tool === 'select') hint.textContent = 'Click dots/endpoints to move';
     else if (tool === 'checkpoint') hint.textContent = 'Click route mid/end to place checkpoint';
-    else if (tool === 'freehand') hint.textContent = 'Hold and drag to draw a curved path';
+    else if (tool === 'arc') hint.textContent = 'Drag the chord · then drag the centre to curve it';
+    else if (tool === 'constrain') hint.textContent = 'Click geometry to select · shift-click adds · drag points to move';
   }
   // Cancel any in-progress drawing when switching tools.
   RP.lineDrawing = false;
   RP.lineDrawStart = null;
-  RP.freehandDrawing = false;
-  RP.freehandPoints = null;
   RP.hoverSnapPoint = null;
   // Selected segment only makes sense in select mode.
   if (tool !== 'select') RP.selectedSegment = null;
+  // Sketch selection only makes sense in constrain mode.
+  if (tool !== 'constrain' && RP.clearSketchSelection) RP.clearSketchSelection();
+  if (RP.updateConstraintPanel) RP.updateConstraintPanel();
   RP.updateInfoPanel();
   RP.render();
 };
@@ -611,16 +617,21 @@ RP.updateSegmentPanel = function() {
   var dirColor = isTeleport ? '#ffaa00' : (isLineTrace ? '#44ff88' : (dir === RP.SEG_BACKWARD ? '#ff8844' : '#44aaff'));
   var dirLabel = dir === RP.SEG_BACKWARD ? 'Backward' : 'Forward';
   var isFollowPath = mode === RP.SEG_MODE_FOLLOW_PATH;
-  var modeLabel = mode === RP.SEG_MODE_TELEPORT ? 'Teleport' : (mode === RP.SEG_MODE_LINETRACE_DIST ? 'Line Trace (dist)' : (mode === RP.SEG_MODE_LINETRACE_JUNCT ? 'Line Trace (junct)' : (mode === RP.SEG_MODE_WALL_ALIGN ? 'Wall Align' : (isFollowPath ? 'Follow Path' : 'Normal'))));
+  var isArc = mode === RP.SEG_MODE_ARC && seg.sagitta;
+  var modeLabel = mode === RP.SEG_MODE_TELEPORT ? 'Teleport' : (mode === RP.SEG_MODE_LINETRACE_DIST ? 'Line Trace (dist)' : (mode === RP.SEG_MODE_LINETRACE_JUNCT ? 'Line Trace (junct)' : (mode === RP.SEG_MODE_WALL_ALIGN ? 'Wall Align' : (isFollowPath ? 'Follow Path' : (isArc ? 'Arc' : 'Normal')))));
   var unit = (RP.codeConfig && RP.codeConfig.defaultUnit) || 'mm';
   var uf = (RP.unitFactor ? RP.unitFactor(unit) : 1);
   var lenStr = '';
-  // Follow-path length is the (smoothed) drawn arc length, not the straight node-to-node distance
+  // Follow-path / arc length is the true curved length, not the straight node-to-node distance
   var lenPx;
+  var arcGeo = null;
   if (isFollowPath && seg.pathPoints && RP.polylineLengthPx) {
     var fpSmoothPanel = (RP.codeConfig && RP.codeConfig.followPathSmoothness) || 0;
     var fpLenPts = (fpSmoothPanel > 0 && RP.chaikinSmooth) ? RP.chaikinSmooth(seg.pathPoints, fpSmoothPanel) : seg.pathPoints;
     lenPx = RP.polylineLengthPx(fpLenPts);
+  } else if (isArc && RP.computeArcGeom) {
+    arcGeo = RP.computeArcGeom(a.x, a.y, b.x, b.y, seg.sagitta);
+    lenPx = arcGeo ? arcGeo.radiusPx * Math.abs(arcGeo.sweepRad) : RP.dist(a.x, a.y, b.x, b.y);
   } else {
     lenPx = RP.dist(a.x, a.y, b.x, b.y);
   }
@@ -635,6 +646,12 @@ RP.updateSegmentPanel = function() {
       var nSamp = (RP.codeConfig && RP.codeConfig.followPathSamples) || 60;
       fpInfo = '<div style="font-size:10px;color:#cc88ff;margin-top:2px">Drawn path: ' +
         (seg.pathPoints ? seg.pathPoints.length : 0) + ' pts → ' + nSamp + ' heading samples</div>';
+    } else if (isArc && arcGeo) {
+      var arcRmm = RP.calibration ? (arcGeo.radiusPx / RP.calibration.pixelsPerMm / uf) : arcGeo.radiusPx;
+      var arcAngDeg = Math.abs(arcGeo.sweepRad) * 180 / Math.PI;
+      var sideTxt = (arcGeo.sweepRad >= 0) === (dir !== RP.SEG_BACKWARD) ? 'right' : 'left';
+      fpInfo = '<div style="font-size:10px;color:#ffcc44;margin-top:2px">Radius: ' + arcRmm.toFixed(1) + ' ' + unit +
+        ' · Sweep: ' + arcAngDeg.toFixed(1) + '° ' + sideTxt + '<br>Drag the handle to reshape</div>';
     }
     RP.dom.segmentInfo.innerHTML =
       '<div>Route: ' + route.name + '</div>' +
@@ -653,6 +670,7 @@ RP.updateSegmentPanel = function() {
   if (RP.dom.segmentModeLTJunct)   RP.dom.segmentModeLTJunct.checked   = (mode === RP.SEG_MODE_LINETRACE_JUNCT);
   if (RP.dom.segmentModeWallAlign) RP.dom.segmentModeWallAlign.checked = (mode === RP.SEG_MODE_WALL_ALIGN);
   if (RP.dom.segmentModeFollowPath) RP.dom.segmentModeFollowPath.checked = (mode === RP.SEG_MODE_FOLLOW_PATH);
+  if (RP.dom.segmentModeArc) RP.dom.segmentModeArc.checked = (mode === RP.SEG_MODE_ARC);
 
   // Direction button — greyed out for teleport and both line trace modes.
   if (RP.dom.btnFlipSegment) {
@@ -768,10 +786,21 @@ RP.getSelectedNodeObj = function() {
 // ======================================================================
 RP.updateInfoPanel = function() {
   if (!RP.dom.infoTool) return;
-  RP.dom.infoTool.textContent = RP.activeTool === 'construction' ? 'Construction' : (RP.activeTool === 'route' ? 'Route' : (RP.activeTool === 'select' ? 'Select' : (RP.activeTool === 'freehand' ? 'Freehand' : 'Checkpoint')));
+  // (A ternary chain here used to label the arc tool "Checkpoint".)
+  RP.dom.infoTool.textContent = (RP.editMode === 'route')
+    ? 'Route mode'
+    : (RP.TOOL_LABELS[RP.activeTool] || RP.activeTool);
   RP.dom.infoSnap.textContent = RP.snapEnabled ? 'On' : 'Off';
   RP.dom.infoLines.textContent = RP.lines.length;
-  RP.dom.infoRoutes.textContent = RP.routes.length;
+  var dofEl = document.getElementById('info-dof');
+  if (dofEl && RP.sketchStatusInfo) {
+    var si = RP.sketchStatusInfo();
+    dofEl.textContent = si.text;
+    dofEl.style.color = si.color;
+  }
+  // One route, so the useful count is how many elements it has.
+  var theRoute = RP.getActiveRoute ? RP.getActiveRoute() : null;
+  RP.dom.infoRoutes.textContent = (theRoute && theRoute.elements) ? theRoute.elements.length : 0;
   RP.dom.infoCalibStatus.textContent = RP.calibration
     ? RP.calibration.pixelsPerMm.toFixed(4) + ' px/mm'
     : 'Not set';

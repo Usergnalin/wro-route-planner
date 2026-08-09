@@ -19,8 +19,10 @@ function _strOr(raw, fallback) {
 RP.updateRobotConfigFromUI = function() {
   RP.robotConfig.frontClearance = _posNum(document.getElementById('robot-fc').value, 50);
   RP.robotConfig.rearClearance  = _posNum(document.getElementById('robot-rc').value, 50);
-  // Re-snap any wall_align segments whose clearance offset just changed
-  if (RP.reapplyAllWallAlignSnaps) RP.reapplyAllWallAlignSnaps();
+  // Clearance feeds the wall_align distance constraints; re-solving is
+  // what actually moves the geometry.
+  if (RP.syncAllWallAligns) RP.syncAllWallAligns();
+  if (RP.render) RP.render();
 };
 
 RP.updateRobotUI = function() {
@@ -42,16 +44,14 @@ RP.ensureCodeConfig = function() {
   if (!cfg.commentPrefix) cfg.commentPrefix = d.commentPrefix || '#';
   if (!cfg.forwardTemplate) cfg.forwardTemplate = d.forwardTemplate || 'robot.move_distance(distance={distance}, speed={speed})';
   if (!cfg.turnTemplate) cfg.turnTemplate = d.turnTemplate || 'robot.turn_arc(angle={angle}, speed={speed})';
+  if (!cfg.turnArcTemplate) cfg.turnArcTemplate = d.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
   if (!cfg.wallAlignTemplate) cfg.wallAlignTemplate = d.wallAlignTemplate || 'robot.wall_align(reversed={reversed}, speed={speed})';
   // Migrate old split templates
   if (!cfg.turnTemplate && (cfg.turnRightTemplate || cfg.turnLeftTemplate)) cfg.turnTemplate = 'robot.turn_arc(angle={angle}, speed={speed})';
   delete cfg.turnRightTemplate; delete cfg.turnLeftTemplate;
   if (!cfg.lineTraceDistTemplate) cfg.lineTraceDistTemplate = d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
   if (!cfg.lineTraceJunctTemplate) cfg.lineTraceJunctTemplate = d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
-  if (!cfg.followPathTemplate) cfg.followPathTemplate = d.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})';
-  if (cfg.followPathSamples === undefined || cfg.followPathSamples === null) cfg.followPathSamples = d.followPathSamples || 60;
-  if (cfg.followPathFlip === undefined || cfg.followPathFlip === null) cfg.followPathFlip = (d.followPathFlip !== undefined ? d.followPathFlip : true);
-  if (cfg.followPathSmoothness === undefined || cfg.followPathSmoothness === null) cfg.followPathSmoothness = (d.followPathSmoothness !== undefined ? d.followPathSmoothness : 2);
+  if (!cfg.checkpointTemplate) cfg.checkpointTemplate = d.checkpointTemplate || 'if callable({name}): {name}()';
   if (cfg.defaultSpeed === undefined || cfg.defaultSpeed === null) cfg.defaultSpeed = d.defaultSpeed || 200;
   if (!cfg.defaultUnit) cfg.defaultUnit = d.defaultUnit || 'mm';
 };
@@ -65,20 +65,11 @@ RP.updateCodeConfigFromUI = function() {
   RP.codeConfig.commentPrefix = _strOr(_el('code-comment'), d.commentPrefix || '//');
   RP.codeConfig.forwardTemplate = _strOr(_el('code-forward'), d.forwardTemplate || 'move({distance}, {speed})');
   RP.codeConfig.turnTemplate       = _strOr(_el('code-turn'),       d.turnTemplate       || 'turn({angle}, {speed})');
+  RP.codeConfig.turnArcTemplate    = _strOr(_el('code-turn-arc'),   d.turnArcTemplate    || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})');
   RP.codeConfig.wallAlignTemplate  = _strOr(_el('code-wall-align'), d.wallAlignTemplate  || 'wall_align({reversed}, {speed})');
   RP.codeConfig.lineTraceDistTemplate = _strOr(_el('code-lt-dist'), d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})');
   RP.codeConfig.lineTraceJunctTemplate = _strOr(_el('code-lt-junct'), d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})');
-  RP.codeConfig.followPathTemplate = _strOr(_el('code-follow-path'), d.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})');
-  RP.codeConfig.followPathSamples = Math.max(2, _posNum(_el('code-fp-samples'), d.followPathSamples || 60));
-  var fpFlipEl = document.getElementById('code-fp-flip');
-  if (fpFlipEl) RP.codeConfig.followPathFlip = !!fpFlipEl.checked;
-  var fpSmoothEl = document.getElementById('code-fp-smooth');
-  if (fpSmoothEl) {
-    var sv = parseInt(fpSmoothEl.value, 10);
-    RP.codeConfig.followPathSmoothness = isFinite(sv) && sv >= 0 ? sv : 2;
-    var svLabel = document.getElementById('code-fp-smooth-val');
-    if (svLabel) svLabel.textContent = RP.codeConfig.followPathSmoothness;
-  }
+  RP.codeConfig.checkpointTemplate = _strOr(_el('code-checkpoint'), d.checkpointTemplate || 'if callable({name}): {name}()');
   RP.codeConfig.defaultSpeed = _posNum(_el('code-speed'), d.defaultSpeed || 200);
   RP.codeConfig.defaultUnit = _strOr(_el('code-unit'), d.defaultUnit || 'mm');
   if (RP.render) RP.render();
@@ -88,24 +79,14 @@ RP.updateCodeConfigUI = function() {
   document.getElementById('code-comment').value = RP.codeConfig.commentPrefix;
   document.getElementById('code-forward').value = RP.codeConfig.forwardTemplate;
   document.getElementById('code-turn').value       = RP.codeConfig.turnTemplate      || 'turn({angle}, {speed})';
+  var arcTmplEl = document.getElementById('code-turn-arc');
+  if (arcTmplEl) arcTmplEl.value = RP.codeConfig.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
   document.getElementById('code-wall-align').value = RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed})';
   document.getElementById('code-lt-dist').value = RP.codeConfig.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
   document.getElementById('code-lt-junct').value = RP.codeConfig.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
-  var fpEl = document.getElementById('code-follow-path');
-  if (fpEl) fpEl.value = RP.codeConfig.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})';
-  var fpSampEl = document.getElementById('code-fp-samples');
-  if (fpSampEl) fpSampEl.value = RP.codeConfig.followPathSamples || 60;
-  var fpFlipEl2 = document.getElementById('code-fp-flip');
-  if (fpFlipEl2) fpFlipEl2.checked = RP.codeConfig.followPathFlip !== false;
-  var fpSmoothEl2 = document.getElementById('code-fp-smooth');
-  if (fpSmoothEl2) fpSmoothEl2.value = (RP.codeConfig.followPathSmoothness != null ? RP.codeConfig.followPathSmoothness : 2);
-  var fpSmoothLab = document.getElementById('code-fp-smooth-val');
-  if (fpSmoothLab) fpSmoothLab.textContent = (RP.codeConfig.followPathSmoothness != null ? RP.codeConfig.followPathSmoothness : 2);
+  var cpTmplEl = document.getElementById('code-checkpoint');
+  if (cpTmplEl) cpTmplEl.value = RP.codeConfig.checkpointTemplate || 'if callable({name}): {name}()';
   document.getElementById('code-speed').value = RP.codeConfig.defaultSpeed;
   document.getElementById('code-unit').value = RP.codeConfig.defaultUnit;
 };
 
-// ======================================================================
-// TAB SWITCHING (no-op - tabs removed, kept for call-site safety)
-// ======================================================================
-RP.switchTab = function() {};

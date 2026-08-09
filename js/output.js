@@ -23,17 +23,21 @@ RP.unitFactor = function(unit) {
 //   { kind: 'linetrace_junct', junctions, reverse }
 //   { kind: 'checkpoint',    name }
 RP.computeSteps = function(route) {
-  if (!route || !route.nodes || route.nodes.length < 2 || !RP.calibration) return [];
+  if (!route || !RP.calibration) return [];
 
-  // Find longest path through graph
-  var pathNodes = RP.computeLongestPath(route);
-  if (!pathNodes || pathNodes.length < 2) return [];
+  // Routes are ordered references now; the resolver validates continuity
+  // and hands back travel-order coordinates.
+  var resolved = RP.resolveRoute(route);
+  if (!resolved.ok) return [];
+  var rels = resolved.elements;
+  if (rels.length === 0) return [];
 
   var ppm = RP.calibration.pixelsPerMm;
   var steps = [];
+  var sk = RP.sketch;
 
-  function chassisHeading(a, b, dir) {
-    if (dir === RP.SEG_BACKWARD) return RP.toDeg(RP.angleRad(b.x, b.y, a.x, a.y));
+  function chassisHeading(a, b, backward) {
+    if (backward) return RP.toDeg(RP.angleRad(b.x, b.y, a.x, a.y));
     return RP.toDeg(RP.angleRad(a.x, a.y, b.x, b.y));
   }
 
@@ -42,46 +46,38 @@ RP.computeSteps = function(route) {
   // Virtual leg from startPos
   if (RP.robotConfig.startPos) {
     var sp = RP.robotConfig.startPos;
-    var firstSeg = RP.findSegBetween(route, pathNodes[0].id, pathNodes[1].id);
-    var firstDir = (firstSeg && firstSeg.direction) || RP.SEG_FORWARD;
-    var firstMode = (firstSeg && firstSeg.mode) || RP.SEG_MODE_NORMAL;
-    var pxFromStart = RP.dist(sp.x, sp.y, pathNodes[0].x, pathNodes[0].y);
+    var firstEl = rels[0].element;
+    var firstBackward = !!firstEl.reverse;
+    var firstMove = firstEl.move || RP.MOVE_FORWARD;
+    var pxFromStart = RP.dist(sp.x, sp.y, rels[0].a.x, rels[0].a.y);
     var mmFromStart = pxFromStart / ppm;
-    if (mmFromStart > 0.5 && firstMode === RP.SEG_MODE_NORMAL) {
-      var headingStartLeg = chassisHeading(sp, pathNodes[0], firstDir);
+    if (mmFromStart > 0.5 && firstMove === RP.MOVE_FORWARD) {
+      var headingStartLeg = chassisHeading(sp, rels[0].a, firstBackward);
       var turnInit = RP.turnAngle(RP.robotConfig.startHeading, headingStartLeg);
       if (Math.abs(turnInit) > 0.5) {
-        steps.push({ kind: 'turn', deg: turnInit, speed: pathNodes[0].turnSpeed });
+        steps.push({ kind: 'turn', deg: turnInit, speed: firstEl.turnSpeed });
       }
-      steps.push({ kind: 'forward', mm: mmFromStart, reverse: firstDir === RP.SEG_BACKWARD, speed: firstSeg && firstSeg.speed });
+      steps.push({ kind: 'forward', mm: mmFromStart, reverse: firstBackward, speed: firstEl.speed });
       prevHeading = headingStartLeg;
     } else {
       prevHeading = RP.robotConfig.startHeading;
     }
   }
 
-  // First node checkpoint
-  if (pathNodes[0].isCheckpoint && pathNodes[0].checkpointName) {
-    steps.push({ kind: 'checkpoint', name: pathNodes[0].checkpointName });
+  if (route.startCheckpoint) {
+    steps.push({ kind: 'checkpoint', name: route.startCheckpoint });
   }
 
-  for (var i = 0; i < pathNodes.length - 1; i++) {
-    var a = pathNodes[i], b = pathNodes[i + 1];
+  for (var i = 0; i < rels.length; i++) {
+    var rel = rels[i];
+    var el = rel.element;
+    var a = rel.a, b = rel.b;
+    var mode = el.move || RP.MOVE_FORWARD;
+    // Travel order is already resolved into a/b, so the old
+    // direction-XOR-traversal dance is gone: reverse is purely chassis.
+    var effectiveBackward = !!el.reverse;
 
-    // Find the segment connecting these two nodes (may be traversed in reverse)
-    var seg = RP.findSegBetween(route, a.id, b.id);
-    if (!seg) continue;
-
-    // Determine actual traversal direction: if segment is stored from->to but we
-    // traverse to->from, the storage direction is flipped relative to travel.
-    var storedForward = (seg.fromNodeId === a.id);
-    var dir  = seg.direction || RP.SEG_FORWARD;
-    var mode = seg.mode || RP.SEG_MODE_NORMAL;
-    // Effective backward: XOR of segment.direction and traversal order
-    var effectiveBackward = (dir === RP.SEG_BACKWARD) !== (!storedForward);
-
-    // Emit extra turns stored on node a, before any geometric turn
-    var aExtras = a.extraTurns || [];
+    var aExtras = el.extraTurnsBefore || [];
     for (var eti = 0; eti < aExtras.length; eti++) {
       var etDeg = RP.extraTurnDeg(aExtras[eti]);
       if (isFinite(etDeg) && Math.abs(etDeg) > 0.01) {
@@ -90,73 +86,84 @@ RP.computeSteps = function(route) {
       }
     }
 
-    if (mode === RP.SEG_MODE_TELEPORT) {
+    if (mode === RP.MOVE_TELEPORT) {
       var hdgTele = RP.toDeg(RP.angleRad(a.x, a.y, b.x, b.y));
       steps.push({
         kind: 'teleport',
         fromX: a.x, fromY: a.y,
         toX: b.x, toY: b.y,
         heading: hdgTele,
-        name: seg.teleportName || ('teleport_' + seg.id)
+        name: el.teleportName || ('teleport_' + el.id)
       });
       prevHeading = null;
-      if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
+      if (el.checkpoint) steps.push({ kind: 'checkpoint', name: el.checkpoint });
       continue;
     }
 
-    if (mode === RP.SEG_MODE_FOLLOW_PATH && seg.pathPoints && seg.pathPoints.length >= 2) {
-      // Points in travel order (drawn from->to; reverse if we traverse to->from)
-      var fpPts = storedForward ? seg.pathPoints : seg.pathPoints.slice().reverse();
-      // Align robot to the curve's initial tangent before following it, so the
-      // executed curve matches the drawing in absolute terms.
-      var startTangent = RP.toDeg(RP.angleRad(fpPts[0].x, fpPts[0].y, fpPts[1].x, fpPts[1].y));
-      if (prevHeading !== null) {
-        var fpTurn = RP.turnAngle(prevHeading, startTangent);
-        if (Math.abs(fpTurn) > 0.5) steps.push({ kind: 'turn', deg: fpTurn, speed: a.turnSpeed });
+    if (rel.entity.type === 'arc') {
+      // Arc geometry comes from the entity itself now — centre, radius and
+      // sweep are all solver-owned. The sweep is stored against p1->p2, so
+      // traversing the other way negates it.
+      var storedForward = !el.flip;
+      var ageo = RP.Sketch.arcGeometry(sk, rel.entity);
+      if (ageo) {
+        ageo = { cx: ageo.cx, cy: ageo.cy, radiusPx: ageo.radius, sweepRad: ageo.sweep };
+        var sweepT = storedForward ? ageo.sweepRad : -ageo.sweepRad; // travel-order sweep (canvas math)
+        var ps = a;   // travel start point
+        var pe = b;   // travel end point
+        var ss = sweepT >= 0 ? 1 : -1;
+        // Velocity-direction tangents at each end (tangent = radius rotated ±90°)
+        var velStart = RP.toDeg(Math.atan2(ss * (ps.x - ageo.cx), ss * (-(ps.y - ageo.cy))));
+        var velEnd   = RP.toDeg(Math.atan2(ss * (pe.x - ageo.cx), ss * (-(pe.y - ageo.cy))));
+        var dCw = sweepT * 180 / Math.PI;        // chassis turn, clockwise-positive
+        var Rmm = ageo.radiusPx / ppm;
+        var noseFirst = !effectiveBackward;
+        var startNose = noseFirst ? velStart : (velStart + 180) % 360;
+        var endNose   = noseFirst ? velEnd   : (velEnd + 180) % 360;
+        var angleCode  = noseFirst ? Math.abs(dCw)  : -Math.abs(dCw);
+        var radiusCode = (noseFirst ? 1 : -1) * (dCw >= 0 ? 1 : -1) * Rmm;
+        var arcLenMm = Rmm * Math.abs(dCw) * Math.PI / 180;
+        if (prevHeading !== null) {
+          var aTurn = RP.turnAngle(prevHeading, startNose);
+          if (Math.abs(aTurn) > 0.5) steps.push({ kind: 'turn', deg: aTurn, speed: el.turnSpeed });
+        }
+        steps.push({ kind: 'arc', angle: angleCode, radiusMm: radiusCode, mm: arcLenMm, speed: el.speed });
+        prevHeading = endNose;
+        if (el.checkpoint) steps.push({ kind: 'checkpoint', name: el.checkpoint });
+        continue;
       }
-      var nSamp = (RP.codeConfig && RP.codeConfig.followPathSamples) || 60;
-      var fpFlip = !(RP.codeConfig && RP.codeConfig.followPathFlip === false);
-      var fpSmooth = (RP.codeConfig && RP.codeConfig.followPathSmoothness) || 0;
-      var fpData = RP.computeFollowPathData(fpPts, nSamp, fpFlip, ppm, fpSmooth);
-      steps.push({ kind: 'follow_path', headings: fpData.headings, mm: fpData.lengthMm, offsetMm: seg.offset || 0, speed: seg.speed });
-      // Robot ends facing the curve's final tangent
-      var lp0 = fpPts[fpPts.length - 2], lp1 = fpPts[fpPts.length - 1];
-      prevHeading = RP.toDeg(RP.angleRad(lp0.x, lp0.y, lp1.x, lp1.y));
-      if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
-      continue;
     }
 
-    var heading = chassisHeading(a, b, effectiveBackward ? RP.SEG_BACKWARD : RP.SEG_FORWARD);
+    var heading = chassisHeading(a, b, effectiveBackward);
     if (prevHeading !== null) {
       var turn = RP.turnAngle(prevHeading, heading);
       if (Math.abs(turn) > 0.5) {
-        steps.push({ kind: 'turn', deg: turn, speed: a.turnSpeed }); // positive = clockwise, negative = anticlockwise
+        steps.push({ kind: 'turn', deg: turn, speed: el.turnSpeed }); // positive = clockwise, negative = anticlockwise
       }
     }
 
     var legMm = RP.dist(a.x, a.y, b.x, b.y) / ppm;
-    var offsetMm = seg.offset || 0;
-    if (mode === RP.SEG_MODE_LINETRACE_DIST) {
-      steps.push({ kind: 'linetrace', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward, speed: seg.speed });
-    } else if (mode === RP.SEG_MODE_LINETRACE_JUNCT) {
-      steps.push({ kind: 'linetrace_junct', junctions: seg.junctionCount || 1, reverse: effectiveBackward, speed: seg.speed });
-    } else if (mode === RP.SEG_MODE_WALL_ALIGN) {
-      steps.push({ kind: 'wall_align', reverse: effectiveBackward, speed: seg.speed });
+    var offsetMm = el.offset || 0;
+    if (mode === RP.MOVE_LINETRACE_DIST) {
+      steps.push({ kind: 'linetrace', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward, speed: el.speed });
+    } else if (mode === RP.MOVE_LINETRACE_JUNCT) {
+      steps.push({ kind: 'linetrace_junct', junctions: el.junctions || 1, reverse: effectiveBackward, speed: el.speed });
+    } else if (mode === RP.MOVE_WALL_ALIGN) {
+      steps.push({ kind: 'wall_align', reverse: effectiveBackward, speed: el.speed });
       // Heading is now guaranteed perpendicular to the hit wall — snap to nearest cardinal
       prevHeading = Math.round(heading / 90) * 90 % 360;
-      if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
+      if (el.checkpoint) steps.push({ kind: 'checkpoint', name: el.checkpoint });
       continue;
     } else {
-      steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward, speed: seg.speed });
+      steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward, speed: el.speed });
     }
 
     prevHeading = heading;
-    if (b.isCheckpoint && b.checkpointName) steps.push({ kind: 'checkpoint', name: b.checkpointName });
+    if (el.checkpoint) steps.push({ kind: 'checkpoint', name: el.checkpoint });
   }
 
-  // Extra turns on the last node (appended after the final move)
-  var lastNode = pathNodes[pathNodes.length - 1];
-  var lastExtras = lastNode.extraTurns || [];
+  // Extra turns after the final move
+  var lastExtras = route.endExtraTurns || [];
   for (var eti2 = 0; eti2 < lastExtras.length; eti2++) {
     var etDeg2 = RP.extraTurnDeg(lastExtras[eti2]);
     if (isFinite(etDeg2) && Math.abs(etDeg2) > 0.01) {
@@ -168,12 +175,21 @@ RP.computeSteps = function(route) {
 };
 
 RP.generateCode = function(route) {
-  if (!route || !route.nodes || route.nodes.length < 2 || !RP.calibration) return '';
+  if (!route || !RP.calibration) return '';
 
   RP.ensureCodeConfig();
-  var pathNodes = RP.computeLongestPath(route);
-
   var cp = RP.codeConfig.commentPrefix;
+
+  // A broken route used to silently produce plausible-but-wrong code.
+  // Now it says what is wrong and where.
+  var resolved = RP.resolveRoute(route);
+  if (!resolved.ok) {
+    if (resolved.code === 'EMPTY') return '';
+    return cp + ' Route: ' + (route.name || '?') + '\n' +
+           cp + ' ⚠ ' + resolved.message;
+  }
+  var elCount = resolved.elements.length;
+
   var speed = RP.codeConfig.defaultSpeed;
   var unit = RP.codeConfig.defaultUnit || 'mm';
   var uFactor = RP.unitFactor(unit);
@@ -182,13 +198,11 @@ RP.generateCode = function(route) {
   function spd(st) { return (st.speed != null && st.speed !== '') ? st.speed : speed; }
 
   lines_out.push(cp + ' Route: ' + route.name);
-  if (pathNodes && pathNodes.length >= 2) {
-    lines_out.push(cp + ' Path: ' + pathNodes.length + ' nodes, ' + (pathNodes.length - 1) + ' segments');
-  }
+  lines_out.push(cp + ' Path: ' + (elCount + 1) + ' nodes, ' + elCount + ' segments');
 
   var totalMm = 0;
   for (var i = 0; i < steps.length; i++) {
-    if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace' || steps[i].kind === 'follow_path') totalMm += steps[i].mm;
+    if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace' || steps[i].kind === 'arc') totalMm += steps[i].mm;
   }
   lines_out.push(cp + ' Total distance: ' + (totalMm / uFactor).toFixed(1) + ' ' + unit);
 
@@ -206,7 +220,15 @@ RP.generateCode = function(route) {
       lines_out.push(turnTmpl
         .replace(/\{angle\}/g, st.deg.toFixed(1))
         .replace(/\{speed\}/g, spd(st))
+        .replace(/\{radius\}/g, '0')
         .replace(/\{distance\}/g, '0'));
+    } else if (st.kind === 'arc') {
+      var arcTmpl = RP.codeConfig.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
+      lines_out.push(arcTmpl
+        .replace(/\{angle\}/g, st.angle.toFixed(1))
+        .replace(/\{radius\}/g, (st.radiusMm / uFactor).toFixed(1))
+        .replace(/\{speed\}/g, spd(st))
+        .replace(/\{distance\}/g, ((st.mm) / uFactor).toFixed(1)));
     } else if (st.kind === 'teleport') {
       var dx2 = st.toX - st.fromX, dy2 = st.toY - st.fromY;
       var distMm2 = RP.calibration ? Math.hypot(dx2, dy2) / RP.calibration.pixelsPerMm : 0;
@@ -217,9 +239,8 @@ RP.generateCode = function(route) {
         st.toX.toFixed(0) + ',' + st.toY.toFixed(0) + ')');
       lines_out.push('');
     } else if (st.kind === 'checkpoint') {
-      lines_out.push('');
-      lines_out.push(cp + ' ' + '─'.repeat(20) + ' CHECKPOINT: ' + (st.name || '?') + ' ' + '─'.repeat(20));
-      lines_out.push('');
+      var cpTmpl = RP.codeConfig.checkpointTemplate || 'if callable({name}): {name}()';
+      lines_out.push(cpTmpl.replace(/\{name\}/g, st.name || 'checkpoint'));
     } else if (st.kind === 'wall_align') {
       lines_out.push((RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed})')
         .replace(/\{reversed\}/g, st.reverse ? 'True' : 'False')
@@ -232,13 +253,6 @@ RP.generateCode = function(route) {
     } else if (st.kind === 'linetrace_junct') {
       lines_out.push(RP.codeConfig.lineTraceJunctTemplate
         .replace(/\{junctions\}/g, st.junctions)
-        .replace(/\{speed\}/g, spd(st)));
-    } else if (st.kind === 'follow_path') {
-      var headingsStr = st.headings.map(function(h) { var v = +h.toFixed(1); return (v === 0 ? 0 : v).toFixed(1); }).join(', ');
-      var fpLen = ((st.mm + (st.offsetMm || 0)) / uFactor).toFixed(1);
-      lines_out.push((RP.codeConfig.followPathTemplate || 'robot.follow_path(headings=[{headings}], path_length={length})')
-        .replace(/\{headings\}/g, headingsStr)
-        .replace(/\{length\}/g, fpLen)
         .replace(/\{speed\}/g, spd(st)));
     } else {
       // forward
@@ -261,13 +275,13 @@ RP.updateInstructions = function() {
     return;
   }
   var active = RP.getActiveRoute();
-  if (!active || !active.nodes || active.nodes.length < 2 || !RP.calibration) {
-    RP.dom.codeOutput.textContent = '// Need a route with >=2 nodes';
+  if (!active || !RP.calibration) {
+    RP.dom.codeOutput.textContent = '// Need a calibrated image and a route';
     return;
   }
-  var path = RP.computeLongestPath(active);
-  if (!path || path.length < 2) {
-    RP.dom.codeOutput.textContent = '// Need at least one segment in route';
+  var check = RP.resolveRoute(active);
+  if (!check.ok && check.code === 'EMPTY') {
+    RP.dom.codeOutput.textContent = '// Route has no elements yet';
     return;
   }
   try {

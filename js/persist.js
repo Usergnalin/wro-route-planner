@@ -10,15 +10,17 @@ var RP = window.RP || {};
 // Internal helper: build the save payload for the current state.
 RP._buildSavePayload = function(name) {
   return {
+    version: '4.0',
     name: name,
     imageData: RP.imgDataUrl,
     calibration: RP.calibration ? JSON.parse(JSON.stringify(RP.calibration)) : null,
-    lines: JSON.parse(JSON.stringify(RP.lines)),
-    routes: JSON.parse(JSON.stringify(RP.routes)),
+    sketch: RP.serializeSketch(),
+    construction: JSON.parse(JSON.stringify(RP.constructionMeta)),
+    routes: RP.serializeRoutes(),
     robotConfig: JSON.parse(JSON.stringify(RP.robotConfig)),
     codeConfig: JSON.parse(JSON.stringify(RP.codeConfig)),
-    nextLineId: RP.nextLineId,
     nextWpId: RP.nextWpId,
+    nextElementId: RP.nextElementId,
     nextSegId: RP.nextSegId,
     nextRouteId: RP.nextRouteId,
     activeRouteId: RP.activeRouteId
@@ -78,12 +80,13 @@ RP.loadMapProject = function(name) {
       RP.imgNaturalW = loaded.naturalWidth || loaded.width;
       RP.imgNaturalH = loaded.naturalHeight || loaded.height;
       RP.calibration = data.calibration || { pixelsPerMm: RP.imgNaturalW / 2362 };
-      RP.lines = data.lines || [];
+      RP.loadSketchFrom(data);
       RP.routes = data.routes || [];
-      RP.migrateAllRoutes();
+      RP.migrateAllRoutes();            // v1 waypoints -> nodes/segments
+      RP.migrateRoutesToElements();     // nodes/segments -> element references
       RP.selectedSegment = null;
-      RP.nextLineId = data.nextLineId || 1;
       RP.nextWpId = data.nextWpId || 1;
+      RP.nextElementId = data.nextElementId || 1;
       RP.nextSegId = data.nextSegId || 1;
       RP.nextRouteId = data.nextRouteId || 1;
       RP.activeRouteId = data.activeRouteId || (RP.routes.length > 0 ? RP.routes[0].id : null);
@@ -95,7 +98,7 @@ RP.loadMapProject = function(name) {
       RP.undoStack = [];
       RP.redoStack = [];
 
-      if (RP.routes.length === 0) RP.createRoute('Route 1');
+      RP.ensureSingleRoute();
       RP.updateRouteSelect();
       RP.updateSideRouteList();
       RP.updateMapList();
@@ -152,15 +155,17 @@ RP.exportProject = function() {
   if (!name) { alert('Name cannot be empty.'); return; }
   RP.updateCodeConfigFromUI();
   var data = {
-    version: '1.0',
+    version: '4.0',
     name: name,
     imageData: RP.imgDataUrl,
     calibration: RP.calibration ? JSON.parse(JSON.stringify(RP.calibration)) : null,
-    lines: JSON.parse(JSON.stringify(RP.lines)),
-    routes: JSON.parse(JSON.stringify(RP.routes)),
+    sketch: RP.serializeSketch(),
+    construction: JSON.parse(JSON.stringify(RP.constructionMeta)),
+    routes: RP.serializeRoutes(),
     robotConfig: JSON.parse(JSON.stringify(RP.robotConfig)),
     codeConfig: JSON.parse(JSON.stringify(RP.codeConfig)),
-    nextIds: { line: RP.nextLineId, wp: RP.nextWpId, seg: RP.nextSegId, route: RP.nextRouteId },
+    nextIds: { wp: RP.nextWpId, seg: RP.nextSegId, route: RP.nextRouteId,
+               element: RP.nextElementId },
     activeRouteId: RP.activeRouteId
   };
   var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -190,18 +195,18 @@ RP.importProject = function(file) {
         RP.imgNaturalW = loaded.naturalWidth || loaded.width;
         RP.imgNaturalH = loaded.naturalHeight || loaded.height;
         RP.calibration = data.calibration || { pixelsPerMm: RP.imgNaturalW / 2362 };
-        RP.lines = data.lines || [];
+        RP.loadSketchFrom(data);
         RP.routes = data.routes || [];
-        RP.migrateAllRoutes();
+        RP.migrateAllRoutes();            // v1 waypoints -> nodes/segments
+      RP.migrateRoutesToElements();     // nodes/segments -> element references
         RP.selectedSegment = null;
 
         if (data.nextIds) {
-          RP.nextLineId = data.nextIds.line || 1;
           RP.nextWpId = data.nextIds.wp || 1;
+          RP.nextElementId = data.nextIds.element || 1;
           RP.nextSegId = data.nextIds.seg || data.nextSegId || 1;
           RP.nextRouteId = data.nextIds.route || 1;
         } else {
-          RP.nextLineId = data.nextLineId || 1;
           RP.nextWpId = data.nextWpId || 1;
           RP.nextSegId = data.nextSegId || 1;
           RP.nextRouteId = data.nextRouteId || 1;
@@ -216,7 +221,7 @@ RP.importProject = function(file) {
         RP.undoStack = [];
         RP.redoStack = [];
 
-        if (RP.routes.length === 0) RP.createRoute('Route 1');
+        RP.ensureSingleRoute();
         RP.updateRouteSelect();
         RP.updateSideRouteList();
         RP.updateMapList();
@@ -248,8 +253,7 @@ RP.loadImageFromDataUrl = function(dataUrl) {
     RP.imgDataUrl = dataUrl;
     RP.imgNaturalW = loaded.naturalWidth || loaded.width;
     RP.imgNaturalH = loaded.naturalHeight || loaded.height;
-    RP.lines = [];
-    RP.nextLineId = 1;
+    RP.resetSketch();
     RP.calibration = { pixelsPerMm: RP.imgNaturalW / 2362 };
     RP.routes = [];
     RP.activeRouteId = null;
@@ -257,7 +261,7 @@ RP.loadImageFromDataUrl = function(dataUrl) {
     RP.nextSegId = 1;
     RP.nextRouteId = 1;
     RP.selectedSegment = null;
-    RP.createRoute('Route 1');
+    RP.ensureSingleRoute();
     RP.robotConfig.startPos = null;
     RP.robotConfig.startHeading = 0;
     RP.undoStack = [];

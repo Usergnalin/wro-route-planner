@@ -30,11 +30,25 @@ RP.render = function() {
   ctx.textBaseline = 'bottom';
 
   // --- Draw construction lines ---
+  // Route mode dims geometry to a guide, and skips lines a route already
+  // draws, so the same line is not rendered twice with two meanings.
+  var inRouteMode = RP.editMode === 'route';
+  var routeRefs = (inRouteMode && RP.routeReferencedEntities) ? RP.routeReferencedEntities() : {};
   for (var li = 0; li < RP.lines.length; li++) {
     var l = RP.lines[li];
     if (l.visible === false) continue;
-    var isSel = RP.selectedLineId === l.id;
-    var color = isSel ? '#ffee44' : '#44ff44';
+    if (inRouteMode && routeRefs[l.id]) continue;
+    var isSel = RP.selectedLineId === l.id ||
+                (RP.isSketchSelected ? RP.isSketchSelected(l.id) : false);
+    // Unselected construction geometry is tinted by solver status:
+    // green under-constrained, blue fully constrained, orange redundant,
+    // red conflicting.
+    var color = isSel ? '#ffee44'
+                      : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44');
+    if (inRouteMode) color = 'rgba(90,150,90,0.45)';   // geometry is only a guide here
+    // Field walls are fixed reference geometry, not something you drew.
+    var isField = l.role === 'field';
+    if (isField && !isSel) color = inRouteMode ? 'rgba(200,200,210,0.30)' : 'rgba(190,190,205,0.75)';
     var width = (isSel ? 3 : 2) / RP.scale;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
@@ -45,15 +59,39 @@ RP.render = function() {
     ctx.lineTo(l.x2, l.y2);
     ctx.stroke();
     ctx.setLineDash([]);
-    if (l.label) {
-      var mx = (l.x1 + l.x2) / 2;
-      var my = (l.y1 + l.y2) / 2;
-      ctx.save();
-      ctx.lineWidth = 3 / RP.scale;
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-      ctx.strokeText(l.label, mx, my - 4 / RP.scale);
-      ctx.fillText(l.label, mx, my - 4 / RP.scale);
-      ctx.restore();
+    // Labels are NOT drawn here. Length text and constraint badges are
+    // laid out together by RP.drawSketchOverlay so they cannot overlap.
+  }
+
+  // --- Draw construction arcs ---
+  for (var ai = 0; ai < RP.arcs.length; ai++) {
+    var arc = RP.arcs[ai];
+    if (arc.visible === false) continue;
+    if (inRouteMode && routeRefs[arc.id]) continue;
+    var arcSel = RP.selectedLineId === arc.id ||
+                 (RP.isSketchSelected ? RP.isSketchSelected(arc.id) : false);
+    var arcColor = arcSel ? '#ffee44'
+                          : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44');
+    if (inRouteMode) arcColor = 'rgba(90,150,90,0.45)';
+    var apts = RP.Sketch.arcPoints(RP.sketch, RP.sketch.entities[arc.id], 48);
+    if (apts.length < 2) continue;
+    ctx.strokeStyle = arcColor;
+    ctx.lineWidth = (arcSel ? 3 : 2) / RP.scale;
+    ctx.setLineDash([6 / RP.scale, 4 / RP.scale]);
+    ctx.beginPath();
+    ctx.moveTo(apts[0].x, apts[0].y);
+    for (var api = 1; api < apts.length; api++) ctx.lineTo(apts[api].x, apts[api].y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Centre tick, so it is obvious the centre is draggable geometry.
+    if (!inRouteMode) {
+      ctx.strokeStyle = 'rgba(160,200,255,0.6)';
+      ctx.lineWidth = 1 / RP.scale;
+      var tk = 4 / RP.scale;
+      ctx.beginPath();
+      ctx.moveTo(arc.cx - tk, arc.cy); ctx.lineTo(arc.cx + tk, arc.cy);
+      ctx.moveTo(arc.cx, arc.cy - tk); ctx.lineTo(arc.cx, arc.cy + tk);
+      ctx.stroke();
     }
   }
 
@@ -78,6 +116,9 @@ RP.render = function() {
   }
 
   // --- Draw routes (graph model) ---
+  // Routes recede in Sketch mode so construction geometry reads clearly.
+  ctx.save();
+  if (!inRouteMode) ctx.globalAlpha = 0.35;
   for (var ri = 0; ri < RP.routes.length; ri++) {
     var r = RP.routes[ri];
     if (!r.visible || !r.nodes || r.nodes.length === 0) continue;
@@ -97,7 +138,7 @@ RP.render = function() {
     var teleColor  = '#ffaa00';
     var ltColor    = isActive ? '#44ff88' : '#33cc66';
     var waColor    = '#e0e0e0';
-    var fpColor    = isActive ? '#cc77ff' : '#9955bb';
+    var arcColor   = isActive ? '#ffcc44' : '#cc9a33';
     var selColor   = '#ffd966';
     var dimColor   = isActive ? 'rgba(68,170,255,0.28)' : 'rgba(68,136,204,0.22)';
 
@@ -129,24 +170,32 @@ RP.render = function() {
       var isTeleport  = sMode === RP.SEG_MODE_TELEPORT;
       var isLineTrace = sMode === RP.SEG_MODE_LINETRACE_DIST || sMode === RP.SEG_MODE_LINETRACE_JUNCT;
       var isWallAlign = sMode === RP.SEG_MODE_WALL_ALIGN;
-      var isFollowPath = sMode === RP.SEG_MODE_FOLLOW_PATH && seg.pathPoints && seg.pathPoints.length >= 2;
-      var isSegSel = RP.selectedSegment && RP.selectedSegment.routeId === r.id && RP.selectedSegment.segId === seg.id;
+      var isArc = seg.entityType === 'arc';
+      // Segment ids ARE element ids, so a route-mode selection highlights
+      // the same segment the old select tool would have.
+      var isSegSel = (RP.selectedSegment && RP.selectedSegment.routeId === r.id &&
+                      RP.selectedSegment.segId === seg.id) ||
+                     (inRouteMode && r.id === RP.activeRouteId &&
+                      RP.selectedElementId === seg.id);
       var onPath = pathSegIds[seg.id];
       var segColor = (hasLongestPath && !onPath) ? dimColor
-        : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isWallAlign ? waColor : (isFollowPath ? fpColor : (isBack ? revColor : baseColor)))));
+        : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isWallAlign ? waColor : (isArc ? arcColor : (isBack ? revColor : baseColor)))));
 
-      // Smoothed render geometry for follow-path (matches the generated code)
-      var fpRenderPts = null;
-      if (isFollowPath) {
-        var fpSmoothN = (RP.codeConfig && RP.codeConfig.followPathSmoothness) || 0;
-        fpRenderPts = (fpSmoothN > 0 && RP.chaikinSmooth) ? RP.chaikinSmooth(seg.pathPoints, fpSmoothN) : seg.pathPoints;
+      // Arc render polyline (matches the generated turn_arc geometry)
+      var arcRenderPts = null;
+      if (isArc) {
+        arcRenderPts = RP.Sketch.arcPoints(RP.sketch, RP.sketch.entities[seg.entityId], 48);
+        // Points come back in stored p1->p2 order; put them in travel order
+        // so the direction chevron points the right way.
+        if (seg.flip) arcRenderPts = arcRenderPts.slice().reverse();
+        if (arcRenderPts.length < 2) { isArc = false; arcRenderPts = null; }
       }
 
-      // Trace either the straight segment or the freehand polyline
+      // Trace the straight segment or the arc polyline
       var _segPath = function() {
         ctx.beginPath();
-        if (isFollowPath) {
-          var pp = fpRenderPts;
+        if (isArc) {
+          var pp = arcRenderPts;
           ctx.moveTo(pp[0].x, pp[0].y);
           for (var ppi = 1; ppi < pp.length; ppi++) ctx.lineTo(pp[ppi].x, pp[ppi].y);
         } else {
@@ -170,24 +219,54 @@ RP.render = function() {
       _segPath();
       ctx.setLineDash([]);
 
+      // Travel-direction chevron. Direction along the geometry is derived
+      // from the chain, so this is the only place it is visible — you read
+      // it off the canvas instead of a checkbox. Colour/dash already
+      // encodes whether the robot drives that stretch tail-first.
+      if (inRouteMode && !isTeleport && RP.scale > 0.05) {
+        var cmx, cmy, cAng;
+        if (isArc && arcRenderPts && arcRenderPts.length >= 2) {
+          var ai = Math.floor(arcRenderPts.length / 2);
+          var aa = arcRenderPts[Math.max(0, ai - 1)], ab = arcRenderPts[ai];
+          cmx = ab.x; cmy = ab.y;
+          cAng = RP.angleRad(aa.x, aa.y, ab.x, ab.y);
+        } else {
+          cmx = (na.x + nb.x) / 2; cmy = (na.y + nb.y) / 2;
+          cAng = RP.angleRad(na.x, na.y, nb.x, nb.y);
+        }
+        var cs = 9 / RP.scale;
+        ctx.fillStyle = segColor;
+        ctx.beginPath();
+        ctx.moveTo(cmx + cs * Math.cos(cAng), cmy + cs * Math.sin(cAng));
+        ctx.lineTo(cmx + cs * 0.6 * Math.cos(cAng + 2.4), cmy + cs * 0.6 * Math.sin(cAng + 2.4));
+        ctx.lineTo(cmx + cs * 0.6 * Math.cos(cAng - 2.4), cmy + cs * 0.6 * Math.sin(cAng - 2.4));
+        ctx.closePath();
+        ctx.fill();
+      }
+
       if (hasLongestPath && !onPath) continue; // skip decorations for off-path segs
 
-      if (isFollowPath) {
-        // Direction arrow + label at the curve midpoint
+
+      if (isArc) {
+        var apts = arcRenderPts;
+        // Direction arrow at the arc midpoint (respect reverse traversal)
         if (RP.scale > 0.05) {
-          var pp2 = fpRenderPts;
-          var midI = Math.floor(pp2.length / 2);
-          var ma = pp2[Math.max(0, midI - 1)], mb = pp2[Math.min(pp2.length - 1, midI)];
-          var fpAng = RP.angleRad(ma.x, ma.y, mb.x, mb.y);
-          var fpArr = 12 / RP.scale;
+          var amI = Math.floor(apts.length / 2);
+          var aa0 = apts[Math.max(0, amI - 1)], ab0 = apts[Math.min(apts.length - 1, amI)];
+          var aAng = isBack ? RP.angleRad(ab0.x, ab0.y, aa0.x, aa0.y) : RP.angleRad(aa0.x, aa0.y, ab0.x, ab0.y);
+          var aTip = isBack ? aa0 : ab0;
+          var aArr = 12 / RP.scale;
           ctx.fillStyle = segColor;
           ctx.beginPath();
-          ctx.moveTo(mb.x + fpArr * Math.cos(fpAng), mb.y + fpArr * Math.sin(fpAng));
-          ctx.lineTo(mb.x + fpArr * 0.5 * Math.cos(fpAng + 2.5), mb.y + fpArr * 0.5 * Math.sin(fpAng + 2.5));
-          ctx.lineTo(mb.x + fpArr * 0.5 * Math.cos(fpAng - 2.5), mb.y + fpArr * 0.5 * Math.sin(fpAng - 2.5));
+          ctx.moveTo(aTip.x + aArr * Math.cos(aAng), aTip.y + aArr * Math.sin(aAng));
+          ctx.lineTo(aTip.x + aArr * 0.5 * Math.cos(aAng + 2.5), aTip.y + aArr * 0.5 * Math.sin(aAng + 2.5));
+          ctx.lineTo(aTip.x + aArr * 0.5 * Math.cos(aAng - 2.5), aTip.y + aArr * 0.5 * Math.sin(aAng - 2.5));
           ctx.closePath();
           ctx.fill();
         }
+        // The sagitta bulge handle is gone. An arc's shape is now changed by
+        // dragging its centre point in Sketch mode, or by constraining its
+        // radius — there is nothing route-side left to drag.
         continue; // skip the straight-segment decorations below
       }
 
@@ -488,22 +567,6 @@ RP.render = function() {
     ctx.setLineDash([]);
   }
 
-  // --- Freehand path preview ---
-  if (RP.freehandDrawing && RP.freehandPoints && RP.freehandPoints.length > 0) {
-    var fhp = RP.freehandPoints;
-    ctx.strokeStyle = '#cc77ff';
-    ctx.lineWidth = 3 / RP.scale;
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(fhp[0].x, fhp[0].y);
-    for (var fhi = 1; fhi < fhp.length; fhi++) ctx.lineTo(fhp[fhi].x, fhp[fhi].y);
-    ctx.stroke();
-    // Start dot
-    ctx.fillStyle = '#cc77ff';
-    ctx.beginPath();
-    ctx.arc(fhp[0].x, fhp[0].y, 4 / RP.scale, 0, Math.PI * 2);
-    ctx.fill();
-  }
 
   // --- All-node magnet hint (route mode only) ---
   // Show magnetic circles around ALL nodes of active route to hint that
@@ -522,6 +585,11 @@ RP.render = function() {
       }
     }
   }
+
+  ctx.restore();   // route dimming
+
+  // Constraint badges and point handles, drawn last so they sit on top.
+  if (RP.drawSketchOverlay) RP.drawSketchOverlay(ctx);
 
   ctx.restore();
 

@@ -20,3 +20,6 @@ export/
 
 # Browser localStorage backups
 *.localstorage.json
+
+# Per-machine Claude Code settings (launch.json is shared, this is not)
+.claude/settings.local.json

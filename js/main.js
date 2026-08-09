@@ -18,7 +18,7 @@ var RP = window.RP || {};
   // INIT
   // ======================================================================
   setTimeout(RP.resizeCanvas, 50);
-  RP.createRoute('Route 1');
+  RP.ensureSingleRoute();
   RP.updateRouteSelect();
   RP.updateSideRouteList();
   RP.updateLayerList();

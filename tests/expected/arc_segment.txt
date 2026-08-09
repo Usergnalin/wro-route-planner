@@ -1,0 +1,7 @@
+# Route: Arc
+# Path: 3 nodes, 2 segments
+# Total distance: 432.8 mm
+# ─────────────────────────────────────
+robot.turn_arc(angle=87.2, speed=200, radius=-145.0)
+robot.turn_arc(angle=88.6, speed=200)
+robot.move_distance(distance=212.1, speed=200)

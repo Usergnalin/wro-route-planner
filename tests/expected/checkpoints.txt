@@ -1,0 +1,11 @@
+# Route: Checkpoint run
+# Path: 4 nodes, 3 segments
+# Total distance: 500.0 mm
+# ─────────────────────────────────────
+if callable(start_cp): start_cp()
+robot.move_distance(distance=150.0, speed=200)
+robot.move_distance(distance=150.0, speed=200)
+if callable(grab_block): grab_block()
+robot.turn_arc(angle=90.0, speed=200)
+robot.move_distance(distance=200.0, speed=200)
+if callable(finish): finish()

@@ -46,7 +46,57 @@ RP.initEvents = function() {
       return;
     }
 
+    // ---- ROUTE MODE ----
+    // Reference-only: pick geometry to add it to the route, or pick an
+    // element to edit it. Nothing here creates or moves geometry.
+    if (RP.editMode === 'route') {
+      if (!RP.img) return;
+      var pRM = RP.screenToImage(e.clientX, e.clientY);
+      var hitRM = RP.routeHitTest(pRM.x, pRM.y);
+      if (hitRM) {
+        if (hitRM.kind === 'element') {
+          RP.selectedElementId = hitRM.id;
+        } else {
+          var addedEl = RP.appendGeometryToRoute(hitRM.id);
+          RP.selectedElementId = addedEl ? addedEl.id : null;
+        }
+        RP.refreshRouteUI();
+        return;
+      }
+      // Empty space deselects and falls back to panning.
+      RP.selectedElementId = null;
+      RP.refreshRouteUI();
+      RP.isDragging = true;
+      wrap.classList.add('dragging');
+      RP.dragStartX = e.clientX;
+      RP.dragStartY = e.clientY;
+      RP.dragStartOffX = RP.offsetX;
+      RP.dragStartOffY = RP.offsetY;
+      return;
+    }
+
     // ---- SELECT MODE ----
+    // Arc bulge handle for the currently selected arc — draggable in select OR arc tool
+    // (The old sagitta bulge-handle drag; arcs are sketch entities now.)
+    if (RP.activeTool === 'select' && RP.selectedSegment && RP.img) {
+      var pHandle = RP.screenToImage(e.clientX, e.clientY);
+      var selR = null;
+      for (var sri = 0; sri < RP.routes.length; sri++) {
+        if (RP.routes[sri].id === RP.selectedSegment.routeId) { selR = RP.routes[sri]; break; }
+      }
+      var selSeg = selR && RP.findSegment ? RP.findSegment(selR, RP.selectedSegment.segId) : null;
+      if (selSeg && selSeg.mode === RP.SEG_MODE_ARC && selSeg.sagitta) {
+        var hA = RP.findNode(selR, selSeg.fromNodeId), hB = RP.findNode(selR, selSeg.toNodeId);
+        if (hA && hB) {
+          var apexH = RP.arcApex(hA.x, hA.y, hB.x, hB.y, selSeg.sagitta);
+          if (RP.screenDist(pHandle.x, pHandle.y, apexH.x, apexH.y) < 12) {
+            RP.elementDrag = { type: 'arc-handle', routeId: selR.id, segId: selSeg.id };
+            return;
+          }
+        }
+      }
+    }
+
     if (RP.activeTool === 'select') {
       if (!RP.img) return;
       var pSel = RP.screenToImage(e.clientX, e.clientY);
@@ -145,137 +195,49 @@ RP.initEvents = function() {
       return;
     }
 
-    // ---- ROUTE MODE ----
-    if (RP.activeTool === 'route') {
-      if (!RP.img) return;
-      var p = RP.screenToImage(e.clientX, e.clientY);
-      var r = RP.getActiveRoute();
-      if (!r) {
-        RP.pushHistory('Create route');
-        RP.createRoute('Route ' + (RP.routes.length + 1));
-        r = RP.getActiveRoute();
-      }
 
-      // First node of empty route: snap + start drag
-      if (!r.nodes || r.nodes.length === 0) {
-        var sFirst = RP.computeSnap(p.x, p.y, { kind: 'point' });
-        var startPt = sFirst || p;
-        RP.lineDrawing = true;
-        RP.lineDrawStart = { x: startPt.x, y: startPt.y, nodeId: null };
-        RP.hoverSnapPoint = null;
-        wrap.classList.add('drawing-route');
-        return;
-      }
-
-      // Check segment midpoints for insertion
-      if (r.segments && r.segments.length > 0) {
-        for (var iSeg = 0; iSeg < r.segments.length; iSeg++) {
-          var segMid = r.segments[iSeg];
-          var naMid = RP.findNode(r, segMid.fromNodeId);
-          var nbMid = RP.findNode(r, segMid.toNodeId);
-          if (!naMid || !nbMid) continue;
-          var midPt = { x: (naMid.x + nbMid.x) / 2, y: (naMid.y + nbMid.y) / 2 };
-          if (RP.screenDist(p.x, p.y, midPt.x, midPt.y) < 12) {
-            var sMid = RP.computeSnap(p.x, p.y, { kind: 'point' });
-            var snapMid = sMid || p;
-            RP.pushHistory('Insert node');
-            var newNode = RP._addNode(r, snapMid.x, snapMid.y);
-            // Remove old segment, add two new ones
-            r.segments.splice(iSeg, 1);
-            RP._addSegment(r, segMid.fromNodeId, newNode.id);
-            RP._addSegment(r, newNode.id, segMid.toNodeId);
-            RP.render();
-            RP.updateSideRouteList();
-            RP.updateInfoPanel();
-            if (RP.updateInstructions) RP.updateInstructions();
-            return;
-          }
-        }
-      }
-
-      // Click near any existing node: start drawing a new segment from it
-      var anchor = RP.tryRouteContinueAnchor(p.x, p.y);
-      if (anchor) {
-        RP.lineDrawing = true;
-        RP.lineDrawStart = { x: anchor.x, y: anchor.y, nodeId: anchor.nodeId };
-        RP.hoverSnapPoint = null;
-        wrap.classList.add('drawing-route');
-        return;
-      }
-      // Not near any node — fall through (pan)
-    }
-
-    // ---- FREEHAND MODE ----
-    if (RP.activeTool === 'freehand') {
-      if (!RP.img) return;
-      var pFh = RP.screenToImage(e.clientX, e.clientY);
-      var sFh = RP.computeSnap(pFh.x, pFh.y, { kind: 'point' });
-      var startFh = sFh || pFh;
-      RP.freehandDrawing = true;
-      RP.freehandPoints = [{ x: startFh.x, y: startFh.y }];
-      RP.mouseMovedSinceDown = false;
-      RP.hoverSnapPoint = null;
-      wrap.classList.add('drawing-route');
-      return;
-    }
 
     // ---- CONSTRUCTION MODE ----
-    if (RP.activeTool === 'construction') {
+    // Arcs are drawn by their chord, exactly like a line; the centre is
+    // then a normal sketch point you can drag or constrain.
+    if (RP.activeTool === 'construction' || RP.activeTool === 'arc') {
       var p2 = RP.screenToImage(e.clientX, e.clientY);
       var sC = RP.computeSnap(p2.x, p2.y, { kind: 'point' });
       var startC = sC || p2;
       RP.lineDrawing = true;
-      RP.lineDrawStart = { x: startC.x, y: startC.y };
+      // Keep the snap itself, not just its coordinates — the auto-constraint
+      // applied on commit needs to know WHICH feature was snapped to.
+      RP.lineDrawStart = { x: startC.x, y: startC.y, snap: sC || null };
       RP.hoverSnapPoint = null;
       wrap.classList.add('drawing-route');
       return;
     }
 
-    // ---- CHECKPOINT MODE ----
-    if (RP.activeTool === 'checkpoint') {
+
+    // ---- CONSTRAIN MODE ----
+    if (RP.activeTool === 'constrain') {
       if (!RP.img) return;
-      var pCP = RP.screenToImage(e.clientX, e.clientY);
-      for (var cpri = 0; cpri < RP.routes.length; cpri++) {
-        var cpr = RP.routes[cpri];
-        if (!cpr.visible || !cpr.segments || cpr.segments.length === 0) continue;
-        // Click near segment midpoint: insert checkpoint node
-        for (var cpsi = 0; cpsi < cpr.segments.length; cpsi++) {
-          var cpSeg = cpr.segments[cpsi];
-          var cpA = RP.findNode(cpr, cpSeg.fromNodeId);
-          var cpB = RP.findNode(cpr, cpSeg.toNodeId);
-          if (!cpA || !cpB) continue;
-          var cpmx = (cpA.x + cpB.x) / 2, cpmy = (cpA.y + cpB.y) / 2;
-          if (RP.screenDist(pCP.x, pCP.y, cpmx, cpmy) < 18) {
-            var cpSnap = RP.computeSnap(pCP.x, pCP.y, { kind: 'point' }) || pCP;
-            var cpName = prompt('Checkpoint name:', 'CP-' + (cpsi + 1));
-            if (cpName === null) return;
-            RP.pushHistory('Insert checkpoint');
-            var cpNewNode = RP._addNode(cpr, cpSnap.x, cpSnap.y, { isCheckpoint: true, checkpointName: cpName });
-            cpr.segments.splice(cpsi, 1);
-            var cpNewSeg1 = RP._addSegment(cpr, cpSeg.fromNodeId, cpNewNode.id);
-            var cpNewSeg2 = RP._addSegment(cpr, cpNewNode.id, cpSeg.toNodeId);
-            cpNewSeg1.direction = cpSeg.direction; cpNewSeg1.mode = cpSeg.mode;
-            cpNewSeg2.direction = cpSeg.direction; cpNewSeg2.mode = cpSeg.mode;
-            RP.render();
-            RP.updateSideRouteList();
-            RP.updateInfoPanel();
-            return;
-          }
-        }
-        // Click near an endpoint node: mark as checkpoint
-        for (var cni = 0; cni < cpr.nodes.length; cni++) {
-          var cnNode = cpr.nodes[cni];
-          if (RP.screenDist(pCP.x, pCP.y, cnNode.x, cnNode.y) < 18) {
-            var epName = prompt('Checkpoint name:', 'CP-end');
-            if (epName === null) return;
-            RP.pushHistory('Set checkpoint');
-            cnNode.isCheckpoint = true;
-            cnNode.checkpointName = epName;
-            RP.render();
-            return;
-          }
-        }
+      var pCon = RP.screenToImage(e.clientX, e.clientY);
+      // Constraint badges are clickable, which highlights them in the list.
+      var badgeId = RP.badgeHitTest ? RP.badgeHitTest(pCon.x, pCon.y) : null;
+      if (badgeId != null) {
+        RP.selectConstraint(RP.selectedConstraintId === badgeId ? null : badgeId);
+        return;
       }
+      var hitCon = RP.sketchHitTest(pCon.x, pCon.y);
+      if (!hitCon) {
+        if (!e.shiftKey) RP.clearSketchSelection();
+        RP.refreshSketchUI();
+        return;
+      }
+      RP.toggleSketchSelection(hitCon.id, e.shiftKey);
+      // Dragging a point re-solves with it pinned, so constrained geometry
+      // follows the cursor. History is pushed on first movement, not here,
+      // so a plain click does not litter the undo stack.
+      if (hitCon.kind === 'point' && RP.isSketchSelected(hitCon.id)) {
+        RP.sketchDrag = { pointId: hitCon.id, moved: false };
+      }
+      RP.refreshSketchUI();
       return;
     }
 
@@ -291,17 +253,6 @@ RP.initEvents = function() {
   window.addEventListener('mousemove', function(e) {
     RP.lastMouseImg = RP.screenToImage(e.clientX, e.clientY);
 
-    if (RP.freehandDrawing) {
-      RP.mouseMovedSinceDown = true;
-      var pFhm = RP.screenToImage(e.clientX, e.clientY);
-      var lastFh = RP.freehandPoints[RP.freehandPoints.length - 1];
-      // Throttle: only record points >= ~2 screen px apart
-      if (RP.screenDist(lastFh.x, lastFh.y, pFhm.x, pFhm.y) >= 2) {
-        RP.freehandPoints.push({ x: pFhm.x, y: pFhm.y });
-        RP.render();
-      }
-      return;
-    }
 
     if (RP.lineDrawing && RP.lineDrawStart) {
       RP.mouseMovedSinceDown = true;
@@ -313,7 +264,52 @@ RP.initEvents = function() {
       return;
     }
 
+    if (RP.elementDrag && RP.elementDrag.type === 'arc-handle') {
+      var pAH = RP.screenToImage(e.clientX, e.clientY);
+      var ahR = null;
+      for (var ahi = 0; ahi < RP.routes.length; ahi++) {
+        if (RP.routes[ahi].id === RP.elementDrag.routeId) { ahR = RP.routes[ahi]; break; }
+      }
+      var ahSeg = ahR && RP.findSegment ? RP.findSegment(ahR, RP.elementDrag.segId) : null;
+      if (ahSeg) {
+        var ahA = RP.findNode(ahR, ahSeg.fromNodeId), ahB = RP.findNode(ahR, ahSeg.toNodeId);
+        if (ahA && ahB) {
+          var perp = RP.arcPerp(ahA.x, ahA.y, ahB.x, ahB.y);
+          var mxAH = (ahA.x + ahB.x) / 2, myAH = (ahA.y + ahB.y) / 2;
+          // Signed perpendicular distance of cursor from chord = new sagitta
+          var sag = (pAH.x - mxAH) * perp.x + (pAH.y - myAH) * perp.y;
+          var maxSag = perp.L * 3;
+          if (sag > maxSag) sag = maxSag; else if (sag < -maxSag) sag = -maxSag;
+          if (Math.abs(sag) < 1) sag = sag < 0 ? -1 : 1;
+          ahSeg.sagitta = sag;
+          RP.render();
+          if (RP.updateInfoPanel) RP.updateInfoPanel();
+          if (RP.updateInstructions) RP.updateInstructions();
+        }
+      }
+      return;
+    }
+
+    if (RP.sketchDrag) {
+      var pSD = RP.screenToImage(e.clientX, e.clientY);
+      if (!RP.sketchDrag.moved) {
+        RP.pushHistory('Move point');
+        RP.sketchDrag.moved = true;
+      }
+      RP.Sketch.dragPoint(RP.sketch, RP.sketchDrag.pointId, pSD.x, pSD.y);
+      RP.rebuildLines();
+      RP.render();
+      return;
+    }
+
     if (RP.elementDrag) {
+      if (!RP.elementDrag.pushed) {
+        // pushHistory snapshots the CURRENT state, so it has to run before
+        // the first mutation. Doing it on mouseup recorded the post-move
+        // state, which made the first undo a no-op.
+        RP.elementDrag.pushed = true;
+        RP.pushHistory('Move ' + RP.elementDrag.type);
+      }
       var pED = RP.screenToImage(e.clientX, e.clientY);
       var snapED = null;
       if (RP.elementDrag.type === 'line-endpoint') {
@@ -324,38 +320,18 @@ RP.initEvents = function() {
       var fED = snapED || pED;
       RP.hoverSnapPoint = snapED ? { x: snapED.x, y: snapED.y } : null;
       if (RP.elementDrag.type === 'node') {
-        for (var rie = 0; rie < RP.routes.length; rie++) {
-          var re_ = RP.routes[rie];
-          if (re_.id !== RP.elementDrag.routeId || !re_.nodes) continue;
-          var nd_ = RP.findNode(re_, RP.elementDrag.nodeId);
-          if (nd_) {
-            nd_.x = fED.x; nd_.y = fED.y;
-            // Re-snap if this node is the end of a wall_align segment;
-            // keep follow_path curve endpoints attached to their nodes
-            if (re_.segments) {
-              for (var wse = 0; wse < re_.segments.length; wse++) {
-                var wseg = re_.segments[wse];
-                if (wseg.mode === RP.SEG_MODE_WALL_ALIGN && wseg.toNodeId === nd_.id) {
-                  RP.applyWallAlignSnap(re_, wseg);
-                }
-                if (wseg.mode === RP.SEG_MODE_FOLLOW_PATH && wseg.pathPoints && wseg.pathPoints.length >= 2) {
-                  if (wseg.fromNodeId === nd_.id) { wseg.pathPoints[0].x = nd_.x; wseg.pathPoints[0].y = nd_.y; }
-                  if (wseg.toNodeId === nd_.id) {
-                    var lpEnd = wseg.pathPoints[wseg.pathPoints.length - 1];
-                    lpEnd.x = nd_.x; lpEnd.y = nd_.y;
-                  }
-                }
-              }
-            }
-          }
-          break;
-        }
+        // A route node IS a sketch point now (the view carries the point
+        // entity id), so dragging one goes through the solver like any
+        // other geometry. The old wall_align re-snap and follow_path
+        // endpoint sync are gone with the model that needed them.
+        RP.Sketch.dragPoint(RP.sketch, RP.elementDrag.nodeId, fED.x, fED.y);
+        RP.rebuildLines();
+        RP.rebuildRouteViews();
       } else if (RP.elementDrag.type === 'line-endpoint') {
         var lED = RP.lines[RP.elementDrag.lineIdx];
-        if (lED) {
-          if (RP.elementDrag.which === 'start') { lED.x1 = fED.x; lED.y1 = fED.y; }
-          else { lED.x2 = fED.x; lED.y2 = fED.y; }
-        }
+        // The sketch owns positions now: move the underlying point and let
+        // the solver drag any constrained geometry along with it.
+        if (lED) RP.moveConstructionEndpoint(lED.id, RP.elementDrag.which, fED.x, fED.y);
       }
       RP.render();
       return;
@@ -443,54 +419,6 @@ RP.initEvents = function() {
       return;
     }
 
-    // Finish freehand path drawing
-    if (RP.freehandDrawing) {
-      RP.freehandDrawing = false;
-      wrap.classList.remove('drawing-route');
-      var fhPts = RP.freehandPoints || [];
-      RP.freehandPoints = null;
-
-      if (fhPts.length >= 2 && RP.img) {
-        // Snap the final point to a feature if close
-        var fhEndRaw = fhPts[fhPts.length - 1];
-        var fhEndSnap = RP.computeSnap(fhEndRaw.x, fhEndRaw.y, { kind: 'point' });
-        if (fhEndSnap) fhPts[fhPts.length - 1] = { x: fhEndSnap.x, y: fhEndSnap.y };
-
-        if (RP.polylineLengthPx(fhPts) > 4 / RP.scale) {
-          RP.pushHistory('Draw freehand path');
-          var rFh = RP.getActiveRoute();
-          if (!rFh) { RP.createRoute('Route ' + (RP.routes.length + 1)); rFh = RP.getActiveRoute(); }
-
-          // From node: reuse an existing nearby node, else create one
-          var fhStart = fhPts[0];
-          var existFhStart = RP.findNodeNear(rFh, fhStart.x, fhStart.y, RP.ROUTE_CONTINUE_SCREEN_RADIUS);
-          var fhFromId;
-          if (existFhStart) { fhFromId = existFhStart.id; fhPts[0] = { x: existFhStart.x, y: existFhStart.y }; }
-          else { fhFromId = RP._addNode(rFh, fhStart.x, fhStart.y).id; }
-
-          // To node: reuse an existing nearby node, else create one
-          var fhEnd = fhPts[fhPts.length - 1];
-          var existFhEnd = RP.findNodeNear(rFh, fhEnd.x, fhEnd.y, RP.ROUTE_CONTINUE_SCREEN_RADIUS);
-          var fhToId;
-          if (existFhEnd && existFhEnd.id !== fhFromId) {
-            fhToId = existFhEnd.id; fhPts[fhPts.length - 1] = { x: existFhEnd.x, y: existFhEnd.y };
-          } else {
-            fhToId = RP._addNode(rFh, fhEnd.x, fhEnd.y).id;
-          }
-
-          if (fhToId !== fhFromId && !RP.findSegBetween(rFh, fhFromId, fhToId)) {
-            var fhSeg = RP._addSegment(rFh, fhFromId, fhToId);
-            fhSeg.mode = RP.SEG_MODE_FOLLOW_PATH;
-            fhSeg.pathPoints = fhPts;
-          }
-          RP.updateSideRouteList();
-          RP.updateInfoPanel();
-          if (RP.updateInstructions) RP.updateInstructions();
-        }
-      }
-      RP.render();
-      return;
-    }
 
     // Finish line drawing
     if (RP.lineDrawing && RP.lineDrawStart) {
@@ -499,50 +427,20 @@ RP.initEvents = function() {
       var endPt = snapUp || pUp;
       var movedFar = RP.dist(RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y) > 2 / RP.scale;
 
-      if (RP.activeTool === 'route' && movedFar) {
-        var routeR = RP.getActiveRoute();
-        if (routeR) {
-          RP.pushHistory('Add route segment');
-
-          // fromNode: either existing (if drag started from a node) or new
-          var fromNodeId = RP.lineDrawStart.nodeId;
-          if (fromNodeId === null || fromNodeId === undefined) {
-            // First node of the route
-            var fromNode = RP._addNode(routeR, RP.lineDrawStart.x, RP.lineDrawStart.y);
-            fromNodeId = fromNode.id;
-          }
-
-          // toNode: snap to existing node or create new
-          var existingEnd = RP.findNodeNear(routeR, endPt.x, endPt.y, RP.ROUTE_CONTINUE_SCREEN_RADIUS);
-          var toNodeId;
-          if (existingEnd) {
-            toNodeId = existingEnd.id;
-          } else {
-            var toNode = RP._addNode(routeR, endPt.x, endPt.y);
-            toNodeId = toNode.id;
-          }
-
-          // Prevent duplicate segment between same two nodes
-          if (toNodeId !== fromNodeId && !RP.findSegBetween(routeR, fromNodeId, toNodeId)) {
-            RP._addSegment(routeR, fromNodeId, toNodeId);
-          }
-
-          RP.render();
-          RP.updateSideRouteList();
-          RP.updateInfoPanel();
-          if (RP.updateInstructions) RP.updateInstructions();
+      if ((RP.activeTool === 'construction' || RP.activeTool === 'arc') && movedFar) {
+        var drawOpts = {
+          startSnap: RP.lineDrawStart.snap,
+          endSnap: (endPt && endPt.kind) ? endPt : null
+        };
+        if (RP.activeTool === 'arc') {
+          RP.pushHistory('Draw construction arc');
+          RP.addConstructionArc(
+            RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y, drawOpts);
+        } else {
+          RP.pushHistory('Draw construction line');
+          RP.addConstructionLine(
+            RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y, drawOpts);
         }
-      } else if (RP.activeTool === 'construction' && movedFar) {
-        RP.pushHistory('Draw construction line');
-        var pxLen2 = RP.dist(RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y);
-        var mm2 = RP.calibration ? pxLen2 / RP.calibration.pixelsPerMm : pxLen2;
-        RP.lines.push({
-          id: RP.nextLineId++,
-          x1: RP.lineDrawStart.x, y1: RP.lineDrawStart.y,
-          x2: endPt.x, y2: endPt.y,
-          type: 'construction', visible: true,
-          label: mm2.toFixed(2) + ' mm'
-        });
         if (RP.updateLayerList) RP.updateLayerList();
       }
 
@@ -554,17 +452,17 @@ RP.initEvents = function() {
       return;
     }
 
+    // Finish a sketch point drag
+    if (RP.sketchDrag) {
+      RP.sketchDrag = null;
+      RP.solveSketch();
+      RP.refreshSketchUI();
+      return;
+    }
+
     // Finish element drag
     if (RP.elementDrag) {
-      if (RP.elementDrag.type === 'line-endpoint') {
-        var l = RP.lines[RP.elementDrag.lineIdx];
-        if (l && RP.calibration) {
-          var pxLen = RP.dist(l.x1, l.y1, l.x2, l.y2);
-          var mm = pxLen / RP.calibration.pixelsPerMm;
-          l.label = mm.toFixed(2) + ' mm';
-        }
-      }
-      RP.pushHistory('Move ' + RP.elementDrag.type);
+      // Lengths are measured live in rebuildLines(); nothing to refresh.
       RP.elementDrag = null;
       RP.render();
       if (RP.updateInstructions) RP.updateInstructions();
@@ -580,10 +478,11 @@ RP.initEvents = function() {
   // ======================================================================
   // CONTEXT MENU (right-click)
   // ======================================================================
-  var ctxMenu     = document.getElementById('ctx-menu');
-  var ctxTitle    = document.getElementById('ctx-menu-title');
-  var ctxDelBtn   = document.getElementById('ctx-menu-delete');
-  var ctxTarget   = null; // { kind: 'node'|'segment'|'line', ... }
+  var ctxMenu       = document.getElementById('ctx-menu');
+  var ctxTitle      = document.getElementById('ctx-menu-title');
+  var ctxDelBtn     = document.getElementById('ctx-menu-delete');
+  var ctxClearCpBtn = document.getElementById('ctx-menu-clear-checkpoint');
+  var ctxTarget     = null; // { kind: 'node'|'segment'|'line', isCheckpoint?, ... }
 
   function hideCtxMenu() {
     if (ctxMenu) ctxMenu.style.display = 'none';
@@ -594,6 +493,7 @@ RP.initEvents = function() {
     if (!ctxMenu) return;
     ctxTitle.textContent = title;
     ctxTarget = target;
+    if (ctxClearCpBtn) ctxClearCpBtn.style.display = target.isCheckpoint ? '' : 'none';
     ctxMenu.style.left = (x + 4) + 'px';
     ctxMenu.style.top  = (y + 4) + 'px';
     ctxMenu.style.display = 'block';
@@ -603,6 +503,28 @@ RP.initEvents = function() {
     if (mr.bottom > window.innerHeight) ctxMenu.style.top  = (y - mr.height - 4) + 'px';
   }
 
+  if (ctxClearCpBtn) {
+    ctxClearCpBtn.addEventListener('click', function() {
+      if (!ctxTarget || ctxTarget.kind !== 'node') { hideCtxMenu(); return; }
+      for (var i = 0; i < RP.routes.length; i++) {
+        var r = RP.routes[i];
+        if (r.id !== ctxTarget.routeId) continue;
+        for (var j = 0; j < r.nodes.length; j++) {
+          if (r.nodes[j].id === ctxTarget.nodeId) {
+            RP.pushHistory('Clear checkpoint');
+            r.nodes[j].isCheckpoint = false;
+            r.nodes[j].checkpointName = null;
+            RP.render();
+            RP.updateInstructions();
+            break;
+          }
+        }
+        break;
+      }
+      hideCtxMenu();
+    });
+  }
+
   if (ctxDelBtn) {
     ctxDelBtn.addEventListener('click', function() {
       if (!ctxTarget) { hideCtxMenu(); return; }
@@ -610,8 +532,8 @@ RP.initEvents = function() {
         var r = null;
         for (var i = 0; i < RP.routes.length; i++) if (RP.routes[i].id === ctxTarget.routeId) { r = RP.routes[i]; break; }
         if (r) {
-          if (r.nodes.length <= 1) { RP.pushHistory('Delete route'); RP.deleteRoute(r.id); }
-          else { RP.pushHistory('Delete node'); RP.removeNode(r.id, ctxTarget.nodeId); }
+          RP.pushHistory('Delete node');
+          RP.removeNode(r.id, ctxTarget.nodeId);
         }
       } else if (ctxTarget.kind === 'segment') {
         RP.removeSegment(ctxTarget.routeId, ctxTarget.segId);
@@ -643,7 +565,7 @@ RP.initEvents = function() {
         var n = r.nodes[ni];
         if (RP.screenDist(p.x, p.y, n.x, n.y) < 12) {
           var nodeLabel = n.isCheckpoint ? ('Checkpoint: ' + (n.checkpointName || 'node')) : ('Node in ' + r.name);
-          showCtxMenu(e.clientX, e.clientY, nodeLabel, { kind: 'node', routeId: r.id, nodeId: n.id });
+          showCtxMenu(e.clientX, e.clientY, nodeLabel, { kind: 'node', routeId: r.id, nodeId: n.id, isCheckpoint: !!n.isCheckpoint });
           return;
         }
       }
@@ -821,24 +743,38 @@ RP.initEvents = function() {
 
   if (RP.dom.btnToolConstruction)
     RP.dom.btnToolConstruction.addEventListener('click', function() { RP.setTool('construction'); });
-  if (RP.dom.btnToolRoute)
-    RP.dom.btnToolRoute.addEventListener('click', function() { RP.setTool('route'); });
   if (RP.dom.btnToolSelect)
     RP.dom.btnToolSelect.addEventListener('click', function() { RP.setTool('select'); });
-  if (RP.dom.btnToolCheckpoint)
-    RP.dom.btnToolCheckpoint.addEventListener('click', function() { RP.setTool('checkpoint'); });
-  if (RP.dom.btnToolFreehand)
-    RP.dom.btnToolFreehand.addEventListener('click', function() { RP.setTool('freehand'); });
+  var btnToolConstrain = document.getElementById('btn-tool-constrain');
+  if (btnToolConstrain)
+    btnToolConstrain.addEventListener('click', function() { RP.setTool('constrain'); });
+  var btnSidebarConstrain = document.getElementById('btn-sidebar-constrain');
+  if (btnSidebarConstrain)
+    btnSidebarConstrain.addEventListener('click', function() { RP.setTool('constrain'); });
+  if (RP.wireConstraintPanel) RP.wireConstraintPanel();
+  if (RP.wireModeSwitch) RP.wireModeSwitch();
+
+  var btnField = document.getElementById('btn-field-boundary');
+  if (btnField) {
+    btnField.addEventListener('click', function() {
+      if (!RP.imgNaturalW || !RP.imgNaturalH) { alert('Load an image first.'); return; }
+      if (RP.hasFieldBoundary() &&
+          !confirm('Replace the existing field walls?')) return;
+      RP.pushHistory('Add field walls');
+      RP.createFieldBoundary();
+      RP.syncAllWallAligns();
+      if (RP.updateLayerList) RP.updateLayerList();
+      RP.refreshSketchUI();
+    });
+  }
   if (RP.dom.btnSidebarConstruction)
     RP.dom.btnSidebarConstruction.addEventListener('click', function() { RP.setTool('construction'); });
-  if (RP.dom.btnSidebarRoute)
-    RP.dom.btnSidebarRoute.addEventListener('click', function() { RP.setTool('route'); });
   if (RP.dom.btnSidebarSelect)
     RP.dom.btnSidebarSelect.addEventListener('click', function() { RP.setTool('select'); });
-  if (RP.dom.btnSidebarCheckpoint)
-    RP.dom.btnSidebarCheckpoint.addEventListener('click', function() { RP.setTool('checkpoint'); });
-  if (RP.dom.btnSidebarFreehand)
-    RP.dom.btnSidebarFreehand.addEventListener('click', function() { RP.setTool('freehand'); });
+  if (RP.dom.btnToolArc)
+    RP.dom.btnToolArc.addEventListener('click', function() { RP.setTool('arc'); });
+  if (RP.dom.btnSidebarArc)
+    RP.dom.btnSidebarArc.addEventListener('click', function() { RP.setTool('arc'); });
 
   function toggleSnap() {
     RP.snapEnabled = !RP.snapEnabled;
@@ -888,45 +824,7 @@ RP.initEvents = function() {
     });
   }
 
-  if (RP.dom.routeSelect) {
-    RP.dom.routeSelect.addEventListener('change', function() {
-      var val = RP.dom.routeSelect.value;
-      if (val === '__new__') {
-        var suggested = 'Route ' + (RP.routes.length + 1);
-        var name = prompt('Route name:', suggested);
-        if (name === null) { RP.updateRouteSelect(); return; }
-        RP.pushHistory('Create route');
-        RP.createRoute(name || suggested);
-      } else {
-        RP.pushHistory('Switch active route');
-        RP.activeRouteId = parseInt(val);
-        RP.updateRouteSelect();
-        RP.render();
-        RP.updateInfoPanel();
-      }
-    });
-  }
-
-  if (RP.dom.btnNewRoute) {
-    RP.dom.btnNewRoute.addEventListener('click', function() {
-      var suggested = 'Route ' + (RP.routes.length + 1);
-      var name = prompt('Route name:', suggested);
-      if (name === null) return;
-      RP.pushHistory('Create route');
-      RP.createRoute(name || suggested);
-    });
-  }
-
-  if (RP.dom.btnDelRoute) {
-    RP.dom.btnDelRoute.addEventListener('click', function() {
-      if (RP.activeRouteId === null) return;
-      var r = RP.getActiveRoute();
-      if (!r) return;
-      if (!confirm('Delete route "' + r.name + '"?')) return;
-      RP.pushHistory('Delete route');
-      RP.deleteRoute(RP.activeRouteId);
-    });
-  }
+  // (Route create/switch/delete handlers removed — there is one route.)
 
   if (RP.dom.btnSaveMap) RP.dom.btnSaveMap.addEventListener('click', RP.saveMapProject);
 
@@ -937,6 +835,10 @@ RP.initEvents = function() {
         alert('No saved maps yet. Use "Save Map" or "Import Project" first.');
         return;
       }
+      // The panel is hidden in Sketch mode; asking to load a map is an
+      // explicit request to see it.
+      RP._forceMapPanel = true;
+      if (RP.updateModeUI) RP.updateModeUI();
       RP.updateMapList();
       if (RP.dom.mapListEl) {
         RP.dom.mapListEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -999,7 +901,8 @@ RP.initEvents = function() {
   if (RP.dom.segmentModeWallAlign)
     RP.dom.segmentModeWallAlign.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_WALL_ALIGN); });
   if (RP.dom.segmentModeFollowPath)
-    RP.dom.segmentModeFollowPath.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_FOLLOW_PATH); });
+  if (RP.dom.segmentModeArc)
+    RP.dom.segmentModeArc.addEventListener('change', function() { if (this.checked) onModeChange(RP.SEG_MODE_ARC); });
 
   if (RP.dom.segmentTeleportName) {
     RP.dom.segmentTeleportName.addEventListener('change', function() {
@@ -1062,8 +965,7 @@ RP.initEvents = function() {
     RP.dom.btnClearAll.addEventListener('click', function() {
       if (!confirm('Clear all lines, routes, calibration, robot config, and code templates?')) return;
       RP.pushHistory('Clear all');
-      RP.lines = [];
-      RP.nextLineId = 1;
+      RP.resetSketch();
       RP.calibration = null;
       RP.routes = [];
       RP.activeRouteId = null;
@@ -1071,7 +973,7 @@ RP.initEvents = function() {
       RP.nextSegId = 1;
       RP.nextRouteId = 1;
       RP.selectedSegment = null;
-      RP.createRoute('Route 1');
+      RP.ensureSingleRoute();
       RP.robotConfig = RP.freshRobotConfig();
       RP.codeConfig = RP.freshCodeConfig();
       RP.updateRobotUI();
@@ -1101,7 +1003,7 @@ RP.initEvents = function() {
     el.addEventListener('input', RP.updateRobotConfigFromUI);
   });
 
-  ['code-comment', 'code-forward', 'code-turn', 'code-wall-align', 'code-lt-dist', 'code-lt-junct', 'code-follow-path', 'code-fp-samples', 'code-fp-flip', 'code-fp-smooth', 'code-speed', 'code-unit'].forEach(function(id) {
+  ['code-comment', 'code-forward', 'code-turn', 'code-turn-arc', 'code-wall-align', 'code-lt-dist', 'code-lt-junct', 'code-speed', 'code-unit'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateCodeConfigFromUI);
@@ -1123,6 +1025,22 @@ RP.initEvents = function() {
     if (e.key === 'Control') { RP.ctrlHeld = true; return; }
     if (isTypingTarget(e.target)) return;
 
+    // Constraint shortcuts, constrain tool only so they cannot collide with
+    // anything else. Modifier combos (Ctrl+V etc.) are left alone.
+    if (RP.activeTool === 'constrain' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      var CONSTRAINT_KEYS = {
+        c: 'coincident', o: 'point_on_line', h: 'horizontal',
+        v: 'vertical', d: 'distance', a: 'angle', l: 'fix'
+      };
+      var ckType = CONSTRAINT_KEYS[String(e.key).toLowerCase()];
+      if (ckType) {
+        e.preventDefault();
+        var ckRes = RP.promptConstraint(ckType);
+        if (ckRes && !ckRes.ok && !ckRes.cancelled && ckRes.message) alert(ckRes.message);
+        return;
+      }
+    }
+
     if (e.key === 'Escape') {
       var didCancel = false;
       if (RP.lineDrawing) { RP.lineDrawing = false; RP.lineDrawStart = null; didCancel = true; }
@@ -1134,6 +1052,11 @@ RP.initEvents = function() {
         didCancel = true;
       }
       if (RP.selectedSegment) { RP.selectedSegment = null; RP.updateInfoPanel(); didCancel = true; }
+      if (RP.sketchSelection && RP.sketchSelection.length) {
+        RP.clearSketchSelection();
+        RP.refreshSketchUI();
+        didCancel = true;
+      }
       if (didCancel) {
         RP.hoverSnapPoint = null;
         wrap.classList.remove('drawing-route');

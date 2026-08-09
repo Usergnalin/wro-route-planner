@@ -1,0 +1,13 @@
+# This repo is edited from both Windows (over the SMB share) and Linux
+# (on the server). Without this, core.autocrlf on the Windows side gives
+# that working tree CRLF while Linux gets LF, and every file then looks
+# modified after switching machines.
+#
+# Normalise to LF everywhere, in the repo and in every working tree.
+* text=auto eol=lf
+
+# Keep binaries untouched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
