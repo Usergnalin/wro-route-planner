@@ -55,12 +55,8 @@ RP.dom.btnCopyInstr = document.getElementById('btn-copy-instr');
 RP.dom.btnCopyCode = document.getElementById('btn-copy-code');
 RP.dom.btnSetStart = document.getElementById('btn-set-start');
 RP.dom.btnClearStart = document.getElementById('btn-clear-start');
-RP.dom.btnToolConstruction = document.getElementById('btn-tool-construction');
-RP.dom.btnToolSelect = document.getElementById('btn-tool-select');
-RP.dom.btnToolArc = document.getElementById('btn-tool-arc');
-RP.dom.btnSidebarArc = document.getElementById('btn-sidebar-arc');
-RP.dom.btnSidebarConstruction = document.getElementById('btn-sidebar-construction');
-RP.dom.btnSidebarSelect = document.getElementById('btn-sidebar-select');
+// Tool buttons are not cached: they are bound and highlighted through
+// their data-tool attribute, so nothing needs a handle on them by id.
 
 // ======================================================================
 // STATE

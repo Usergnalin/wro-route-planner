@@ -147,4 +147,21 @@ check('the dead segment / node panels are gone', () => {
   assert(!('selectedNode' in RP), 'RP.selectedNode should be deleted');
 });
 
+check('every tool button is bound, and names a real tool', () => {
+  // The Point button shipped highlighting correctly and doing nothing:
+  // each tool was hand-wired by id, so adding markup without adding a
+  // matching addEventListener produced a dead control. Binding is driven
+  // off data-tool now, which is the same attribute setTool reads.
+  const evs = fs.readFileSync(path.join(ROOT, 'js/events.js'), 'utf8');
+  assert(/querySelectorAll\(\s*['"]\[data-tool\]['"]\s*\)/.test(evs),
+    'tool buttons must be bound from data-tool, not one id at a time');
+
+  const ctx = loadApp(scripts);
+  const RP = ctx.RP;
+  const declared = [...new Set([...html.matchAll(/data-tool="([^"]+)"/g)].map(m => m[1]))];
+  assert(declared.length > 0, 'no data-tool buttons found');
+  const unknown = declared.filter(t => !RP.TOOL_LABELS[t] && !RP.LOCKED_TOOLS[t]);
+  assert(unknown.length === 0, 'buttons naming tools that do not exist: ' + unknown.join(', '));
+});
+
 if (!report()) process.exitCode = 1;

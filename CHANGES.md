@@ -1,5 +1,22 @@
 # Changes — 2026-08-09 (5)
 
+## Fix: the Point tool was dead on arrival
+
+The button appeared, highlighted correctly when clicked, and did nothing.
+Every tool was hand-wired by id — `btnToolConstruction.addEventListener`,
+`btnToolSelect.addEventListener`, eight of them — so adding markup without
+adding a matching line produced a control that *looked* bound because
+`setTool` highlights from `data-tool`, but had no click handler at all.
+
+Tool buttons are now bound from `data-tool`, the same attribute `setTool`
+already reads to decide which one lights up. Eight blocks become one loop,
+the six cached `RP.dom.btnTool*` handles are gone (nothing needed them),
+and the dead `btn-tool-arc` reference — an id that has not existed in the
+HTML for some time — went with them.
+
+A boot test now asserts the binding is attribute-driven and that every
+`data-tool` value names a tool that actually exists.
+
 ## Sketcher: standalone points and auto-tangency
 
 ### Standalone points

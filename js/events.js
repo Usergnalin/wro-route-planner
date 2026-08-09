@@ -560,16 +560,18 @@ RP.initEvents = function() {
   RP.dom.btnZoomOut.addEventListener('click', function() { RP.zoomAt(0.77); });
   RP.dom.btnFit.addEventListener('click', RP.resetView);
 
-  if (RP.dom.btnToolConstruction)
-    RP.dom.btnToolConstruction.addEventListener('click', function() { RP.setTool('construction'); });
-  if (RP.dom.btnToolSelect)
-    RP.dom.btnToolSelect.addEventListener('click', function() { RP.setTool('select'); });
-  var btnToolConstrain = document.getElementById('btn-tool-constrain');
-  if (btnToolConstrain)
-    btnToolConstrain.addEventListener('click', function() { RP.setTool('constrain'); });
-  var btnSidebarConstrain = document.getElementById('btn-sidebar-constrain');
-  if (btnSidebarConstrain)
-    btnSidebarConstrain.addEventListener('click', function() { RP.setTool('constrain'); });
+  // Every tool button carries data-tool, which setTool already reads to
+  // decide which one lights up — so bind from the same attribute rather
+  // than hand-wiring each id. The old per-button list meant adding a
+  // button and forgetting to wire it produced a control that highlighted
+  // correctly and did nothing, which is exactly what happened to Point.
+  var toolBtns = document.querySelectorAll('[data-tool]');
+  for (var tb = 0; tb < toolBtns.length; tb++) {
+    (function(btn) {
+      btn.addEventListener('click', function() { RP.setTool(btn.dataset.tool); });
+    })(toolBtns[tb]);
+  }
+
   if (RP.wireConstraintPanel) RP.wireConstraintPanel();
   if (RP.wireModeSwitch) RP.wireModeSwitch();
 
@@ -586,14 +588,6 @@ RP.initEvents = function() {
       RP.refreshSketchUI();
     });
   }
-  if (RP.dom.btnSidebarConstruction)
-    RP.dom.btnSidebarConstruction.addEventListener('click', function() { RP.setTool('construction'); });
-  if (RP.dom.btnSidebarSelect)
-    RP.dom.btnSidebarSelect.addEventListener('click', function() { RP.setTool('select'); });
-  if (RP.dom.btnToolArc)
-    RP.dom.btnToolArc.addEventListener('click', function() { RP.setTool('arc'); });
-  if (RP.dom.btnSidebarArc)
-    RP.dom.btnSidebarArc.addEventListener('click', function() { RP.setTool('arc'); });
 
   function toggleSnap() {
     RP.snapEnabled = !RP.snapEnabled;
