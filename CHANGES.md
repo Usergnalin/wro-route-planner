@@ -1,3 +1,93 @@
+# Changes — 2026-08-09 (2)
+
+## Phase 10.1 — routes become ordered ACTIONS
+
+The structural half of making turns first-class. A route was
+*one move per piece of geometry*, and turns were not objects at all:
+`computeSteps` derived each one from consecutive headings and billed it
+to whichever element came next, so `el.turnSpeed` literally meant "the
+speed of the turn BEFORE this line". That is why turns could not be
+selected, and why `extraTurnsBefore`, `endExtraTurns` and
+`startCheckpoint` existed — three workarounds for one missing concept.
+
+### The model
+
+`route.actions` is an ordered list. Each action references the sketch
+entity that suits it:
+
+- **move** → a line or arc. Distance, radius, sweep and headings are
+  derived from the sketch; the action carries what the robot does along
+  it.
+- **turn** → a **point**. The angle is derived from the headings either
+  side of that point; the action carries speed, style and an optional
+  typed-angle override.
+
+Nothing stores a coordinate — the sketch still owns every position.
+
+`syncTurnActions()` maintains the invariant: exactly one `auto` turn
+immediately before every move, created and destroyed with it. `fixed`
+turns are user-owned and sync never touches them. Re-matching is
+positional first, then by coincidence cluster, so **reordering or
+reversing a route carries each junction's speed and style with it**
+instead of leaving them behind on the wrong move. It is idempotent, so
+`rebuildRouteViews` re-establishes it on every refresh.
+
+The leading auto turn, in front of the first move, is not redundant: with
+a start position set it is the turn from the robot's start heading onto
+the first leg.
+
+### What this replaces
+
+| Was | Now |
+|---|---|
+| `el.turnSpeed` | `speed` on the auto turn at that junction |
+| `el.extraTurnsBefore[]` | ordinary fixed turns in the action list |
+| `route.endExtraTurns[]` | ordinary fixed turns at the end |
+| turn angle inferred mid-emit | `resolveTimeline()` computes entry/exit headings up front |
+
+### Turn styles
+
+`spin`, `pivot_left` and `pivot_right` are physically different
+manoeuvres, so each maps to its own code template. The pivot templates
+default to blank and fall back to `turnTemplate`, so adding them cannot
+change existing output.
+
+### Unknown headings are now explicit
+
+`resolveTimeline` reports `entryHeading`/`exitHeading` as `null` where the
+planner genuinely cannot know them — a teleport arrives pointing
+somewhere nothing can predict. An auto turn against a null heading
+resolves to nothing, rather than being silently skipped by a `continue`
+buried mid-loop.
+
+### Compatibility
+
+- `route.elements` is a rebuilt array of the **live** move actions, not
+  copies, so the resolver, `recomputeFlips` and the route-mode panel keep
+  working and keep writing to the real model. It is not persisted.
+- Save format is **v5**. v4 (`elements`) and older lift through
+  `liftElementsToActions`; the node/segment migration chain is unchanged.
+
+### Verification
+
+- 10 suites pass, including a new `tests/action.js` (16 checks).
+- **All seven golden fixtures byte-identical** — the whole point of doing
+  the model first.
+- Browser (Chromium via Playwright): build a route, set a junction speed
+  and style, insert a typed turn, undo/redo, remove a move and undo it,
+  inspect the save payload. Turn params survive undo; removing a move
+  takes its auto turn; the payload carries only `actions`. No console
+  errors.
+
+### Still to come (phase 10.2, UI)
+
+Clicking a junction point to select its turn, an action list with turn
+rows between move rows, per-type parameter panels, and the angle drawn at
+the point. That is also where extra turns become editable again (the gap
+phase 9 recorded) and where checkpoints become their own action type.
+
+---
+
 # Changes — 2026-08-09
 
 ## Phase 9 cleanup (finishing the sketch-layer refactor)

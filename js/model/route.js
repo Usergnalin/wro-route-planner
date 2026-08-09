@@ -69,6 +69,9 @@ RP.findElement = function(route, elementId) {
 };
 
 // The one function one-step route creation would compose with.
+//
+// "Element" is the move action, seen through the compat view below. The
+// two names will merge when the UI speaks actions directly.
 RP.addRouteElement = function(routeId, entityId, opts) {
   var route = RP.findRoute(routeId);
   if (!route) return null;
@@ -77,44 +80,35 @@ RP.addRouteElement = function(routeId, entityId, opts) {
   if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) return null;
   opts = opts || {};
 
-  var el = {
-    id: RP.nextElementId++,
-    entityId: entityId,
-    // An arc entity can only be driven as an arc; a line cannot be.
-    move: opts.move || (ent.type === 'arc' ? RP.MOVE_ARC : RP.MOVE_FORWARD),
-    flip: !!opts.flip,
-    reverse: !!opts.reverse,
-    speed: opts.speed != null ? opts.speed : null,
-    offset: opts.offset || 0,
-    junctions: opts.junctions != null ? opts.junctions : null,
-    teleportName: opts.teleportName || null,
-    sagitta: opts.sagitta != null ? opts.sagitta : null,  // until phase 8
-    turnSpeed: opts.turnSpeed != null ? opts.turnSpeed : null,
-    extraTurnsBefore: opts.extraTurnsBefore ? opts.extraTurnsBefore.slice() : [],
-    checkpoint: opts.checkpoint || null,
-    hidden: !!opts.hidden
-  };
-  if (!route.elements) route.elements = [];
-  if (opts.index != null && opts.index >= 0 && opts.index < route.elements.length) {
-    route.elements.splice(opts.index, 0, el);
-  } else {
-    route.elements.push(el);
+  var el = RP.makeMoveAction(entityId, ent.type, opts);
+  var acts = RP.routeActions(route);
+
+  // opts.index counts moves, not actions: land in front of the index-th
+  // move's turn group so the new move inherits that slot in the walk.
+  var at = acts.length;
+  if (opts.index != null && opts.index >= 0) {
+    var moves = RP.moveActions(route);
+    if (opts.index < moves.length) {
+      var group = RP.actionGroupFor(route, moves[opts.index].id);
+      if (group) at = group.start;
+    }
   }
+  acts.splice(at, 0, el);
   RP.rebuildRouteViews();
   return el;
 };
 
 RP.removeRouteElement = function(routeId, elementId) {
   var route = RP.findRoute(routeId);
-  if (!route || !route.elements) return false;
-  for (var i = 0; i < route.elements.length; i++) {
-    if (route.elements[i].id === elementId) {
-      route.elements.splice(i, 1);
-      RP.rebuildRouteViews();
-      return true;
-    }
-  }
-  return false;
+  if (!route) return false;
+  var acts = RP.routeActions(route);
+  var at = RP.actionIndex(route, elementId);
+  if (at < 0 || !RP.isMoveAction(acts[at])) return false;
+  acts.splice(at, 1);
+  // The move's auto turn goes with it (sync drops orphans). Fixed turns
+  // that were queued in front of it survive and attach to the next move.
+  RP.rebuildRouteViews();
+  return true;
 };
 
 RP.setRouteElementProps = function(routeId, elementId, props) {
@@ -129,16 +123,26 @@ RP.setRouteElementProps = function(routeId, elementId, props) {
 
 RP.moveRouteElement = function(routeId, elementId, newIndex) {
   var route = RP.findRoute(routeId);
-  if (!route || !route.elements) return false;
-  for (var i = 0; i < route.elements.length; i++) {
-    if (route.elements[i].id !== elementId) continue;
-    var el = route.elements.splice(i, 1)[0];
-    newIndex = Math.max(0, Math.min(newIndex, route.elements.length));
-    route.elements.splice(newIndex, 0, el);
-    RP.rebuildRouteViews();
-    return true;
-  }
-  return false;
+  if (!route) return false;
+  var moves = RP.moveActions(route);
+  var from = -1;
+  for (var i = 0; i < moves.length; i++) if (moves[i].id === elementId) { from = i; break; }
+  if (from < 0) return false;
+  newIndex = Math.max(0, Math.min(newIndex, moves.length - 1));
+  if (newIndex === from) return true;
+
+  // Move the whole turn group, or the junction's speed and style are left
+  // behind attached to whatever move slides into the vacated slot.
+  var group = RP.actionGroupFor(route, elementId);
+  if (!group) return false;
+  var acts = RP.routeActions(route);
+  acts.splice(group.start, group.items.length);
+
+  var target = RP.actionGroupFor(route, moves[newIndex].id);
+  var at = target ? (newIndex > from ? target.end + 1 : target.start) : acts.length;
+  Array.prototype.splice.apply(acts, [at, 0].concat(group.items));
+  RP.rebuildRouteViews();
+  return true;
 };
 
 // Travel-order endpoints: entry first, exit second. Lines and arcs both
@@ -168,9 +172,12 @@ RP.movesForEntity = function(entityType) {
 // rather than having their direction silently guessed.
 RP.recomputeFlips = function(route) {
   var sk = RP.ensureSketch();
-  if (!route || !route.elements || route.elements.length === 0) return;
+  if (!route) return;
+  // Read the moves off the action list rather than route.elements: callers
+  // reorder actions and then repair flips, so the view is stale here.
+  var els = RP.moveActions(route);
+  if (els.length === 0) return;
   var find = RP.Sketch.coincidenceClusters(sk);
-  var els = route.elements;
 
   var firstEnt = sk.entities[els[0].entityId];
   if (!firstEnt) return;
@@ -206,9 +213,19 @@ RP.recomputeFlips = function(route) {
 // mechanism reasons and has nothing to do with path direction.
 RP.reverseRouteDirection = function(route) {
   if (!route || !route.elements || route.elements.length === 0) return false;
-  route.elements.reverse();
-  for (var i = 0; i < route.elements.length; i++) {
-    route.elements[i].flip = !route.elements[i].flip;
+  // Reversing the whole action list is what makes turns come out right: a
+  // fixed turn queued BEFORE a move going one way is a turn AFTER that
+  // same move coming back, and it swings the opposite way, hence the
+  // negated angle. Auto turns are dropped and re-derived by sync, which
+  // matches them back to their junctions by coincidence cluster.
+  var acts = RP.routeActions(route);
+  acts.reverse();
+  for (var i = 0; i < acts.length; i++) {
+    var a = acts[i];
+    if (RP.isMoveAction(a)) a.flip = !a.flip;
+    else if (RP.isTurnAction(a) && a.angleMode === RP.TURN_FIXED && a.angle != null) {
+      a.angle = -a.angle;
+    }
   }
   RP.recomputeFlips(route);
   RP.rebuildRouteViews();
@@ -216,10 +233,15 @@ RP.reverseRouteDirection = function(route) {
 };
 
 // ---- derived views ---------------------------------------------------
-// route.nodes / route.segments are rebuilt READ-ONLY views so render.js,
-// the layer list and the info panels keep working while the UI is
-// rehomed in phase 6. Mutating them does nothing; go through the element
-// calls above.
+// route.nodes / route.segments are rebuilt READ-ONLY views so render.js
+// and the info panels keep working. Mutating them does nothing; go
+// through the action calls.
+//
+// route.elements is different: it is a rebuilt ARRAY of the LIVE move
+// actions, not copies. Everything that already spoke "elements" — the
+// resolver, recomputeFlips, the route-mode panel — keeps working and
+// keeps writing to the real model. It exists only until the UI speaks
+// actions directly, and is not persisted.
 //
 // Built leniently — a disconnected route still produces drawable
 // geometry. Strict continuity is the resolver's job.
@@ -232,7 +254,11 @@ RP.rebuildRouteViews = function() {
 
   for (var r = 0; r < RP.routes.length; r++) {
     var route = RP.routes[r];
-    if (!route.elements) route.elements = [];
+    // The auto-turn layer is an invariant of the action list, so it is
+    // re-established here rather than at every call site that can
+    // disturb it. syncTurnActions is idempotent.
+    if (RP.syncTurnActions) RP.syncTurnActions(route);
+    route.elements = RP.moveActions(route);
     var nodes = [];
     var segments = [];
     var byCluster = {};
@@ -260,6 +286,18 @@ RP.rebuildRouteViews = function() {
       return n;
     }
 
+    // Turn parameters live on turn actions now, but render.js still draws
+    // them off the node view, so fold each move's preceding turn run back
+    // onto its entry node.
+    var turnsBefore = {}, trailingTurns = [];
+    var run = [];
+    var acts = RP.routeActions(route);
+    for (var t = 0; t < acts.length; t++) {
+      if (RP.isTurnAction(acts[t])) { run.push(acts[t]); continue; }
+      if (RP.isMoveAction(acts[t])) { turnsBefore[acts[t].id] = run; run = []; }
+    }
+    trailingTurns = run;
+
     for (var i = 0; i < route.elements.length; i++) {
       var el = route.elements[i];
       var ends = RP.elementEndpoints(sk, el);
@@ -268,8 +306,13 @@ RP.rebuildRouteViews = function() {
       var na = nodeFor(ends.entry, startCp);
       var nb = nodeFor(ends.exit, el.checkpoint);
       if (!na || !nb) continue;
-      na.turnSpeed = el.turnSpeed;
-      na.extraTurns = el.extraTurnsBefore || [];
+      var pre = turnsBefore[el.id] || [];
+      na.turnSpeed = null;
+      na.extraTurns = [];
+      for (var p = 0; p < pre.length; p++) {
+        if (pre[p].angleMode === RP.TURN_AUTO) na.turnSpeed = pre[p].speed;
+        else na.extraTurns.push({ deg: pre[p].angle || 0, speed: pre[p].speed });
+      }
       var segEnt = sk.entities[el.entityId];
       segments.push({
         id: el.id,
@@ -287,8 +330,14 @@ RP.rebuildRouteViews = function() {
       });
     }
 
-    if (nodes.length && route.endExtraTurns && route.endExtraTurns.length) {
-      nodes[nodes.length - 1].extraTurns = route.endExtraTurns;
+    if (nodes.length && trailingTurns.length) {
+      var tail = [];
+      for (var q = 0; q < trailingTurns.length; q++) {
+        if (trailingTurns[q].angleMode === RP.TURN_FIXED) {
+          tail.push({ deg: trailingTurns[q].angle || 0, speed: trailingTurns[q].speed });
+        }
+      }
+      nodes[nodes.length - 1].extraTurns = tail;
     }
     route.nodes = nodes;
     route.segments = segments;
@@ -369,12 +418,14 @@ RP.syncAllWallAligns = function() {
 };
 
 // ---- serialization ---------------------------------------------------
-// nodes/segments are derived views and are never persisted.
+// nodes/segments/elements are derived views and are never persisted —
+// actions are the source of truth.
 RP.serializeRoutes = function() {
   var out = JSON.parse(JSON.stringify(RP.routes || []));
   for (var i = 0; i < out.length; i++) {
     delete out[i].nodes;
     delete out[i].segments;
+    delete out[i].elements;
   }
   return out;
 };
@@ -392,24 +443,63 @@ function segBetweenIn(segs, id1, id2) {
   return null;
 }
 
+// v4 (elements) -> v5 (actions). `el.turnSpeed` meant "speed of the turn
+// BEFORE this element" and `el.extraTurnsBefore` were turns queued in
+// front of it, so both become turn actions sitting where they always
+// conceptually were. Emission order is unchanged: extras first, then the
+// geometric turn, then the move.
+RP.liftElementsToActions = function(route) {
+  var acts = [];
+  var els = route.elements || [];
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    var extras = el.extraTurnsBefore || [];
+    for (var x = 0; x < extras.length; x++) {
+      acts.push(RP.makeTurnAction(null, {
+        angleMode: RP.TURN_FIXED,
+        angle: RP.extraTurnDeg(extras[x]),
+        speed: RP.extraTurnSpeed(extras[x])
+      }));
+    }
+    acts.push(RP.makeTurnAction(null, { speed: el.turnSpeed }));
+    el.type = RP.ACTION_MOVE;
+    delete el.turnSpeed;
+    delete el.extraTurnsBefore;
+    delete el.sagitta;          // arcs became real entities in phase 8
+    acts.push(el);
+  }
+  var tail = route.endExtraTurns || [];
+  for (var t = 0; t < tail.length; t++) {
+    acts.push(RP.makeTurnAction(null, {
+      angleMode: RP.TURN_FIXED,
+      angle: RP.extraTurnDeg(tail[t]),
+      speed: RP.extraTurnSpeed(tail[t])
+    }));
+  }
+  delete route.endExtraTurns;
+  route.actions = acts;
+};
+
 RP.migrateRoutesToElements = function() {
   var sk = RP.ensureSketch();
   var migrated = 0;
 
-  // Adding elements rebuilds route.nodes/segments, which are the very
+  // Adding actions rebuilds route.nodes/segments, which are the very
   // structures being read here — snapshot them and defer rebuilds.
   RP._suspendRouteViews = true;
 
   for (var r = 0; r < RP.routes.length; r++) {
     var route = RP.routes[r];
-    if (route.elements) continue;             // already new-model
-    if (!route.nodes || !route.segments) { route.elements = []; continue; }
+    if (route.actions) continue;              // already new-model
+    // v4 saves stored elements, where turn data rode along on the move
+    // that followed the turn. Lift it onto real turn actions.
+    if (route.elements) { RP.liftElementsToActions(route); migrated++; continue; }
+    if (!route.nodes || !route.segments) { route.actions = []; continue; }
 
     var path = RP.computeLongestPath(route);
     var oldSegments = route.segments.slice();
-    route.elements = [];
+    route.actions = [];
     route.startCheckpoint = null;
-    route.endExtraTurns = [];
 
     if (!path || path.length < 2) {
       delete route.nodes; delete route.segments;
@@ -465,6 +555,19 @@ RP.migrateRoutesToElements = function() {
       }
       prevExitPoint = exitPoint;
 
+      // Node-level turn data becomes turn ACTIONS in front of the move.
+      // Extra turns first, then the geometric turn, which is the order
+      // the old codegen emitted them in.
+      var aExtras = a.extraTurns || [];
+      for (var xi = 0; xi < aExtras.length; xi++) {
+        route.actions.push(RP.makeTurnAction(entryPoint, {
+          angleMode: RP.TURN_FIXED,
+          angle: RP.extraTurnDeg(aExtras[xi]),
+          speed: RP.extraTurnSpeed(aExtras[xi])
+        }));
+      }
+      route.actions.push(RP.makeTurnAction(entryPoint, { speed: a.turnSpeed }));
+
       var mode = oldMode;
       RP.addRouteElement(route.id, line.id, {
         move: RP.MODE_TO_MOVE[mode] || 'forward',
@@ -475,15 +578,21 @@ RP.migrateRoutesToElements = function() {
         speed: seg.speed, offset: seg.offset,
         junctions: seg.junctionCount,
         teleportName: seg.teleportName,
-        turnSpeed: a.turnSpeed,
-        extraTurnsBefore: a.extraTurns || [],
         checkpoint: (b.isCheckpoint && b.checkpointName) ? b.checkpointName : null,
         hidden: seg.hidden
       });
     }
 
+    // Turns hanging off the final node become trailing fixed turns.
     var last = path[path.length - 1];
-    route.endExtraTurns = (last && last.extraTurns) ? last.extraTurns.slice() : [];
+    var lastExtras = (last && last.extraTurns) ? last.extraTurns : [];
+    for (var li = 0; li < lastExtras.length; li++) {
+      route.actions.push(RP.makeTurnAction(prevExitPoint, {
+        angleMode: RP.TURN_FIXED,
+        angle: RP.extraTurnDeg(lastExtras[li]),
+        speed: RP.extraTurnSpeed(lastExtras[li])
+      }));
+    }
     migrated++;
   }
 

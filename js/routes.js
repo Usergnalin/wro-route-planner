@@ -179,10 +179,11 @@ RP.ensureSingleRoute = function() {
   if (RP.routes.length === 0) {
     RP.routes.push({
       id: RP.nextRouteId++, name: 'Route', visible: true,
-      elements: [], startCheckpoint: null, endExtraTurns: []
+      actions: [], startCheckpoint: null
     });
   }
   var r = RP.routes[0];
+  if (!r.actions) r.actions = [];
   if (!r.elements) r.elements = [];
   RP.activeRouteId = r.id;
   return r;

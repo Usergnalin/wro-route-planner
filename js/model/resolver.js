@@ -78,3 +78,85 @@ RP.resolveRoute = function(route) {
 
   return { ok: true, elements: out };
 };
+
+// ---- action timeline -------------------------------------------------
+// Codegen used to infer turns from consecutive headings while it emitted
+// moves, which is why turn parameters had nowhere to live. Turns are real
+// actions now, so headings have to be known BEFORE the walk: an auto turn
+// needs the entry heading of the move that follows it.
+//
+// entryHeading === null means "no turn can be derived here" — a teleport
+// arrives with the chassis pointing somewhere the planner cannot know.
+// exitHeading === null means the same for whatever comes next.
+//
+// → { ok:true, items:[ {kind:'move'|'turn', ...} ] }  |  the resolveRoute error
+RP.resolveTimeline = function(route) {
+  var resolved = RP.resolveRoute(route);
+  if (!resolved.ok) return resolved;
+
+  var sk = RP.sketch;
+  var byId = {};
+  for (var i = 0; i < resolved.elements.length; i++) {
+    byId[resolved.elements[i].element.id] = resolved.elements[i];
+  }
+
+  function headings(rel) {
+    var el = rel.element;
+    var backward = !!el.reverse;
+    var move = el.move || RP.MOVE_FORWARD;
+
+    if (move === RP.MOVE_TELEPORT) return { entry: null, exit: null, arc: null };
+
+    if (rel.entity.type === 'arc') {
+      var g = RP.Sketch.arcGeometry(sk, rel.entity);
+      if (g) {
+        // Sweep is stored against p1->p2, so traversing the other way
+        // negates it. Tangent = radius rotated ±90° by the sweep sign.
+        var sweep = el.flip ? -g.sweep : g.sweep;
+        var ss = sweep >= 0 ? 1 : -1;
+        var velStart = RP.toDeg(Math.atan2(ss * (rel.a.x - g.cx), ss * (-(rel.a.y - g.cy))));
+        var velEnd   = RP.toDeg(Math.atan2(ss * (rel.b.x - g.cx), ss * (-(rel.b.y - g.cy))));
+        var nose = !backward;
+        return {
+          entry: nose ? velStart : (velStart + 180) % 360,
+          exit:  nose ? velEnd   : (velEnd + 180) % 360,
+          arc: { sweepDeg: sweep * 180 / Math.PI, radiusPx: g.radius, noseFirst: nose }
+        };
+      }
+    }
+
+    var h = backward ? RP.toDeg(RP.angleRad(rel.b.x, rel.b.y, rel.a.x, rel.a.y))
+                     : RP.toDeg(RP.angleRad(rel.a.x, rel.a.y, rel.b.x, rel.b.y));
+    // wall_align ends square to the wall it found, whatever it started as.
+    var exit = (move === RP.MOVE_WALL_ALIGN) ? (Math.round(h / 90) * 90 % 360) : h;
+    return { entry: h, exit: exit, arc: null };
+  }
+
+  var items = [];
+  var acts = RP.routeActions(route);
+  for (var j = 0; j < acts.length; j++) {
+    var act = acts[j];
+    if (RP.isMoveAction(act)) {
+      var rel = byId[act.id];
+      if (!rel) continue;
+      var hd = headings(rel);
+      items.push({
+        kind: 'move', action: act, entity: rel.entity,
+        a: rel.a, b: rel.b,
+        entryHeading: hd.entry, exitHeading: hd.exit, arc: hd.arc
+      });
+    } else if (RP.isTurnAction(act)) {
+      items.push({ kind: 'turn', action: act });
+    }
+  }
+
+  // Each auto turn resolves against the next move in the walk.
+  for (var k = 0; k < items.length; k++) {
+    if (items[k].kind !== 'turn') continue;
+    for (var n = k + 1; n < items.length; n++) {
+      if (items[n].kind === 'move') { items[k].nextMove = items[n]; break; }
+    }
+  }
+
+  return { ok: true, items: items, elements: resolved.elements };
+};

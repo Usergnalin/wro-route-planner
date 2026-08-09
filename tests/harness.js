@@ -46,6 +46,7 @@ const CODEGEN_FILES = [
   'js/routes.js',
   'js/model/construction.js',
   'js/model/route.js',
+  'js/model/action.js',
   'js/model/resolver.js',
   'js/output.js',
   'js/config.js'

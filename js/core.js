@@ -151,6 +151,10 @@ RP.DEFAULT_CODE_CONFIG_VALUES = {
   commentPrefix: '#',
   forwardTemplate: 'robot.move_distance(distance={distance}, speed={speed})',
   turnTemplate: 'robot.turn_arc(angle={angle}, speed={speed})',
+  // Blank = fall back to turnTemplate. Fill these in only if the robot
+  // has a real one-wheel pivot that differs from a centre spin.
+  turnPivotLeftTemplate: '',
+  turnPivotRightTemplate: '',
   turnArcTemplate: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})',
   wallAlignTemplate: 'robot.wall_align(reversed={reversed}, speed={speed})',
   lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',

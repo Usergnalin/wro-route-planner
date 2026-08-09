@@ -1,11 +1,15 @@
 # Sketch Layer Refactor — Design & Implementation Plan
 
-Status: **phases 0–9 complete**, on branch `refactor/sketch-layer`
+Status: **phases 0–9 complete, 10 in progress (10.1 done)**, on branch
+`refactor/sketch-layer`
 The Sketch/Route split is live, every coordinate is solver-owned, and
 arcs are real constrainable entities. `follow_path`, the old route tools,
 the segment/node side panels and `RP.selectedSegment` are all gone.
 Phases 4+ **re-planned** after phase 3 — routes are now reference-only
 over sketch geometry, with a hard sketch/route mode split (§4, §7).
+**Phase 10** (§10) makes a route an ordered list of ACTIONS rather than
+one-move-per-line, so turns become selectable, parameterised objects
+anchored to the junction point they happen at.
 Goal: replace ad-hoc construction/route geometry with a real 2D parametric
 constraint solver, and split the app into clean layers.
 
@@ -508,3 +512,75 @@ All-custom solver means no GPL entanglement (the concern with
 SolveSpace's `libslvs`) and no dependency on jsketcher's entity model.
 The maths is public — Gauss-Newton/LM on a constraint Jacobian is
 textbook (Kramer, *Solving Geometric Constraint Systems*, MIT Press 1992).
+
+---
+
+## 10. Actions (phase 10)
+
+Phases 4–9 left a route as *one move per piece of geometry*. Turns did
+not exist as objects: `computeSteps` derived each one from consecutive
+headings and billed it to whichever element came next, so `el.turnSpeed`
+meant "the speed of the turn BEFORE this line". That is why turns could
+not be selected and why turn parameters were awkward to reach —
+`extraTurnsBefore`, `endExtraTurns` and `startCheckpoint` were all
+workarounds for the same missing concept.
+
+### 10.1 Model ✅
+
+A route is `route.actions`, an ordered list where each action references
+the sketch entity that suits it:
+
+| Action | References | Derived from the sketch | Stored on the action |
+|--------|-----------|-------------------------|----------------------|
+| `move` | line or arc | distance, radius, sweep, entry/exit headings | move mode, flip, reverse, speed, offset, junctions, teleport name, checkpoint |
+| `turn` | **point**   | the angle, from the headings either side | angleMode, angle override, speed, style |
+
+The §1 invariant is untouched: an action stores a reference and the
+parameters that cannot be derived, never a coordinate.
+
+**The auto-turn invariant.** `syncTurnActions(route)` keeps exactly one
+`auto` turn immediately before every move. It is created and destroyed
+with its move; `fixed` turns are user-owned and sync never touches them.
+Re-matching on resync is positional first, then by coincidence cluster,
+which is what makes a reorder or a reversal carry each junction's speed
+and style along with it. It is idempotent, so `rebuildRouteViews` can
+re-establish it on every refresh rather than every mutating call site
+having to remember.
+
+The leading auto turn, in front of the *first* move, looks redundant and
+is not: with a start position set it is the turn from the robot's start
+heading onto the first leg. With none it resolves to nothing.
+
+**Turn styles.** `spin`, `pivot_left`, `pivot_right` are physically
+different manoeuvres, so each maps to its own code template. The pivot
+templates default to blank and fall back to `turnTemplate`, so adding
+styles cannot change existing output.
+
+**Unknown headings are explicit.** `resolveTimeline` reports
+`entryHeading`/`exitHeading` as `null` where the planner genuinely cannot
+know them — a teleport arrives pointing somewhere nothing can predict.
+Auto turns against a null heading resolve to nothing instead of being
+silently skipped mid-loop, which is what the old code did.
+
+**Compat.** `route.elements` is a rebuilt array of the LIVE move actions,
+not copies, so the resolver, `recomputeFlips` and the route-mode panel
+keep working and keep writing to the real model. It is not persisted.
+Save format is v5; v4 (`elements`) and older lift through
+`liftElementsToActions`, and all seven golden fixtures still produce
+byte-identical code.
+
+### 10.2 UI (not started)
+
+Extend `routeHitTest` to return junction points so clicking one selects
+its turn; turn the element list into an action list with turn rows
+between move rows; per-type parameter panels; render the angle at the
+point. Clicking a line still appends a move, unchanged.
+
+This is also where `turnSpeed`/extra turns become editable again — the
+gap phase 9 recorded — and where the standalone `checkpoint` action type
+belongs, retiring `el.checkpoint` and `route.startCheckpoint`.
+
+### 10.3 Cleanup (not started)
+
+Delete the `route.elements` compat view and rename the element-era calls
+(`addRouteElement`, `setRouteElementProps`, …) to their action names.

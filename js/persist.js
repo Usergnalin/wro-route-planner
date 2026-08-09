@@ -10,7 +10,7 @@ var RP = window.RP || {};
 // Internal helper: build the save payload for the current state.
 RP._buildSavePayload = function(name) {
   return {
-    version: '4.0',
+    version: '5.0',
     name: name,
     imageData: RP.imgDataUrl,
     calibration: RP.calibration ? JSON.parse(JSON.stringify(RP.calibration)) : null,
@@ -155,7 +155,7 @@ RP.exportProject = function() {
   if (!name) { alert('Name cannot be empty.'); return; }
   RP.updateCodeConfigFromUI();
   var data = {
-    version: '4.0',
+    version: '5.0',
     name: name,
     imageData: RP.imgDataUrl,
     calibration: RP.calibration ? JSON.parse(JSON.stringify(RP.calibration)) : null,

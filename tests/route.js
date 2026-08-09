@@ -257,12 +257,14 @@ check('migration drops nodes off the longest path, as codegen already did', () =
 });
 
 // ---- serialization ---------------------------------------------------
-check('serializeRoutes omits the derived views', () => {
+check('serializeRoutes persists actions and omits the derived views', () => {
   const RP = fresh();
   twoElementRoute(RP);
   const out = RP.serializeRoutes();
-  assert(out[0].elements.length === 2, 'elements are persisted');
-  assert(out[0].nodes === undefined && out[0].segments === undefined,
+  const moves = out[0].actions.filter(a => a.type === 'move');
+  assert(moves.length === 2, 'two moves are persisted, got ' + moves.length);
+  assert(out[0].nodes === undefined && out[0].segments === undefined &&
+         out[0].elements === undefined,
     'derived views must not be persisted');
 });
 

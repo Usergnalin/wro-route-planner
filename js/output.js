@@ -12,6 +12,22 @@ RP.unitFactor = function(unit) {
   return RP.UNIT_FACTORS_MM[k] || 1;
 };
 
+// Per-style turn templates. `spin` is the plain turnTemplate every project
+// already has; the pivots are opt-in and fall back to it when left blank,
+// so adding styles cannot change existing output.
+RP.TURN_STYLE_TEMPLATE_KEYS = {
+  spin: 'turnTemplate',
+  pivot_left: 'turnPivotLeftTemplate',
+  pivot_right: 'turnPivotRightTemplate'
+};
+
+RP.turnTemplateFor = function(style) {
+  var key = RP.TURN_STYLE_TEMPLATE_KEYS[style || RP.DEFAULT_TURN_STYLE];
+  if (!key || !RP.codeConfig) return null;
+  var tmpl = RP.codeConfig[key];
+  return (tmpl && String(tmpl).trim()) ? tmpl : null;
+};
+
 // Compute ordered list of steps for the longest path through a route graph.
 //
 // Steps:
@@ -25,40 +41,42 @@ RP.unitFactor = function(unit) {
 RP.computeSteps = function(route) {
   if (!route || !RP.calibration) return [];
 
-  // Routes are ordered references now; the resolver validates continuity
-  // and hands back travel-order coordinates.
-  var resolved = RP.resolveRoute(route);
-  if (!resolved.ok) return [];
-  var rels = resolved.elements;
-  if (rels.length === 0) return [];
+  // Every turn is an action now, so this is a walk, not an inference: the
+  // resolver has already worked out each move's entry and exit heading.
+  var tl = RP.resolveTimeline(route);
+  if (!tl.ok || tl.items.length === 0) return [];
 
   var ppm = RP.calibration.pixelsPerMm;
   var steps = [];
-  var sk = RP.sketch;
+  var items = tl.items;
 
-  function chassisHeading(a, b, backward) {
-    if (backward) return RP.toDeg(RP.angleRad(b.x, b.y, a.x, a.y));
-    return RP.toDeg(RP.angleRad(a.x, a.y, b.x, b.y));
+  var firstMove = null, firstTurn = null;
+  for (var f = 0; f < items.length; f++) {
+    if (!firstTurn && items[f].kind === 'turn') firstTurn = items[f].action;
+    if (items[f].kind === 'move') { firstMove = items[f]; break; }
   }
+  if (!firstMove) return [];
 
   var prevHeading = null;
 
-  // Virtual leg from startPos
+  // Virtual leg from startPos. Its turn belongs to the leading auto turn —
+  // the same action that then swings the robot onto the first leg.
   if (RP.robotConfig.startPos) {
     var sp = RP.robotConfig.startPos;
-    var firstEl = rels[0].element;
-    var firstBackward = !!firstEl.reverse;
-    var firstMove = firstEl.move || RP.MOVE_FORWARD;
-    var pxFromStart = RP.dist(sp.x, sp.y, rels[0].a.x, rels[0].a.y);
-    var mmFromStart = pxFromStart / ppm;
-    if (mmFromStart > 0.5 && firstMove === RP.MOVE_FORWARD) {
-      var headingStartLeg = chassisHeading(sp, rels[0].a, firstBackward);
-      var turnInit = RP.turnAngle(RP.robotConfig.startHeading, headingStartLeg);
+    var el0 = firstMove.action;
+    var backward0 = !!el0.reverse;
+    var mmFromStart = RP.dist(sp.x, sp.y, firstMove.a.x, firstMove.a.y) / ppm;
+    if (mmFromStart > 0.5 && (el0.move || RP.MOVE_FORWARD) === RP.MOVE_FORWARD) {
+      var legHeading = backward0
+        ? RP.toDeg(RP.angleRad(firstMove.a.x, firstMove.a.y, sp.x, sp.y))
+        : RP.toDeg(RP.angleRad(sp.x, sp.y, firstMove.a.x, firstMove.a.y));
+      var turnInit = RP.turnAngle(RP.robotConfig.startHeading, legHeading);
       if (Math.abs(turnInit) > 0.5) {
-        steps.push({ kind: 'turn', deg: turnInit, speed: firstEl.turnSpeed });
+        steps.push({ kind: 'turn', deg: turnInit, speed: firstTurn ? firstTurn.speed : null,
+                     style: firstTurn ? firstTurn.style : RP.DEFAULT_TURN_STYLE });
       }
-      steps.push({ kind: 'forward', mm: mmFromStart, reverse: firstBackward, speed: firstEl.speed });
-      prevHeading = headingStartLeg;
+      steps.push({ kind: 'forward', mm: mmFromStart, reverse: backward0, speed: el0.speed });
+      prevHeading = legHeading;
     } else {
       prevHeading = RP.robotConfig.startHeading;
     }
@@ -68,107 +86,73 @@ RP.computeSteps = function(route) {
     steps.push({ kind: 'checkpoint', name: route.startCheckpoint });
   }
 
-  for (var i = 0; i < rels.length; i++) {
-    var rel = rels[i];
-    var el = rel.element;
-    var a = rel.a, b = rel.b;
-    var mode = el.move || RP.MOVE_FORWARD;
-    // Travel order is already resolved into a/b, so the old
-    // direction-XOR-traversal dance is gone: reverse is purely chassis.
-    var effectiveBackward = !!el.reverse;
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
 
-    var aExtras = el.extraTurnsBefore || [];
-    for (var eti = 0; eti < aExtras.length; eti++) {
-      var etDeg = RP.extraTurnDeg(aExtras[eti]);
-      if (isFinite(etDeg) && Math.abs(etDeg) > 0.01) {
-        steps.push({ kind: 'turn', deg: etDeg, extra: true, speed: RP.extraTurnSpeed(aExtras[eti]) });
-        if (prevHeading !== null) prevHeading = ((prevHeading + etDeg) % 360 + 360) % 360;
-      }
-    }
-
-    if (mode === RP.MOVE_TELEPORT) {
-      var hdgTele = RP.toDeg(RP.angleRad(a.x, a.y, b.x, b.y));
-      steps.push({
-        kind: 'teleport',
-        fromX: a.x, fromY: a.y,
-        toX: b.x, toY: b.y,
-        heading: hdgTele,
-        name: el.teleportName || ('teleport_' + el.id)
-      });
-      prevHeading = null;
-      if (el.checkpoint) steps.push({ kind: 'checkpoint', name: el.checkpoint });
-      continue;
-    }
-
-    if (rel.entity.type === 'arc') {
-      // Arc geometry comes from the entity itself now — centre, radius and
-      // sweep are all solver-owned. The sweep is stored against p1->p2, so
-      // traversing the other way negates it.
-      var storedForward = !el.flip;
-      var ageo = RP.Sketch.arcGeometry(sk, rel.entity);
-      if (ageo) {
-        ageo = { cx: ageo.cx, cy: ageo.cy, radiusPx: ageo.radius, sweepRad: ageo.sweep };
-        var sweepT = storedForward ? ageo.sweepRad : -ageo.sweepRad; // travel-order sweep (canvas math)
-        var ps = a;   // travel start point
-        var pe = b;   // travel end point
-        var ss = sweepT >= 0 ? 1 : -1;
-        // Velocity-direction tangents at each end (tangent = radius rotated ±90°)
-        var velStart = RP.toDeg(Math.atan2(ss * (ps.x - ageo.cx), ss * (-(ps.y - ageo.cy))));
-        var velEnd   = RP.toDeg(Math.atan2(ss * (pe.x - ageo.cx), ss * (-(pe.y - ageo.cy))));
-        var dCw = sweepT * 180 / Math.PI;        // chassis turn, clockwise-positive
-        var Rmm = ageo.radiusPx / ppm;
-        var noseFirst = !effectiveBackward;
-        var startNose = noseFirst ? velStart : (velStart + 180) % 360;
-        var endNose   = noseFirst ? velEnd   : (velEnd + 180) % 360;
-        var angleCode  = noseFirst ? Math.abs(dCw)  : -Math.abs(dCw);
-        var radiusCode = (noseFirst ? 1 : -1) * (dCw >= 0 ? 1 : -1) * Rmm;
-        var arcLenMm = Rmm * Math.abs(dCw) * Math.PI / 180;
-        if (prevHeading !== null) {
-          var aTurn = RP.turnAngle(prevHeading, startNose);
-          if (Math.abs(aTurn) > 0.5) steps.push({ kind: 'turn', deg: aTurn, speed: el.turnSpeed });
+    if (it.kind === 'turn') {
+      var t = it.action;
+      if (t.angleMode === RP.TURN_FIXED) {
+        var fixedDeg = Number(t.angle);
+        if (isFinite(fixedDeg) && Math.abs(fixedDeg) > 0.01) {
+          steps.push({ kind: 'turn', deg: fixedDeg, extra: true, speed: t.speed, style: t.style });
+          // A typed turn moves the chassis, so the geometric turn that
+          // follows has to be measured from where it left off.
+          if (prevHeading !== null) prevHeading = ((prevHeading + fixedDeg) % 360 + 360) % 360;
         }
-        steps.push({ kind: 'arc', angle: angleCode, radiusMm: radiusCode, mm: arcLenMm, speed: el.speed });
-        prevHeading = endNose;
-        if (el.checkpoint) steps.push({ kind: 'checkpoint', name: el.checkpoint });
         continue;
       }
+      // Auto: swing onto whatever the next move needs. Unknown heading on
+      // either side (nothing driven yet, or arriving from a teleport)
+      // means there is no angle to derive.
+      var next = it.nextMove;
+      if (prevHeading === null || !next || next.entryHeading === null) continue;
+      var deg = RP.turnAngle(prevHeading, next.entryHeading);
+      if (Math.abs(deg) > 0.5) {
+        steps.push({ kind: 'turn', deg: deg, speed: t.speed, style: t.style });
+      }
+      prevHeading = next.entryHeading;
+      continue;
     }
 
-    var heading = chassisHeading(a, b, effectiveBackward);
-    if (prevHeading !== null) {
-      var turn = RP.turnAngle(prevHeading, heading);
-      if (Math.abs(turn) > 0.5) {
-        steps.push({ kind: 'turn', deg: turn, speed: el.turnSpeed }); // positive = clockwise, negative = anticlockwise
+    var el = it.action;
+    var mode = el.move || RP.MOVE_FORWARD;
+    var backward = !!el.reverse;
+
+    if (mode === RP.MOVE_TELEPORT) {
+      steps.push({
+        kind: 'teleport',
+        fromX: it.a.x, fromY: it.a.y,
+        toX: it.b.x, toY: it.b.y,
+        heading: RP.toDeg(RP.angleRad(it.a.x, it.a.y, it.b.x, it.b.y)),
+        name: el.teleportName || ('teleport_' + el.id)
+      });
+    } else if (it.arc) {
+      var dCw = it.arc.sweepDeg;                 // chassis turn, clockwise-positive
+      var Rmm = it.arc.radiusPx / ppm;
+      var nose = it.arc.noseFirst;
+      steps.push({
+        kind: 'arc',
+        angle: nose ? Math.abs(dCw) : -Math.abs(dCw),
+        radiusMm: (nose ? 1 : -1) * (dCw >= 0 ? 1 : -1) * Rmm,
+        mm: Rmm * Math.abs(dCw) * Math.PI / 180,
+        speed: el.speed
+      });
+    } else {
+      var legMm = RP.dist(it.a.x, it.a.y, it.b.x, it.b.y) / ppm;
+      var offsetMm = el.offset || 0;
+      if (mode === RP.MOVE_LINETRACE_DIST) {
+        steps.push({ kind: 'linetrace', mm: legMm, offsetMm: offsetMm, reverse: backward, speed: el.speed });
+      } else if (mode === RP.MOVE_LINETRACE_JUNCT) {
+        steps.push({ kind: 'linetrace_junct', junctions: el.junctions || 1, reverse: backward, speed: el.speed });
+      } else if (mode === RP.MOVE_WALL_ALIGN) {
+        steps.push({ kind: 'wall_align', reverse: backward, speed: el.speed });
+      } else {
+        steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: backward, speed: el.speed });
       }
     }
 
-    var legMm = RP.dist(a.x, a.y, b.x, b.y) / ppm;
-    var offsetMm = el.offset || 0;
-    if (mode === RP.MOVE_LINETRACE_DIST) {
-      steps.push({ kind: 'linetrace', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward, speed: el.speed });
-    } else if (mode === RP.MOVE_LINETRACE_JUNCT) {
-      steps.push({ kind: 'linetrace_junct', junctions: el.junctions || 1, reverse: effectiveBackward, speed: el.speed });
-    } else if (mode === RP.MOVE_WALL_ALIGN) {
-      steps.push({ kind: 'wall_align', reverse: effectiveBackward, speed: el.speed });
-      // Heading is now guaranteed perpendicular to the hit wall — snap to nearest cardinal
-      prevHeading = Math.round(heading / 90) * 90 % 360;
-      if (el.checkpoint) steps.push({ kind: 'checkpoint', name: el.checkpoint });
-      continue;
-    } else {
-      steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: effectiveBackward, speed: el.speed });
-    }
-
-    prevHeading = heading;
+    prevHeading = it.exitHeading;
     if (el.checkpoint) steps.push({ kind: 'checkpoint', name: el.checkpoint });
-  }
-
-  // Extra turns after the final move
-  var lastExtras = route.endExtraTurns || [];
-  for (var eti2 = 0; eti2 < lastExtras.length; eti2++) {
-    var etDeg2 = RP.extraTurnDeg(lastExtras[eti2]);
-    if (isFinite(etDeg2) && Math.abs(etDeg2) > 0.01) {
-      steps.push({ kind: 'turn', deg: etDeg2, extra: true, speed: RP.extraTurnSpeed(lastExtras[eti2]) });
-    }
   }
 
   return steps;
@@ -216,7 +200,11 @@ RP.generateCode = function(route) {
   for (var s = 0; s < steps.length; s++) {
     var st = steps[s];
     if (st.kind === 'turn') {
-      var turnTmpl = RP.codeConfig.turnTemplate || 'turn({angle}, {speed})';
+      // A spin and a one-wheel pivot are different manoeuvres, so each
+      // style can have its own template. Blank means "same as a spin",
+      // which is what every project that predates turn styles wants.
+      var styleTmpl = RP.turnTemplateFor ? RP.turnTemplateFor(st.style) : null;
+      var turnTmpl = styleTmpl || RP.codeConfig.turnTemplate || 'turn({angle}, {speed})';
       lines_out.push(turnTmpl
         .replace(/\{angle\}/g, st.deg.toFixed(1))
         .replace(/\{speed\}/g, spd(st))
