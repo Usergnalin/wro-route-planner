@@ -64,7 +64,7 @@ RP.DEFAULT_TURN_STYLE = 'spin';
 RP.makeTurnAction = function(pointId, opts) {
   opts = opts || {};
   return {
-    id: RP.nextElementId++,
+    id: RP.nextActionId++,
     type: RP.ACTION_TURN,
     pointId: pointId != null ? pointId : null,
     angleMode: opts.angleMode === RP.TURN_FIXED ? RP.TURN_FIXED : RP.TURN_AUTO,
@@ -77,7 +77,7 @@ RP.makeTurnAction = function(pointId, opts) {
 RP.makeMoveAction = function(entityId, entType, opts) {
   opts = opts || {};
   return {
-    id: RP.nextElementId++,
+    id: RP.nextActionId++,
     type: RP.ACTION_MOVE,
     entityId: entityId,
     // An arc entity can only be driven as an arc; a line cannot be.
@@ -98,7 +98,7 @@ RP.makeMoveAction = function(entityId, entType, opts) {
 // `route.startCheckpoint` for the one case that had no move before it.
 RP.makeCheckpointAction = function(pointId, name) {
   return {
-    id: RP.nextElementId++,
+    id: RP.nextActionId++,
     type: RP.ACTION_CHECKPOINT,
     pointId: pointId != null ? pointId : null,
     name: name || 'checkpoint'
@@ -214,7 +214,7 @@ RP.syncTurnActions = function(route) {
     // untouched and keep their position in front of their move.
     if (RP.isTurnAction(act) && act.angleMode === RP.TURN_AUTO) continue;
     if (RP.isMoveAction(act)) {
-      var ends = RP.elementEndpoints(sk, act);
+      var ends = RP.moveEndpoints(sk, act);
       var entry = ends ? ends.entry : null;
       var key = entry != null ? String(find(entry)) : '?';
       var reuse = byMove[act.id];
@@ -298,7 +298,7 @@ RP.setMoveCheckpoint = function(routeId, moveId, name) {
   var acts = RP.routeActions(route);
   var at = RP.actionIndex(route, moveId);
   if (at < 0) return false;
-  var ends = RP.elementEndpoints(RP.ensureSketch(), acts[at]);
+  var ends = RP.moveEndpoints(RP.ensureSketch(), acts[at]);
   acts.splice(at + 1, 0, RP.makeCheckpointAction(ends ? ends.exit : null, name));
   RP.rebuildRouteViews();
   return true;
@@ -313,12 +313,12 @@ RP.anchorPointFor = function(route, index) {
   var acts = RP.routeActions(route);
   for (var f = index + 1; f < acts.length; f++) {
     if (!RP.isMoveAction(acts[f])) continue;
-    var e = RP.elementEndpoints(sk, acts[f]);
+    var e = RP.moveEndpoints(sk, acts[f]);
     if (e) return e.entry;
   }
   for (var b = index - 1; b >= 0; b--) {
     if (!RP.isMoveAction(acts[b])) continue;
-    var e2 = RP.elementEndpoints(sk, acts[b]);
+    var e2 = RP.moveEndpoints(sk, acts[b]);
     if (e2) return e2.exit;
   }
   return null;
@@ -332,7 +332,7 @@ RP.removeAction = function(routeId, actionId) {
   // Auto turns are owned by the invariant, not by the user — removing one
   // would just be undone by the next sync.
   if (RP.isTurnAction(act) && act.angleMode === RP.TURN_AUTO) return false;
-  if (RP.isMoveAction(act)) return RP.removeRouteElement(routeId, actionId);
+  if (RP.isMoveAction(act)) return RP.removeMove(routeId, actionId);
   route.actions.splice(RP.actionIndex(route, actionId), 1);
   RP.rebuildRouteViews();
   return true;

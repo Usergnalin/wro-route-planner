@@ -54,14 +54,12 @@ RP.initEvents = function() {
       var pRM = RP.screenToImage(e.clientX, e.clientY);
       var hitRM = RP.routeHitTest(pRM.x, pRM.y);
       if (hitRM) {
-        if (hitRM.kind === 'action') {
-          // A turn or checkpoint at a junction point.
-          RP.selectedActionId = hitRM.id;
-        } else if (hitRM.kind === 'element') {
+        if (hitRM.kind === 'action' || hitRM.kind === 'move') {
+          // A turn or checkpoint at a junction point, or a move's geometry.
           RP.selectedActionId = hitRM.id;
         } else {
-          var addedEl = RP.appendGeometryToRoute(hitRM.id);
-          RP.selectedActionId = addedEl ? addedEl.id : null;
+          var added = RP.appendGeometryToRoute(hitRM.id);
+          RP.selectedActionId = added ? added.id : null;
         }
         RP.refreshRouteUI();
         return;

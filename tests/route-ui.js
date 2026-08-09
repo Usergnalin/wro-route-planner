@@ -59,9 +59,9 @@ check('leaving route mode clears the element selection', () => {
   const { a } = drawL(RP);
   RP.setEditMode('route');
   RP.appendGeometryToRoute(a.line.id);
-  RP.selectedElementId = RP.routes[0].elements[0].id;
+  RP.selectedMoveId = RP.moveActions(RP.routes[0])[0].id;
   RP.setEditMode('sketch');
-  assert(RP.selectedElementId === null, 'element selection should clear');
+  assert(RP.selectedMoveId === null, 'element selection should clear');
 });
 
 // ---- reference-only guarantee ---------------------------------------
@@ -73,8 +73,8 @@ check('route mode never moves geometry', () => {
   RP.setEditMode('route');
   RP.appendGeometryToRoute(a.line.id);
   RP.appendGeometryToRoute(b.line.id);
-  RP.updateSelectedElement && (RP.selectedElementId = RP.routes[0].elements[0].id);
-  RP.updateSelectedElement({ move: 'linetrace_dist', speed: 250 });
+  RP.updateSelectedMove && (RP.selectedMoveId = RP.moveActions(RP.routes[0])[0].id);
+  RP.updateSelectedMove({ move: 'linetrace_dist', speed: 250 });
 
   const after = RP.lines.map(l => [l.x1, l.y1, l.x2, l.y2].join(','));
   assert(JSON.stringify(before) === JSON.stringify(after),
@@ -86,9 +86,9 @@ check('removing an element keeps the geometry it referenced', () => {
   const { a } = drawL(RP);
   RP.setEditMode('route');
   const el = RP.appendGeometryToRoute(a.line.id);
-  RP.selectedElementId = el.id;
-  RP.removeSelectedElement();
-  assert(RP.routes[0].elements.length === 0, 'element removed');
+  RP.selectedMoveId = el.id;
+  RP.removeSelectedMove();
+  assert(RP.moveActions(RP.routes[0]).length === 0, 'element removed');
   assert(!!RP.Sketch.get(RP.sketch, a.line.id), 'geometry survives');
 });
 
@@ -100,7 +100,7 @@ check('hit test prefers route elements over bare geometry', () => {
   assert(RP.routeHitTest(50, 0).kind === 'geometry', 'unreferenced line is geometry');
   const el = RP.appendGeometryToRoute(a.line.id);
   const hit = RP.routeHitTest(50, 0);
-  assert(hit.kind === 'element' && hit.id === el.id,
+  assert(hit.kind === 'move' && hit.id === el.id,
     'once referenced it should hit as an element');
 });
 
@@ -135,7 +135,7 @@ check('appending connected geometry builds a resolvable route', () => {
   RP.appendGeometryToRoute(b.line.id);
   const res = RP.resolveRoute(RP.routes[0]);
   assert(res.ok, 'expected ok: ' + JSON.stringify(res));
-  assert(res.elements.length === 2, 'two elements');
+  assert(res.moves.length === 2, 'two elements');
 });
 
 check('routeReferencedEntities reports what routes already use', () => {
@@ -156,8 +156,8 @@ check('element parameters round-trip into generated code', () => {
   const e1 = RP.appendGeometryToRoute(a.line.id);
   RP.appendGeometryToRoute(b.line.id);
 
-  RP.selectedElementId = e1.id;
-  RP.updateSelectedElement({ move: 'linetrace_junct', junctions: 3, speed: 250 });
+  RP.selectedMoveId = e1.id;
+  RP.updateSelectedMove({ move: 'linetrace_junct', junctions: 3, speed: 250 });
 
   const code = RP.generateCode(RP.routes[0]);
   assert(/line_trace_until_junctions\(3, 250\)/.test(code),
@@ -169,8 +169,8 @@ check('checkpoint set on an element appears in the code', () => {
   const { a } = drawL(RP);
   RP.setEditMode('route');
   const el = RP.appendGeometryToRoute(a.line.id);
-  RP.selectedElementId = el.id;
-  RP.updateSelectedElement({ checkpoint: 'grab_block' });
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ checkpoint: 'grab_block' });
   const code = RP.generateCode(RP.routes[0]);
   assert(/if callable\(grab_block\): grab_block\(\)/.test(code),
     'expected the checkpoint call, got:\n' + code);
@@ -182,9 +182,9 @@ check('reordering elements changes traversal order', () => {
   RP.setEditMode('route');
   const e1 = RP.appendGeometryToRoute(a.line.id);
   const e2 = RP.appendGeometryToRoute(b.line.id);
-  RP.selectedElementId = e2.id;
-  RP.reorderSelectedElement(-1);
-  assert(RP.routes[0].elements[0].id === e2.id, 'second element moved to front');
+  RP.selectedMoveId = e2.id;
+  RP.reorderSelectedMove(-1);
+  assert(RP.moveActions(RP.routes[0])[0].id === e2.id, 'second element moved to front');
 });
 
 check('route edits are undoable', () => {
@@ -192,9 +192,9 @@ check('route edits are undoable', () => {
   const { a } = drawL(RP);
   RP.setEditMode('route');
   RP.appendGeometryToRoute(a.line.id);
-  assert(RP.routes[0].elements.length === 1, 'setup');
+  assert(RP.moveActions(RP.routes[0]).length === 1, 'setup');
   RP.undo();
-  assert(RP.routes[0].elements.length === 0, 'undo should remove the element');
+  assert(RP.moveActions(RP.routes[0]).length === 0, 'undo should remove the element');
   assert(!!RP.Sketch.get(RP.sketch, a.line.id), 'geometry must survive the undo');
 });
 
@@ -227,13 +227,13 @@ check('reordering finds a valid orientation when one exists', () => {
   const route = RP.routes[0];
   assert(RP.resolveRoute(route).ok, 'setup should resolve');
 
-  RP.selectedElementId = e2.id;
-  RP.reorderSelectedElement(-1);           // now [b, a]
+  RP.selectedMoveId = e2.id;
+  RP.reorderSelectedMove(-1);           // now [b, a]
 
   const res = RP.resolveRoute(route);
   assert(res.ok, 'a valid orientation exists and should be found: ' + JSON.stringify(res));
-  assertClose(res.elements[0].a.x, 200, 1e-9, 'the walk now starts from the far end');
-  assertClose(res.elements[1].b.x, 0, 1e-9, 'and finishes at the old start');
+  assertClose(res.moves[0].a.x, 200, 1e-9, 'the walk now starts from the far end');
+  assertClose(res.moves[1].b.x, 0, 1e-9, 'and finishes at the old start');
 });
 
 check('a geometrically impossible order is still reported, not papered over', () => {
@@ -242,9 +242,9 @@ check('a geometrically impossible order is still reported, not papered over', ()
   // would be worse than saying so.
   const RP = fresh();
   const { route, e3 } = staircase(RP);
-  RP.selectedElementId = e3.id;
-  RP.reorderSelectedElement(-1);
-  RP.reorderSelectedElement(-1);
+  RP.selectedMoveId = e3.id;
+  RP.reorderSelectedMove(-1);
+  RP.reorderSelectedMove(-1);
   const res = RP.resolveRoute(route);
   assert(!res.ok && res.code === 'OPEN_JUNCTION',
     'expected an honest OPEN_JUNCTION, got ' + JSON.stringify(res));
@@ -262,7 +262,7 @@ check('appending in a chain derives each travel direction', () => {
   RP.appendGeometryToRoute(b.line.id);
   const route = RP.routes[0];
   assert(RP.resolveRoute(route).ok, 'chain should resolve regardless of draw order');
-  assert(route.elements[1].flip === true, 'direction should have been derived');
+  assert(RP.moveActions(route)[1].flip === true, 'direction should have been derived');
 });
 
 check('recomputeFlips repairs a desynced chain', () => {
@@ -279,16 +279,16 @@ check('reversing the route walks it the other way', () => {
   const RP = fresh();
   const { route } = staircase(RP);
   const before = RP.resolveRoute(route);
-  const startBefore = before.elements[0].a;
-  const endBefore = before.elements[before.elements.length - 1].b;
+  const startBefore = before.moves[0].a;
+  const endBefore = before.moves[before.moves.length - 1].b;
 
   RP.reverseRoute();
 
   const after = RP.resolveRoute(route);
   assert(after.ok, 'reversed route must still resolve: ' + JSON.stringify(after));
-  assertClose(after.elements[0].a.x, endBefore.x, 1e-9, 'now starts at the old end');
-  assertClose(after.elements[0].a.y, endBefore.y, 1e-9, 'now starts at the old end');
-  const newEnd = after.elements[after.elements.length - 1].b;
+  assertClose(after.moves[0].a.x, endBefore.x, 1e-9, 'now starts at the old end');
+  assertClose(after.moves[0].a.y, endBefore.y, 1e-9, 'now starts at the old end');
+  const newEnd = after.moves[after.moves.length - 1].b;
   assertClose(newEnd.x, startBefore.x, 1e-9, 'now ends at the old start');
   assertClose(newEnd.y, startBefore.y, 1e-9, 'now ends at the old start');
 });
@@ -296,11 +296,11 @@ check('reversing the route walks it the other way', () => {
 check('reversing does not change which elements drive backwards', () => {
   const RP = fresh();
   const { route, e2 } = staircase(RP);
-  RP.selectedElementId = e2.id;
-  RP.updateSelectedElement({ reverse: true });
+  RP.selectedMoveId = e2.id;
+  RP.updateSelectedMove({ reverse: true });
 
   RP.reverseRoute();
-  const still = RP.findElement(route, e2.id);
+  const still = RP.findMove(route, e2.id);
   assert(still.reverse === true,
     'drive-backwards is a mechanism choice and must survive a path reversal');
 });
@@ -312,13 +312,13 @@ check('drive backwards keeps the same endpoints, only the heading changes', () =
   const el = RP.appendGeometryToRoute(a.line.id);
   const route = RP.routes[0];
 
-  const fwd = RP.resolveRoute(route).elements[0];
+  const fwd = RP.resolveRoute(route).moves[0];
   const fwdA = { x: fwd.a.x, y: fwd.a.y }, fwdB = { x: fwd.b.x, y: fwd.b.y };
 
-  RP.selectedElementId = el.id;
-  RP.updateSelectedElement({ reverse: true });
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ reverse: true });
 
-  const rev = RP.resolveRoute(route).elements[0];
+  const rev = RP.resolveRoute(route).moves[0];
   assertClose(rev.a.x, fwdA.x, 1e-9, 'start unchanged');
   assertClose(rev.b.x, fwdB.x, 1e-9, 'end unchanged');
   const step = RP.computeSteps(route).filter(s => s.kind === 'forward')[0];
@@ -341,7 +341,7 @@ check('ensureSingleRoute recreates a route if none exists', () => {
   RP.routes = [];
   const r = RP.ensureSingleRoute();
   assert(RP.routes.length === 1 && !!r, 'a route should be created');
-  assert(Array.isArray(r.elements), 'with an element list ready');
+  assert(Array.isArray(r.actions), 'with an action list ready');
   assert(RP.activeRouteId === r.id, 'and marked active');
 });
 

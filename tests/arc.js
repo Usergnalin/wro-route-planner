@@ -168,9 +168,9 @@ check('an arc element generates an arc move', () => {
 check('legacy sagitta arcs migrate into real arc entities', () => {
   const RP = fresh();
   const route = legacyArcRoute(RP, 80);
-  RP.migrateRoutesToElements();
+  RP.migrateRoutesToActions();
 
-  const el = route.elements[0];
+  const el = RP.moveActions(route)[0];
   const ent = RP.sketch.entities[el.entityId];
   assert(ent.type === 'arc', 'should now be an arc entity, got ' + ent.type);
   assert(el.sagitta === undefined || el.sagitta === null,
@@ -183,8 +183,8 @@ check('migrated arcs keep the geometry the sagitta described', () => {
   legacyArcRoute(RP, 80);
   // What the old representation said the geometry was.
   const want = RP.computeArcGeom(200, 200, 600, 200, 80);
-  RP.migrateRoutesToElements();
-  const ent = RP.sketch.entities[RP.routes[0].elements[0].entityId];
+  RP.migrateRoutesToActions();
+  const ent = RP.sketch.entities[RP.moveActions(RP.routes[0])[0].entityId];
   const got = RP.Sketch.arcGeometry(RP.sketch, ent);
   assertClose(got.cx, want.cx, 1e-6, 'centre x');
   assertClose(got.cy, want.cy, 1e-6, 'centre y');
@@ -312,7 +312,7 @@ check('an arc element is clickable along its curve, not just its chord', () => {
   const el = RP.appendGeometryToRoute(made.arc.id);
 
   const onCurve = RP.routeHitTest(100, 60);
-  assert(onCurve && onCurve.kind === 'element' && onCurve.id === el.id,
+  assert(onCurve && onCurve.kind === 'move' && onCurve.id === el.id,
     'the curve should hit the element, got ' + JSON.stringify(onCurve));
   // Well away from both the curve and its chord: nothing.
   assert(RP.routeHitTest(100, 400) === null, 'empty space should still miss');

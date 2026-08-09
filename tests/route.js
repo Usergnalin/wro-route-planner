@@ -32,8 +32,8 @@ function twoElementRoute(RP) {
   const b = RP.addConstructionLine(100, 0, 100, 80);
   RP.Sketch.addConstraint(RP.sketch, 'coincident', [a.p2.id, b.p1.id]);
   const route = RP.routes[0];
-  const e1 = RP.addRouteElement(route.id, a.line.id, { move: 'forward' });
-  const e2 = RP.addRouteElement(route.id, b.line.id, { move: 'forward' });
+  const e1 = RP.addMove(route.id, a.line.id, { move: 'forward' });
+  const e2 = RP.addMove(route.id, b.line.id, { move: 'forward' });
   return { route, a, b, e1, e2 };
 }
 
@@ -56,46 +56,46 @@ function legacyRoute(RP) {
 }
 
 // ---- element CRUD ----------------------------------------------------
-check('addRouteElement references an entity and owns no coordinates', () => {
+check('addMove references an entity and owns no coordinates', () => {
   const RP = fresh();
   const made = RP.addConstructionLine(0, 0, 100, 0);
-  const el = RP.addRouteElement(RP.routes[0].id, made.line.id, { move: 'forward', speed: 300 });
+  const el = RP.addMove(RP.routes[0].id, made.line.id, { move: 'forward', speed: 300 });
   assert(el && el.entityId === made.line.id, 'element should reference the line');
   assert(!('x' in el) && !('y' in el), 'elements must not carry coordinates');
   assert(el.speed === 300, 'movement params live on the element');
 });
 
-check('addRouteElement rejects missing or non-line entities', () => {
+check('addMove rejects missing or non-line entities', () => {
   const RP = fresh();
   const p = RP.Sketch.addPoint(RP.sketch, 10, 10);
-  assert(RP.addRouteElement(RP.routes[0].id, 99999, {}) === null, 'missing entity');
-  assert(RP.addRouteElement(RP.routes[0].id, p.id, {}) === null, 'points are not drivable');
+  assert(RP.addMove(RP.routes[0].id, 99999, {}) === null, 'missing entity');
+  assert(RP.addMove(RP.routes[0].id, p.id, {}) === null, 'points are not drivable');
 });
 
 check('flip selects which endpoint is the entry', () => {
   const RP = fresh();
   const made = RP.addConstructionLine(0, 0, 100, 0);
-  const el = RP.addRouteElement(RP.routes[0].id, made.line.id, { flip: false });
-  let ends = RP.elementEndpoints(RP.sketch, el);
+  const el = RP.addMove(RP.routes[0].id, made.line.id, { flip: false });
+  let ends = RP.moveEndpoints(RP.sketch, el);
   assert(ends.entry === made.p1.id && ends.exit === made.p2.id, 'unflipped');
   el.flip = true;
-  ends = RP.elementEndpoints(RP.sketch, el);
+  ends = RP.moveEndpoints(RP.sketch, el);
   assert(ends.entry === made.p2.id && ends.exit === made.p1.id, 'flipped');
 });
 
-check('removeRouteElement drops it from the route but keeps the geometry', () => {
+check('removeMove drops it from the route but keeps the geometry', () => {
   const RP = fresh();
   const { route, a, e1 } = twoElementRoute(RP);
-  RP.removeRouteElement(route.id, e1.id);
-  assert(route.elements.length === 1, 'element removed');
+  RP.removeMove(route.id, e1.id);
+  assert(RP.moveActions(route).length === 1, 'element removed');
   assert(!!RP.Sketch.get(RP.sketch, a.line.id), 'geometry must survive');
 });
 
-check('moveRouteElement reorders the traversal', () => {
+check('reorderMove reorders the traversal', () => {
   const RP = fresh();
   const { route, e1, e2 } = twoElementRoute(RP);
-  RP.moveRouteElement(route.id, e2.id, 0);
-  assert(route.elements[0].id === e2.id, 'element should have moved to the front');
+  RP.reorderMove(route.id, e2.id, 0);
+  assert(RP.moveActions(route)[0].id === e2.id, 'element should have moved to the front');
 });
 
 // ---- derived views ---------------------------------------------------
@@ -133,9 +133,9 @@ check('resolver accepts a properly joined chain', () => {
   const { route } = twoElementRoute(RP);
   const res = RP.resolveRoute(route);
   assert(res.ok, 'expected ok: ' + JSON.stringify(res));
-  assert(res.elements.length === 2, 'two resolved elements');
-  assertClose(res.elements[0].a.x, 0, 1e-9);
-  assertClose(res.elements[1].b.y, 80, 1e-9);
+  assert(res.moves.length === 2, 'two resolved elements');
+  assertClose(res.moves[0].a.x, 0, 1e-9);
+  assertClose(res.moves[1].b.y, 80, 1e-9);
 });
 
 check('resolver reports an open junction and names the elements', () => {
@@ -143,12 +143,12 @@ check('resolver reports an open junction and names the elements', () => {
   const a = RP.addConstructionLine(0, 0, 100, 0);
   const b = RP.addConstructionLine(300, 0, 300, 80);   // deliberately detached
   const route = RP.routes[0];
-  const e1 = RP.addRouteElement(route.id, a.line.id, {});
-  const e2 = RP.addRouteElement(route.id, b.line.id, {});
+  const e1 = RP.addMove(route.id, a.line.id, {});
+  const e2 = RP.addMove(route.id, b.line.id, {});
   const res = RP.resolveRoute(route);
   assert(!res.ok && res.code === 'OPEN_JUNCTION',
     'expected OPEN_JUNCTION, got ' + JSON.stringify(res));
-  assert(res.elementIds.indexOf(e1.id) >= 0 && res.elementIds.indexOf(e2.id) >= 0,
+  assert(res.moveIds.indexOf(e1.id) >= 0 && res.moveIds.indexOf(e2.id) >= 0,
     'both sides of the gap should be named');
 });
 
@@ -163,8 +163,8 @@ check('resolver treats a shared point entity as connected', () => {
   RP.constructionMeta[l1.id] = { visible: true, role: 'route' };
   RP.constructionMeta[l2.id] = { visible: true, role: 'route' };
   const route = RP.routes[0];
-  RP.addRouteElement(route.id, l1.id, {});
-  RP.addRouteElement(route.id, l2.id, {});
+  RP.addMove(route.id, l1.id, {});
+  RP.addMove(route.id, l2.id, {});
   assert(RP.resolveRoute(route).ok, 'shared point should count as joined');
 });
 
@@ -182,8 +182,8 @@ check('broken routes produce a warning in the generated code, not silence', () =
   const a = RP.addConstructionLine(0, 0, 100, 0);
   const b = RP.addConstructionLine(300, 0, 300, 80);
   const route = RP.routes[0];
-  RP.addRouteElement(route.id, a.line.id, {});
-  RP.addRouteElement(route.id, b.line.id, {});
+  RP.addMove(route.id, a.line.id, {});
+  RP.addMove(route.id, b.line.id, {});
   const code = RP.generateCode(route);
   assert(/⚠/.test(code) && /broken/.test(code),
     'expected a visible warning, got: ' + JSON.stringify(code));
@@ -194,22 +194,22 @@ check('flip changes travel order; reverse changes only chassis direction', () =>
   const RP = fresh();
   const made = RP.addConstructionLine(0, 0, 100, 0);
   const route = RP.routes[0];
-  const el = RP.addRouteElement(route.id, made.line.id, { move: 'forward' });
+  const el = RP.addMove(route.id, made.line.id, { move: 'forward' });
 
   let steps = RP.computeSteps(route);
   let fwd = steps.filter(s => s.kind === 'forward')[0];
   assert(fwd && fwd.reverse === false, 'plain element drives forwards');
 
-  RP.setRouteElementProps(route.id, el.id, { reverse: true });
+  RP.setMoveProps(route.id, el.id, { reverse: true });
   steps = RP.computeSteps(route);
   fwd = steps.filter(s => s.kind === 'forward')[0];
   assert(fwd.reverse === true, 'reverse flips chassis direction');
 
   // Flipping travel order reverses the heading but not the chassis flag.
-  RP.setRouteElementProps(route.id, el.id, { reverse: false, flip: true });
+  RP.setMoveProps(route.id, el.id, { reverse: false, flip: true });
   const res = RP.resolveRoute(route);
-  assertClose(res.elements[0].a.x, 100, 1e-9, 'entry is now the far end');
-  assertClose(res.elements[0].b.x, 0, 1e-9, 'exit is now the near end');
+  assertClose(res.moves[0].a.x, 100, 1e-9, 'entry is now the far end');
+  assertClose(res.moves[0].b.x, 0, 1e-9, 'exit is now the near end');
   steps = RP.computeSteps(route);
   assert(steps.filter(s => s.kind === 'forward')[0].reverse === false,
     'flip must not imply reverse');
@@ -222,10 +222,10 @@ check('legacy route migrates to elements joined by coincident constraints', () =
   const a = n(0, 0), b = n(100, 0), c = n(100, 80);
   s(a, b); s(b, c);
 
-  const migrated = RP.migrateRoutesToElements();
+  const migrated = RP.migrateRoutesToActions();
   assert(migrated === 1, 'one route migrated');
-  assert(route.elements.length === 2, 'two elements');
-  assert(!route.elements[0].flip, 'forward-stored segment is unflipped');
+  assert(RP.moveActions(route).length === 2, 'two elements');
+  assert(!RP.moveActions(route)[0].flip, 'forward-stored segment is unflipped');
 
   const sk = RP.sketch;
   const coincident = RP.Sketch.constraintIds(sk)
@@ -240,11 +240,11 @@ check('migration preserves traversal direction of reversed segments', () => {
   const a = n(0, 0), b = n(100, 0), c = n(200, 0);
   s(a, b);
   s(c, b);              // stored c->b but walked b->c
-  RP.migrateRoutesToElements();
-  assert(route.elements[1].flip === true, 'second element should be flipped');
+  RP.migrateRoutesToActions();
+  assert(RP.moveActions(route)[1].flip === true, 'second element should be flipped');
   const res = RP.resolveRoute(route);
   assert(res.ok, 'should resolve: ' + JSON.stringify(res));
-  assertClose(res.elements[1].b.x, 200, 1e-9, 'travel should end at x=200');
+  assertClose(res.moves[1].b.x, 200, 1e-9, 'travel should end at x=200');
 });
 
 check('migration drops nodes off the longest path, as codegen already did', () => {
@@ -252,8 +252,8 @@ check('migration drops nodes off the longest path, as codegen already did', () =
   const { route, n, s } = legacyRoute(RP);
   const a = n(0, 0), b = n(100, 0), c = n(300, 0), d = n(100, 50);
   s(a, b); s(b, c); s(b, d);          // Y-shape, short arm to d
-  RP.migrateRoutesToElements();
-  assert(route.elements.length === 2, 'only the longest arm survives');
+  RP.migrateRoutesToActions();
+  assert(RP.moveActions(route).length === 2, 'only the longest arm survives');
 });
 
 // ---- serialization ---------------------------------------------------
@@ -264,7 +264,7 @@ check('serializeRoutes persists actions and omits the derived views', () => {
   const moves = out[0].actions.filter(a => a.type === 'move');
   assert(moves.length === 2, 'two moves are persisted, got ' + moves.length);
   assert(out[0].nodes === undefined && out[0].segments === undefined &&
-         out[0].elements === undefined,
+         out[0].moves === undefined,
     'derived views must not be persisted');
 });
 

@@ -439,7 +439,7 @@ RP.snapshotState = function() {
     construction: JSON.parse(JSON.stringify(RP.constructionMeta)),
     routes: RP.serializeRoutes ? RP.serializeRoutes() : JSON.parse(JSON.stringify(RP.routes)),
     activeRouteId: RP.activeRouteId,
-    nextElementId: RP.nextElementId,
+    nextActionId: RP.nextActionId,
     nextWpId: RP.nextWpId,
     nextSegId: RP.nextSegId,
     nextRouteId: RP.nextRouteId,
@@ -461,7 +461,7 @@ RP.restoreState = function(s) {
   RP.rebuildLines();
   RP.routes = JSON.parse(JSON.stringify(s.routes));
   RP.activeRouteId = s.activeRouteId;
-  RP.nextElementId = s.nextElementId || RP.nextElementId || 1;
+  RP.nextActionId = s.nextActionId || RP.nextActionId || 1;
   RP.nextWpId = s.nextWpId;
   RP.nextSegId = s.nextSegId || 1;
   RP.nextRouteId = s.nextRouteId;
@@ -471,7 +471,7 @@ RP.restoreState = function(s) {
   // Migrate restored routes in case the snapshot pre-dates the
   // direction field (no-op otherwise).
   if (RP.migrateAllRoutes) RP.migrateAllRoutes();
-  if (RP.migrateRoutesToElements) RP.migrateRoutesToElements();
+  if (RP.migrateRoutesToActions) RP.migrateRoutesToActions();
   // nodes/segments are derived views and are not persisted, so they must
   // be rebuilt before anything reads them.
   if (RP.rebuildRouteViews) RP.rebuildRouteViews();
@@ -596,9 +596,9 @@ RP.updateInfoPanel = function() {
     dofEl.textContent = si.text;
     dofEl.style.color = si.color;
   }
-  // One route, so the useful count is how many elements it has.
+  // One route, so the useful count is how many moves it has.
   var theRoute = RP.getActiveRoute ? RP.getActiveRoute() : null;
-  RP.dom.infoRoutes.textContent = (theRoute && theRoute.elements) ? theRoute.elements.length : 0;
+  RP.dom.infoRoutes.textContent = theRoute ? RP.moveActions(theRoute).length : 0;
   RP.dom.infoCalibStatus.textContent = RP.calibration
     ? RP.calibration.pixelsPerMm.toFixed(4) + ' px/mm'
     : 'Not set';

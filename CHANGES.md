@@ -1,3 +1,66 @@
+# Changes — 2026-08-09 (7)
+
+## Phase 10.3 — one name for one thing
+
+The last of the action refactor. 10.1 and 10.2 left `route.elements` as a
+rebuilt array aliasing the live move actions, so everything written
+before actions kept working. That compat layer is now gone, along with
+the element-era vocabulary that came with it — "element" and "action"
+both meaning *move action* is exactly the double naming that made the
+node/segment era confusing enough to need phase 9.
+
+### Renamed
+
+| was | now |
+|-----|-----|
+| `addRouteElement` | `addMove` |
+| `removeRouteElement` | `removeMove` |
+| `setRouteElementProps` | `setMoveProps` |
+| `moveRouteElement` | `reorderMove` |
+| `findElement` | `findMove` |
+| `elementEndpoints` | `moveEndpoints` |
+| `getSelectedElement` / `selectedElementId` | `getSelectedMove` / `selectedMoveId` |
+| `updateSelectedElement` / `removeSelectedElement` / `reorderSelectedElement` | …`Move` |
+| `updateElementParams` | `updateActionParams` |
+| `migrateRoutesToElements` | `migrateRoutesToActions` |
+| `nextElementId` | `nextActionId` |
+| `resolveRoute() → { elements: [{ element, … }] }` | `→ { moves: [{ move, … }] }` |
+| `#element-list`, `#element-params`, `.elp` | `#action-list`, `#action-params`, `.ap-row` |
+| `routeHitTest` kind `'element'` | `'move'` |
+
+### Deleted
+
+`route.elements` is no longer built. Callers use `RP.moveActions(route)`.
+The name now means exactly one thing — **this route came out of a v4 save
+file** — which makes the migration guard unambiguous instead of relying
+on checking `.actions` first.
+
+`route.startCheckpoint` had been a vestigial `null` on every new route
+since checkpoints became actions in 10.2. Gone, so a route persists as
+just `actions, id, name, visible`.
+
+### One real bug this could have shipped
+
+The blanket rename hit the save-file keys as well, so `nextElementId`
+became `nextActionId` on the *read* side too — and any project saved
+before this change would have loaded with its id counter reset to 1,
+handing out ids that already existed. Both readers now fall back:
+`nextActionId || nextElementId`, and `nextIds.action || nextIds.element`.
+
+### Verification
+
+10 suites pass, goldens byte-identical, boot up to 14 checks — one of
+which fails if any old name reappears, if `rebuildRouteViews` recreates
+`route.elements`, or if the old DOM ids come back.
+
+Re-ran every browser walkthrough from the earlier phases against the
+renamed build: the action UI end to end, undo/redo across every action
+edit, the drive toggle, the config modal and hotkeys, the sketcher's
+points and auto-tangency, the S-curve drag, and all nine tool buttons.
+No console errors anywhere.
+
+---
+
 # Changes — 2026-08-09 (6)
 
 ## Solver: arcs no longer go red under the cursor

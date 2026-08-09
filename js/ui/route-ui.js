@@ -12,12 +12,12 @@ var RP = window.RP || {};
 RP.editMode = 'sketch';          // 'sketch' | 'route'
 RP._lastSketchTool = 'construction';
 
-// The selection is an ACTION of any type. `selectedElementId` survives as
-// an accessor because render, the resolver-facing panel and the tests all
-// speak "element": it reads through only when the selection really is a
-// move, so selecting a turn correctly un-highlights every segment.
+// The selection is an ACTION of any type. `selectedMoveId` is a
+// move-only view of it, which is what render and the move panel want: it
+// reads through only when the selection really is a move, so selecting a
+// turn correctly un-highlights every segment.
 RP.selectedActionId = null;
-Object.defineProperty(RP, 'selectedElementId', {
+Object.defineProperty(RP, 'selectedMoveId', {
   get: function() {
     var route = RP.getActiveRoute ? RP.getActiveRoute() : null;
     if (!route || RP.selectedActionId == null) return null;
@@ -48,7 +48,7 @@ RP.setEditMode = function(mode) {
     RP.lineDrawStart = null;
     RP.hoverSnapPoint = null;
   } else {
-    RP.selectedElementId = null;
+    RP.selectedMoveId = null;
   }
   RP._forceMapPanel = false;
   RP.editMode = mode;
@@ -72,8 +72,8 @@ RP.updateModeUI = function() {
   show('tool-section', sketchOn);
   show('field-section', sketchOn);
   show('snap-section', sketchOn);
-  show('route-mode-section', !sketchOn);          // element list, left
-  show('element-params-section', !sketchOn);      // element detail, right
+  show('route-mode-section', !sketchOn);          // action list, left
+  show('action-params-section', !sketchOn);      // action detail, right
 
   // Bottom panels follow the mode: sketch gets the geometry and constraint
   // lists, route gets the generated code. Nothing about routes clutters
@@ -115,8 +115,8 @@ RP.refreshRouteUI = function() {
 RP.routeReferencedEntities = function() {
   var set = {};
   for (var i = 0; i < RP.routes.length; i++) {
-    var els = RP.routes[i].elements || [];
-    for (var j = 0; j < els.length; j++) set[els[j].entityId] = true;
+    var moves = RP.moveActions(RP.routes[i]);
+    for (var j = 0; j < moves.length; j++) set[moves[j].entityId] = true;
   }
   return set;
 };
@@ -156,14 +156,14 @@ RP.routeHitTest = function(ix, iy) {
     }
   }
 
-  // Elements of the active route win — they are what you edit here.
-  // Measured against the actual geometry, so an arc element is clickable
+  // Moves of the active route win — they are what you edit here.
+  // Measured against the actual geometry, so an arc move is clickable
   // along its curve rather than only near its chord.
-  if (route && route.elements) {
-    for (var i = route.elements.length - 1; i >= 0; i--) {
-      var el = route.elements[i];
-      if (RP.entityDistSq(sk, el.entityId, ix, iy) < threshSq) {
-        return { kind: 'element', id: el.id, entityId: el.entityId };
+  if (route) {
+    var moves = RP.moveActions(route);
+    for (var i = moves.length - 1; i >= 0; i--) {
+      if (RP.entityDistSq(sk, moves[i].entityId, ix, iy) < threshSq) {
+        return { kind: 'move', id: moves[i].id, entityId: moves[i].entityId };
       }
     }
   }
@@ -185,21 +185,22 @@ RP.routeHitTest = function(ix, iy) {
   return null;
 };
 
-RP.getSelectedElement = function() {
+RP.getSelectedMove = function() {
   var route = RP.getActiveRoute();
-  if (!route || RP.selectedElementId == null) return null;
-  return RP.findElement(route, RP.selectedElementId);
+  if (!route || RP.selectedMoveId == null) return null;
+  return RP.findMove(route, RP.selectedMoveId);
 };
 
 // ---- adding geometry to the route ------------------------------------
-// Pick the traversal direction that joins the previous element's exit, so
+// Pick the traversal direction that joins the previous move's exit, so
 // appending geometry usually just works.
 RP.bestFlipFor = function(route, entityId) {
   var sk = RP.sketch;
   var ent = sk.entities[entityId];
-  if (!ent || !route.elements || route.elements.length === 0) return false;
-  var last = route.elements[route.elements.length - 1];
-  var lastEnds = RP.elementEndpoints(sk, last);
+  var moves = RP.moveActions(route);
+  if (!ent || moves.length === 0) return false;
+  var last = moves[moves.length - 1];
+  var lastEnds = RP.moveEndpoints(sk, last);
   if (!lastEnds) return false;
   var find = RP.Sketch.coincidenceClusters(sk);
   var exitKey = find(lastEnds.exit);
@@ -211,10 +212,10 @@ RP.bestFlipFor = function(route, entityId) {
 RP.appendGeometryToRoute = function(entityId) {
   var route = RP.getActiveRoute();
   if (!route) return null;
-  RP.pushHistory('Add route element');
-  // No explicit move: addRouteElement picks one the geometry can actually
+  RP.pushHistory('Add move');
+  // No explicit move: addMove picks one the geometry can actually
   // do (an arc entity must be driven as an arc).
-  var el = RP.addRouteElement(route.id, entityId, {
+  var el = RP.addMove(route.id, entityId, {
     flip: RP.bestFlipFor(route, entityId)
   });
   if (!el) { RP.undoStack.pop(); return null; }
@@ -222,27 +223,27 @@ RP.appendGeometryToRoute = function(entityId) {
   return el;
 };
 
-RP.removeSelectedElement = function() {
+RP.removeSelectedMove = function() {
   var route = RP.getActiveRoute();
-  if (!route || RP.selectedElementId == null) return false;
-  RP.pushHistory('Remove route element');
-  RP.removeRouteElement(route.id, RP.selectedElementId);
-  RP.selectedElementId = null;
+  if (!route || RP.selectedMoveId == null) return false;
+  RP.pushHistory('Remove move');
+  RP.removeMove(route.id, RP.selectedMoveId);
+  RP.selectedMoveId = null;
   RP.recomputeFlips(route);
   RP.refreshRouteUI();
   return true;
 };
 
-RP.reorderSelectedElement = function(delta) {
+RP.reorderSelectedMove = function(delta) {
   var route = RP.getActiveRoute();
-  var el = RP.getSelectedElement();
+  var el = RP.getSelectedMove();
   if (!route || !el) return false;
-  var idx = route.elements.indexOf(el);
-  var next = idx + delta;
-  if (next < 0 || next >= route.elements.length) return false;
-  RP.pushHistory('Reorder route element');
-  RP.moveRouteElement(route.id, el.id, next);
-  // Reordering changes which end each element must enter from; without
+  var moves = RP.moveActions(route);
+  var next = moves.indexOf(el) + delta;
+  if (next < 0 || next >= moves.length) return false;
+  RP.pushHistory('Reorder move');
+  RP.reorderMove(route.id, el.id, next);
+  // Reordering changes which end each move must enter from; without
   // this the route silently broke at the junction.
   RP.recomputeFlips(route);
   RP.refreshRouteUI();
@@ -251,7 +252,7 @@ RP.reorderSelectedElement = function(delta) {
 
 RP.reverseRoute = function() {
   var route = RP.getActiveRoute();
-  if (!route || !route.elements || route.elements.length === 0) return false;
+  if (!route || RP.moveActions(route).length === 0) return false;
   RP.pushHistory('Reverse route');
   RP.reverseRouteDirection(route);
   RP.refreshRouteUI();
@@ -263,7 +264,7 @@ RP.updateSelectedAction = function(props) {
   var route = RP.getActiveRoute();
   var act = RP.getSelectedAction();
   if (!route || !act) return false;
-  if (RP.isMoveAction(act)) return RP.updateSelectedElement(props);
+  if (RP.isMoveAction(act)) return RP.updateSelectedMove(props);
   RP.pushHistory('Edit ' + act.type);
   RP.setActionProps(route.id, act.id, props);
   RP.refreshRouteUI();
@@ -274,7 +275,7 @@ RP.removeSelectedAction = function() {
   var route = RP.getActiveRoute();
   var act = RP.getSelectedAction();
   if (!route || !act) return false;
-  if (RP.isMoveAction(act)) return RP.removeSelectedElement();
+  if (RP.isMoveAction(act)) return RP.removeSelectedMove();
   RP.pushHistory('Remove ' + act.type);
   if (!RP.removeAction(route.id, act.id)) { RP.undoStack.pop(); return false; }
   RP.selectedActionId = null;
@@ -283,7 +284,7 @@ RP.removeSelectedAction = function() {
 };
 
 // Insert in front of the current selection, or at the end when nothing is
-// selected — the same "where the cursor is" rule the element list follows.
+// selected — the same "where the cursor is" rule the action list follows.
 RP.addTurnHere = function() {
   var route = RP.getActiveRoute();
   if (!route) return null;
@@ -333,22 +334,22 @@ RP.turnAngleFor = function(emitted, turnAction) {
   return null;
 };
 
-RP.updateSelectedElement = function(props) {
+RP.updateSelectedMove = function(props) {
   var route = RP.getActiveRoute();
-  if (!route || RP.selectedElementId == null) return false;
-  RP.pushHistory('Edit route element');
+  if (!route || RP.selectedMoveId == null) return false;
+  RP.pushHistory('Edit move');
   // A checkpoint is its own action now; the move panel still offers it as
   // a field, so route that one key through the action call.
   if (Object.prototype.hasOwnProperty.call(props, 'checkpoint')) {
-    RP.setMoveCheckpoint(route.id, RP.selectedElementId, props.checkpoint);
+    RP.setMoveCheckpoint(route.id, RP.selectedMoveId, props.checkpoint);
     props = Object.assign({}, props);
     delete props.checkpoint;
   }
-  RP.setRouteElementProps(route.id, RP.selectedElementId, props);
+  RP.setMoveProps(route.id, RP.selectedMoveId, props);
   // Becoming (or ceasing to be) a wall align changes the constraints, and
   // driving backwards swaps front clearance for rear.
   if (props.move !== undefined || props.reverse !== undefined) {
-    var el = RP.getSelectedElement();
+    var el = RP.getSelectedMove();
     if (el) {
       RP.syncWallAlignConstraint(route, el);
       RP.solveSketch();
@@ -372,11 +373,11 @@ RP.updateRouteModePanel = function() {
     } else {
       var res = RP.resolveRoute(route);
       if (res.ok) {
-        statusEl.textContent = res.elements.length + ' element' +
-          (res.elements.length === 1 ? '' : 's') + ' · connected';
+        statusEl.textContent = res.moves.length + ' move' +
+          (res.moves.length === 1 ? '' : 's') + ' · connected';
         statusEl.style.color = '#66ccff';
       } else if (res.code === 'EMPTY') {
-        statusEl.textContent = 'Empty — click geometry to add it';
+        statusEl.textContent = 'Empty — click geometry to add a move';
         statusEl.style.color = '#888';
       } else {
         statusEl.textContent = res.message;
@@ -384,8 +385,8 @@ RP.updateRouteModePanel = function() {
       }
     }
   }
-  RP.updateElementList();
-  RP.updateElementParams();
+  RP.updateActionList();
+  RP.updateActionParams();
 };
 
 RP.TURN_GLYPH = function(deg) {
@@ -396,7 +397,7 @@ RP.TURN_GLYPH = function(deg) {
 // One row per ACTION, in walk order. Turns and checkpoints are indented
 // under the move they lead into, so the list reads like the program.
 RP.updateActionList = function() {
-  var list = document.getElementById('element-list');
+  var list = document.getElementById('action-list');
   if (!list) return;
   list.innerHTML = '';
   var route = RP.getActiveRoute();
@@ -498,9 +499,6 @@ RP.updateActionList = function() {
   }
 };
 
-// Kept as the old name so nothing outside this file has to care.
-RP.updateElementList = function() { RP.updateActionList(); };
-
 var INPUT_CSS = 'width:70px;background:#3a3a3a;border:1px solid #555;color:#ddd;' +
                 'padding:2px 4px;border-radius:3px;font-size:11px;text-align:right';
 // Dropdowns hold words, not numbers, so they need more room than the
@@ -513,9 +511,9 @@ function elpOn(id, evt, fn) {
   if (node) node.addEventListener(evt, fn);
 }
 
-RP.updateElementParams = function() {
-  var host = document.getElementById('element-params');
-  var title = document.getElementById('element-params-title');
+RP.updateActionParams = function() {
+  var host = document.getElementById('action-params');
+  var title = document.getElementById('action-params-title');
   if (!host) return;
   var act = RP.getSelectedAction();
   if (!act) {
@@ -545,7 +543,7 @@ RP.renderTurnParams = function(host, act) {
 
   var derived = act.angle == null;
 
-  var html = '<div class="elp-readout">';
+  var html = '<div class="ap-readout">';
   if (deg == null) {
     html += isAuto
       ? 'No turn here — the legs are in line, or the heading is unknown after a teleport.'
@@ -561,19 +559,19 @@ RP.renderTurnParams = function(host, act) {
   // Only a junction turn has geometry to fall back to, so only it gets
   // the choice. A standalone turn is always a typed angle.
   if (isAuto) {
-    html += '<label class="elp"><span>Angle</span><span class="seg-toggle">' +
-            '<button type="button" id="elp-t-auto" class="seg-btn' + (derived ? ' active' : '') + '">Derived</button>' +
-            '<button type="button" id="elp-t-fixed" class="seg-btn' + (!derived ? ' active' : '') + '">Typed</button>' +
+    html += '<label class="ap-row"><span>Angle</span><span class="seg-toggle">' +
+            '<button type="button" id="ap-t-auto" class="seg-btn' + (derived ? ' active' : '') + '">Derived</button>' +
+            '<button type="button" id="ap-t-fixed" class="seg-btn' + (!derived ? ' active' : '') + '">Typed</button>' +
             '</span></label>';
   }
   if (!derived || !isAuto) {
-    html += '<label class="elp"><span>Degrees</span><input type="number" id="elp-t-angle" step="1" ' +
+    html += '<label class="ap-row"><span>Degrees</span><input type="number" id="ap-t-angle" step="1" ' +
             'value="' + (act.angle != null ? act.angle : 0) + '" style="' + INPUT_CSS + '"></label>';
   }
-  html += '<label class="elp"><span>Speed</span><input type="number" id="elp-t-speed" min="1" ' +
+  html += '<label class="ap-row"><span>Speed</span><input type="number" id="ap-t-speed" min="1" ' +
           'placeholder="default" value="' + (act.speed != null ? act.speed : '') + '" style="' + INPUT_CSS + '"></label>';
 
-  html += '<label class="elp"><span>Style</span><select id="elp-t-style" style="' + SELECT_CSS + '">';
+  html += '<label class="ap-row"><span>Style</span><select id="ap-t-style" style="' + SELECT_CSS + '">';
   for (var i = 0; i < RP.TURN_STYLES.length; i++) {
     var st = RP.TURN_STYLES[i];
     html += '<option value="' + st + '"' + ((act.style || RP.DEFAULT_TURN_STYLE) === st ? ' selected' : '') + '>' +
@@ -585,45 +583,45 @@ RP.renderTurnParams = function(host, act) {
 
   if (!isAuto) {
     html += '<div style="display:flex;gap:3px;margin-top:6px">' +
-            '<button id="elp-t-del" class="sidebar-small-btn">🗑 Remove turn</button></div>';
+            '<button id="ap-t-del" class="sidebar-small-btn">🗑 Remove turn</button></div>';
   }
   host.innerHTML = html;
 
-  elpOn('elp-t-auto', 'click', function() {
+  elpOn('ap-t-auto', 'click', function() {
     RP.updateSelectedAction({ angle: null });
   });
-  elpOn('elp-t-fixed', 'click', function() {
+  elpOn('ap-t-fixed', 'click', function() {
     // Seed with what the geometry was already producing, so switching to
     // Typed does not jump the robot.
     RP.updateSelectedAction({ angle: deg != null ? Number(deg.toFixed(1)) : 0 });
   });
-  elpOn('elp-t-angle', 'change', function() {
+  elpOn('ap-t-angle', 'change', function() {
     var v = parseFloat(this.value);
     RP.updateSelectedAction({ angle: isFinite(v) ? v : 0 });
   });
-  elpOn('elp-t-speed', 'change', function() {
+  elpOn('ap-t-speed', 'change', function() {
     var v = parseFloat(this.value);
     RP.updateSelectedAction({ speed: isFinite(v) && v > 0 ? v : null });
   });
-  elpOn('elp-t-style', 'change', function() {
+  elpOn('ap-t-style', 'change', function() {
     RP.updateSelectedAction({ style: this.value });
   });
-  elpOn('elp-t-del', 'click', function() { RP.removeSelectedAction(); });
+  elpOn('ap-t-del', 'click', function() { RP.removeSelectedAction(); });
 };
 
 // ---- checkpoint panel ------------------------------------------------
 RP.renderCheckpointParams = function(host, act) {
   host.innerHTML =
-    '<label class="elp"><span>Name</span><input type="text" id="elp-c-name" ' +
+    '<label class="ap-row"><span>Name</span><input type="text" id="ap-c-name" ' +
     'value="' + (act.name || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>' +
     '<div class="sidebar-hint">Emitted where it sits in the list, using the ' +
     'checkpoint template.</div>' +
     '<div style="display:flex;gap:3px;margin-top:6px">' +
-    '<button id="elp-c-del" class="sidebar-small-btn">🗑 Remove</button></div>';
-  elpOn('elp-c-name', 'change', function() {
+    '<button id="ap-c-del" class="sidebar-small-btn">🗑 Remove</button></div>';
+  elpOn('ap-c-name', 'change', function() {
     RP.updateSelectedAction({ name: this.value || 'checkpoint' });
   });
-  elpOn('elp-c-del', 'click', function() { RP.removeSelectedAction(); });
+  elpOn('ap-c-del', 'click', function() { RP.removeSelectedAction(); });
 };
 
 // ---- move panel ------------------------------------------------------
@@ -633,7 +631,7 @@ RP.renderMoveParams = function(host, el) {
   var ent = sk ? sk.entities[el.entityId] : null;
   var moves = RP.movesForEntity(ent ? ent.type : 'line');
 
-  var html = '<label class="elp"><span>Move</span><select id="elp-move" style="' + SELECT_CSS + '">';
+  var html = '<label class="ap-row"><span>Move</span><select id="ap-move" style="' + SELECT_CSS + '">';
   for (var i = 0; i < moves.length; i++) {
     html += '<option value="' + moves[i] + '"' + (el.move === moves[i] ? ' selected' : '') + '>' +
             (RP.MOVE_LABELS[moves[i]] || moves[i]) + '</option>';
@@ -642,59 +640,59 @@ RP.renderMoveParams = function(host, el) {
 
   // Travel direction is derived from the chain, so it is not offered here.
   // The only direction choice that is genuinely the user's is whether the
-  // robot covers this element nose-first or tail-first. Two states, so one
+  // robot covers this move nose-first or tail-first. Two states, so one
   // toggle — and it is tinted to match the segment's colour on the canvas.
-  html += '<label class="elp"><span>Drive</span>' +
-          '<button type="button" id="elp-drive" class="drive-toggle' + (el.reverse ? ' rev' : '') + '" ' +
+  html += '<label class="ap-row"><span>Drive</span>' +
+          '<button type="button" id="ap-drive" class="drive-toggle' + (el.reverse ? ' rev' : '') + '" ' +
           'title="Click to drive the other way along this leg">' +
           (el.reverse ? '◀ Backwards' : '▶ Forwards') + '</button></label>';
-  html += '<label class="elp"><span>Speed</span><input type="number" id="elp-speed" min="1" ' +
+  html += '<label class="ap-row"><span>Speed</span><input type="number" id="ap-speed" min="1" ' +
           'placeholder="default" value="' + (el.speed != null ? el.speed : '') + '" style="' + INPUT_CSS + '"></label>';
 
   if (el.move === 'forward' || el.move === 'linetrace_dist') {
-    html += '<label class="elp"><span>Offset (mm)</span><input type="number" id="elp-offset" ' +
+    html += '<label class="ap-row"><span>Offset (mm)</span><input type="number" id="ap-offset" ' +
             'value="' + (el.offset || 0) + '" style="' + INPUT_CSS + '"></label>';
   }
   if (el.move === 'linetrace_junct') {
-    html += '<label class="elp"><span>Junctions</span><input type="number" id="elp-junctions" min="1" ' +
+    html += '<label class="ap-row"><span>Junctions</span><input type="number" id="ap-junctions" min="1" ' +
             'value="' + (el.junctions || 1) + '" style="' + INPUT_CSS + '"></label>';
   }
   if (el.move === 'teleport') {
-    html += '<label class="elp"><span>Name</span><input type="text" id="elp-teleport" ' +
+    html += '<label class="ap-row"><span>Name</span><input type="text" id="ap-teleport" ' +
             'value="' + (el.teleportName || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>';
   }
   var cpAct = RP.checkpointAfterMove(route, el.id);
-  html += '<label class="elp"><span>Checkpoint</span><input type="text" id="elp-checkpoint" ' +
+  html += '<label class="ap-row"><span>Checkpoint</span><input type="text" id="ap-checkpoint" ' +
           'placeholder="none" value="' + (cpAct ? cpAct.name : '') + '" style="' + INPUT_CSS + ';text-align:left"></label>';
   html += '<div style="display:flex;gap:3px;margin-top:6px">' +
-          '<button id="elp-up" class="sidebar-small-btn">↑</button>' +
-          '<button id="elp-down" class="sidebar-small-btn">↓</button>' +
-          '<button id="elp-del" class="sidebar-small-btn">🗑 Remove</button></div>';
+          '<button id="ap-up" class="sidebar-small-btn">↑</button>' +
+          '<button id="ap-down" class="sidebar-small-btn">↓</button>' +
+          '<button id="ap-del" class="sidebar-small-btn">🗑 Remove</button></div>';
   host.innerHTML = html;
 
-  elpOn('elp-move', 'change', function() { RP.updateSelectedElement({ move: this.value }); });
-  elpOn('elp-drive', 'click', function() { RP.updateSelectedElement({ reverse: !el.reverse }); });
-  elpOn('elp-speed', 'change', function() {
+  elpOn('ap-move', 'change', function() { RP.updateSelectedMove({ move: this.value }); });
+  elpOn('ap-drive', 'click', function() { RP.updateSelectedMove({ reverse: !el.reverse }); });
+  elpOn('ap-speed', 'change', function() {
     var v = parseFloat(this.value);
-    RP.updateSelectedElement({ speed: isFinite(v) && v > 0 ? v : null });
+    RP.updateSelectedMove({ speed: isFinite(v) && v > 0 ? v : null });
   });
-  elpOn('elp-offset', 'change', function() {
+  elpOn('ap-offset', 'change', function() {
     var v = parseFloat(this.value);
-    RP.updateSelectedElement({ offset: isFinite(v) ? v : 0 });
+    RP.updateSelectedMove({ offset: isFinite(v) ? v : 0 });
   });
-  elpOn('elp-junctions', 'change', function() {
+  elpOn('ap-junctions', 'change', function() {
     var v = parseInt(this.value, 10);
-    RP.updateSelectedElement({ junctions: isFinite(v) && v > 0 ? v : 1 });
+    RP.updateSelectedMove({ junctions: isFinite(v) && v > 0 ? v : 1 });
   });
-  elpOn('elp-teleport', 'change', function() {
-    RP.updateSelectedElement({ teleportName: this.value || null });
+  elpOn('ap-teleport', 'change', function() {
+    RP.updateSelectedMove({ teleportName: this.value || null });
   });
-  elpOn('elp-checkpoint', 'change', function() {
-    RP.updateSelectedElement({ checkpoint: this.value || null });
+  elpOn('ap-checkpoint', 'change', function() {
+    RP.updateSelectedMove({ checkpoint: this.value || null });
   });
-  elpOn('elp-up', 'click', function() { RP.reorderSelectedElement(-1); });
-  elpOn('elp-down', 'click', function() { RP.reorderSelectedElement(1); });
-  elpOn('elp-del', 'click', function() { RP.removeSelectedElement(); });
+  elpOn('ap-up', 'click', function() { RP.reorderSelectedMove(-1); });
+  elpOn('ap-down', 'click', function() { RP.reorderSelectedMove(1); });
+  elpOn('ap-del', 'click', function() { RP.removeSelectedMove(); });
 };
 
 RP.wireModeSwitch = function() {

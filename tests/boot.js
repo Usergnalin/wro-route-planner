@@ -164,4 +164,35 @@ check('every tool button is bound, and names a real tool', () => {
   assert(unknown.length === 0, 'buttons naming tools that do not exist: ' + unknown.join(', '));
 });
 
+check('the element-era vocabulary is gone', () => {
+  const ctx = loadApp(scripts);
+  const RP = ctx.RP;
+  // "element" and "action" both meaning a move action is the double
+  // vocabulary that made the node/segment era confusing enough to need
+  // phase 9. One name now.
+  for (const fn of ['addRouteElement', 'removeRouteElement', 'setRouteElementProps',
+                    'moveRouteElement', 'findElement', 'elementEndpoints',
+                    'getSelectedElement', 'updateSelectedElement',
+                    'removeSelectedElement', 'reorderSelectedElement',
+                    'updateElementList', 'updateElementParams',
+                    'migrateRoutesToElements']) {
+    assert(RP[fn] === undefined, 'RP.' + fn + ' should have been renamed');
+  }
+  assert(!('nextElementId' in RP), 'nextElementId should be nextActionId');
+
+  // route.elements was a rebuilt view over the move actions. It is gone;
+  // the name now only ever means "this route came out of a v4 save".
+  RP.resetSketch();
+  const made = RP.addConstructionLine(0, 0, 100, 0);
+  const route = RP.routes[0];
+  RP.addMove(route.id, made.line.id, {});
+  assert(route.elements === undefined,
+    'rebuildRouteViews must not recreate route.elements');
+  assert(RP.moveActions(route).length === 1, 'the move is reachable as an action');
+
+  for (const id of ['element-list', 'element-params', 'element-params-section']) {
+    assert(html.indexOf('id="' + id + '"') < 0, id + ' should be renamed');
+  }
+});
+
 if (!report()) process.exitCode = 1;

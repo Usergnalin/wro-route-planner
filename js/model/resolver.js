@@ -14,69 +14,70 @@
 var RP = window.RP || {};
 
 RP.ROUTE_ERRORS = {
-  EMPTY:            'Route has no elements',
-  MISSING_GEOMETRY: 'An element references geometry that no longer exists',
-  OPEN_JUNCTION:    'Route is broken between two elements',
+  EMPTY:            'Route has no moves',
+  MISSING_GEOMETRY: 'A move references geometry that no longer exists',
+  OPEN_JUNCTION:    'Route is broken between two moves',
   NO_CALIBRATION:   'Image is not calibrated'
 };
 
-// → { ok:true, elements:[ {element, entity, entryId, exitId, a, b} ] }
-// → { ok:false, code, message, elementIds:[…] }
+// → { ok:true, moves:[ {move, entity, entryId, exitId, a, b} ] }
+// → { ok:false, code, message, moveIds:[…] }
 RP.resolveRoute = function(route) {
   var sk = RP.sketch;
-  if (!route || !route.elements || route.elements.length === 0) {
-    return { ok: false, code: 'EMPTY', message: RP.ROUTE_ERRORS.EMPTY, elementIds: [] };
+  var moves = RP.moveActions(route);
+  if (!route || moves.length === 0) {
+    return { ok: false, code: 'EMPTY', message: RP.ROUTE_ERRORS.EMPTY, moveIds: [] };
   }
   if (!sk) {
     return { ok: false, code: 'MISSING_GEOMETRY',
-             message: RP.ROUTE_ERRORS.MISSING_GEOMETRY, elementIds: [] };
+             message: RP.ROUTE_ERRORS.MISSING_GEOMETRY, moveIds: [] };
   }
 
   var find = RP.Sketch.coincidenceClusters(sk);
   var out = [];
   var prevExit = null;
-  var prevEl = null;
+  var prevMove = null;
 
-  for (var i = 0; i < route.elements.length; i++) {
-    var el = route.elements[i];
-    var ent = sk.entities[el.entityId];
+  for (var i = 0; i < moves.length; i++) {
+    var mv = moves[i];
+    var ent = sk.entities[mv.entityId];
     if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) {
       return {
         ok: false, code: 'MISSING_GEOMETRY',
-        message: 'Element ' + (i + 1) + ' references missing geometry',
-        elementIds: [el.id]
+        message: 'Move ' + (i + 1) + ' references missing geometry',
+        moveIds: [mv.id]
       };
     }
-    var ends = RP.elementEndpoints(sk, el);
+    var ends = RP.moveEndpoints(sk, mv);
     var pa = sk.entities[ends.entry], pb = sk.entities[ends.exit];
     if (!pa || !pb) {
       return {
         ok: false, code: 'MISSING_GEOMETRY',
-        message: 'Element ' + (i + 1) + ' has missing endpoints',
-        elementIds: [el.id]
+        message: 'Move ' + (i + 1) + ' has missing endpoints',
+        moveIds: [mv.id]
       };
     }
 
     if (prevExit !== null && find(prevExit) !== find(ends.entry)) {
       return {
         ok: false, code: 'OPEN_JUNCTION',
-        message: 'Route is broken between element ' + i + ' and ' + (i + 1) +
+        message: 'Route is broken between move ' + i + ' and ' + (i + 1) +
                  ' — join the endpoints with a coincident constraint',
-        elementIds: [prevEl.id, el.id]
+        moveIds: [prevMove.id, mv.id]
       };
     }
 
     out.push({
-      element: el, entity: ent,
+      move: mv, entity: ent,
       entryId: ends.entry, exitId: ends.exit,
       a: { x: pa.x, y: pa.y },
       b: { x: pb.x, y: pb.y }
     });
     prevExit = ends.exit;
-    prevEl = el;
+    prevMove = mv;
   }
 
-  return { ok: true, elements: out };
+  return { ok: true, moves: out };
 };
 
 // ---- action timeline -------------------------------------------------
@@ -96,12 +97,12 @@ RP.resolveTimeline = function(route) {
 
   var sk = RP.sketch;
   var byId = {};
-  for (var i = 0; i < resolved.elements.length; i++) {
-    byId[resolved.elements[i].element.id] = resolved.elements[i];
+  for (var i = 0; i < resolved.moves.length; i++) {
+    byId[resolved.moves[i].move.id] = resolved.moves[i];
   }
 
   function headings(rel) {
-    var el = rel.element;
+    var el = rel.move;
     var backward = !!el.reverse;
     var move = el.move || RP.MOVE_FORWARD;
 
@@ -160,5 +161,5 @@ RP.resolveTimeline = function(route) {
     }
   }
 
-  return { ok: true, items: items, elements: resolved.elements };
+  return { ok: true, items: items, moves: resolved.moves };
 };

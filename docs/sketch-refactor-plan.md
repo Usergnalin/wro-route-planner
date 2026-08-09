@@ -1,7 +1,6 @@
 # Sketch Layer Refactor — Design & Implementation Plan
 
-Status: **phases 0–9 complete, 10 in progress (10.1 and 10.2 done)**, on
-branch `refactor/sketch-layer`
+Status: **phases 0–10 complete**, on branch `refactor/sketch-layer`
 The Sketch/Route split is live, every coordinate is solver-owned, and
 arcs are real constrainable entities. `follow_path`, the old route tools,
 the segment/node side panels and `RP.selectedSegment` are all gone.
@@ -593,12 +592,11 @@ and stays owned by its move — flipping it to `fixed` would leave sync
 free to add a SECOND turn at the same corner, and double the robot's
 rotation.
 
-**Compat.** `route.elements` is a rebuilt array of the LIVE move actions,
-not copies, so the resolver, `recomputeFlips` and the route-mode panel
-keep working and keep writing to the real model. It is not persisted.
-Save format is v5; v4 (`elements`) and older lift through
-`liftElementsToActions`, and all seven golden fixtures still produce
-byte-identical code.
+**Compat.** During 10.1/10.2 `route.elements` was a rebuilt array of the
+LIVE move actions so everything written before actions kept working. It
+is gone as of 10.3. Save format is v5; v4 (`elements`) and older lift
+through `liftElementsToActions`, and all seven golden fixtures still
+produce byte-identical code.
 
 ### 10.2 UI ✅
 
@@ -628,7 +626,38 @@ byte-identical code.
   `route.startCheckpoint` are gone. The move panel keeps a Checkpoint
   field, routed through `setMoveCheckpoint`.
 
-### 10.3 Cleanup (not started)
+### 10.3 Cleanup ✅
 
-Delete the `route.elements` compat view and rename the element-era calls
-(`addRouteElement`, `setRouteElementProps`, …) to their action names.
+The compat view is deleted and the element-era vocabulary is gone. One
+name for one thing:
+
+| was | now |
+|-----|-----|
+| `addRouteElement` | `addMove` |
+| `removeRouteElement` | `removeMove` |
+| `setRouteElementProps` | `setMoveProps` |
+| `moveRouteElement` | `reorderMove` |
+| `findElement` | `findMove` |
+| `elementEndpoints` | `moveEndpoints` |
+| `getSelectedElement` / `selectedElementId` | `getSelectedMove` / `selectedMoveId` |
+| `updateSelectedElement` / `removeSelectedElement` / `reorderSelectedElement` | …`Move` |
+| `updateElementParams` | `updateActionParams` |
+| `migrateRoutesToElements` | `migrateRoutesToActions` |
+| `nextElementId` | `nextActionId` |
+| `resolveRoute() → { elements: [{ element, … }] }` | `→ { moves: [{ move, … }] }` |
+| `#element-list`, `#element-params`, `.elp` | `#action-list`, `#action-params`, `.ap-row` |
+
+`route.elements` now means exactly one thing: **this route came out of a
+v4 save file**. With the view gone the migration guard is unambiguous
+rather than relying on checking `.actions` first.
+
+Save files keep back-compat both ways: `nextActionId` falls back to
+`nextElementId`, and `nextIds.action` to `nextIds.element`, so a v5 file
+written before the rename still loads with its id counter intact.
+`route.startCheckpoint` was a vestigial `null` on every new route since
+checkpoints became actions — dropped, so a route now persists as just
+`actions, id, name, visible`.
+
+A boot check fails if any of the old names reappear, if
+`rebuildRouteViews` recreates `route.elements`, or if the old DOM ids
+come back.

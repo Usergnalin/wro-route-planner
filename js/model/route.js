@@ -16,7 +16,7 @@
    route drawing, if ever wanted, is then just:
 
        var made = RP.addConstructionLine(...);
-       RP.addRouteElement(routeId, made.line.id, opts);
+       RP.addMove(routeId, made.line.id, opts);
 
    Nothing in here may reach for event state, and the sketch layer never
    touches route state.
@@ -50,7 +50,7 @@ RP.MODE_TO_MOVE = {
   follow_path: 'forward'
 };
 
-RP.nextElementId = 1;
+RP.nextActionId = 1;
 
 // ---- element CRUD (pure model calls) ---------------------------------
 RP.findRoute = function(routeId) {
@@ -60,10 +60,10 @@ RP.findRoute = function(routeId) {
   return null;
 };
 
-RP.findElement = function(route, elementId) {
-  if (!route || !route.elements) return null;
-  for (var i = 0; i < route.elements.length; i++) {
-    if (route.elements[i].id === elementId) return route.elements[i];
+RP.findMove = function(route, moveId) {
+  var moves = RP.moveActions(route);
+  for (var i = 0; i < moves.length; i++) {
+    if (moves[i].id === moveId) return moves[i];
   }
   return null;
 };
@@ -72,7 +72,7 @@ RP.findElement = function(route, elementId) {
 //
 // "Element" is the move action, seen through the compat view below. The
 // two names will merge when the UI speaks actions directly.
-RP.addRouteElement = function(routeId, entityId, opts) {
+RP.addMove = function(routeId, entityId, opts) {
   var route = RP.findRoute(routeId);
   if (!route) return null;
   var sk = RP.ensureSketch();
@@ -98,7 +98,7 @@ RP.addRouteElement = function(routeId, entityId, opts) {
   return el;
 };
 
-RP.removeRouteElement = function(routeId, elementId) {
+RP.removeMove = function(routeId, elementId) {
   var route = RP.findRoute(routeId);
   if (!route) return false;
   var acts = RP.routeActions(route);
@@ -111,8 +111,8 @@ RP.removeRouteElement = function(routeId, elementId) {
   return true;
 };
 
-RP.setRouteElementProps = function(routeId, elementId, props) {
-  var el = RP.findElement(RP.findRoute(routeId), elementId);
+RP.setMoveProps = function(routeId, elementId, props) {
+  var el = RP.findMove(RP.findRoute(routeId), elementId);
   if (!el) return false;
   for (var k in props) {
     if (Object.prototype.hasOwnProperty.call(props, k)) el[k] = props[k];
@@ -121,7 +121,7 @@ RP.setRouteElementProps = function(routeId, elementId, props) {
   return true;
 };
 
-RP.moveRouteElement = function(routeId, elementId, newIndex) {
+RP.reorderMove = function(routeId, elementId, newIndex) {
   var route = RP.findRoute(routeId);
   if (!route) return false;
   var moves = RP.moveActions(route);
@@ -147,7 +147,7 @@ RP.moveRouteElement = function(routeId, elementId, newIndex) {
 
 // Travel-order endpoints: entry first, exit second. Lines and arcs both
 // carry p1/p2, so this is the same for either.
-RP.elementEndpoints = function(sk, el) {
+RP.moveEndpoints = function(sk, el) {
   var ent = sk.entities[el.entityId];
   if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) return null;
   return el.flip ? { entry: ent.p2, exit: ent.p1 }
@@ -173,8 +173,6 @@ RP.movesForEntity = function(entityType) {
 RP.recomputeFlips = function(route) {
   var sk = RP.ensureSketch();
   if (!route) return;
-  // Read the moves off the action list rather than route.elements: callers
-  // reorder actions and then repair flips, so the view is stale here.
   var els = RP.moveActions(route);
   if (els.length === 0) return;
   var find = RP.Sketch.coincidenceClusters(sk);
@@ -212,7 +210,7 @@ RP.recomputeFlips = function(route) {
 // (drive tail-first) is deliberately left alone, since that is chosen for
 // mechanism reasons and has nothing to do with path direction.
 RP.reverseRouteDirection = function(route) {
-  if (!route || !route.elements || route.elements.length === 0) return false;
+  if (!route || RP.moveActions(route).length === 0) return false;
   // Reversing the whole action list is what makes turns come out right: a
   // fixed turn queued BEFORE a move going one way is a turn AFTER that
   // same move coming back, and it swings the opposite way, hence the
@@ -239,12 +237,6 @@ RP.reverseRouteDirection = function(route) {
 // and the info panels keep working. Mutating them does nothing; go
 // through the action calls.
 //
-// route.elements is different: it is a rebuilt ARRAY of the LIVE move
-// actions, not copies. Everything that already spoke "elements" — the
-// resolver, recomputeFlips, the route-mode panel — keeps working and
-// keeps writing to the real model. It exists only until the UI speaks
-// actions directly, and is not persisted.
-//
 // Built leniently — a disconnected route still produces drawable
 // geometry. Strict continuity is the resolver's job.
 RP._suspendRouteViews = false;
@@ -260,7 +252,7 @@ RP.rebuildRouteViews = function() {
     // re-established here rather than at every call site that can
     // disturb it. syncTurnActions is idempotent.
     if (RP.syncTurnActions) RP.syncTurnActions(route);
-    route.elements = RP.moveActions(route);
+    var moves = RP.moveActions(route);
     var nodes = [];
     var segments = [];
     var byCluster = {};
@@ -317,9 +309,9 @@ RP.rebuildRouteViews = function() {
       return (list && list.length) ? list[list.length - 1].name : null;
     }
 
-    for (var i = 0; i < route.elements.length; i++) {
-      var el = route.elements[i];
-      var ends = RP.elementEndpoints(sk, el);
+    for (var i = 0; i < moves.length; i++) {
+      var el = moves[i];
+      var ends = RP.moveEndpoints(sk, el);
       if (!ends) continue;
       var na = nodeFor(ends.entry, cpName(cpBefore[el.id]));
       var nb = nodeFor(ends.exit, cpName(cpAfter[el.id]));
@@ -381,7 +373,7 @@ RP.wallConstraintFor = function(sk, pointId) {
 
 RP.syncWallAlignConstraint = function(route, el) {
   var sk = RP.ensureSketch();
-  var ends = RP.elementEndpoints(sk, el);
+  var ends = RP.moveEndpoints(sk, el);
   if (!ends) return null;
   var exitId = ends.exit;
   var existing = RP.wallConstraintFor(sk, exitId);
@@ -425,10 +417,11 @@ RP.syncWallAlignConstraint = function(route, el) {
 
 RP.syncAllWallAligns = function() {
   var route = RP.getActiveRoute();
-  if (!route || !route.elements) return 0;
+  if (!route) return 0;
+  var moves = RP.moveActions(route);
   var n = 0;
-  for (var i = 0; i < route.elements.length; i++) {
-    if (RP.syncWallAlignConstraint(route, route.elements[i])) n++;
+  for (var i = 0; i < moves.length; i++) {
+    if (RP.syncWallAlignConstraint(route, moves[i])) n++;
   }
   if (RP.solveSketch) RP.solveSketch();
   RP.rebuildRouteViews();
@@ -436,8 +429,10 @@ RP.syncAllWallAligns = function() {
 };
 
 // ---- serialization ---------------------------------------------------
-// nodes/segments/elements are derived views and are never persisted —
-// actions are the source of truth.
+// nodes/segments are derived views and are never persisted — actions are
+// the source of truth. `elements` is deleted defensively: it is the v4
+// field name, and a route loaded from such a file carries it until the
+// lift runs.
 RP.serializeRoutes = function() {
   var out = JSON.parse(JSON.stringify(RP.routes || []));
   for (var i = 0; i < out.length; i++) {
@@ -505,7 +500,7 @@ RP.liftElementsToActions = function(route) {
   route.actions = acts;
 };
 
-RP.migrateRoutesToElements = function() {
+RP.migrateRoutesToActions = function() {
   var sk = RP.ensureSketch();
   var migrated = 0;
 
@@ -516,8 +511,9 @@ RP.migrateRoutesToElements = function() {
   for (var r = 0; r < RP.routes.length; r++) {
     var route = RP.routes[r];
     if (route.actions) continue;              // already new-model
-    // v4 saves stored elements, where turn data rode along on the move
-    // that followed the turn. Lift it onto real turn actions.
+    // v4 saves stored `elements`, where turn data rode along on the move
+    // that followed the turn. With the compat view gone, the presence of
+    // that field now unambiguously means "this came out of a v4 file".
     if (route.elements) { RP.liftElementsToActions(route); migrated++; continue; }
     if (!route.nodes || !route.segments) { route.actions = []; continue; }
 
@@ -593,7 +589,7 @@ RP.migrateRoutesToElements = function() {
       route.actions.push(RP.makeTurnAction(entryPoint, { speed: a.turnSpeed }));
 
       var mode = oldMode;
-      RP.addRouteElement(route.id, line.id, {
+      RP.addMove(route.id, line.id, {
         move: RP.MODE_TO_MOVE[mode] || 'forward',
         flip: !storedForward,
         // Old effectiveBackward was (direction XOR traversal); with flip

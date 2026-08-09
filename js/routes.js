@@ -127,7 +127,7 @@ RP.computeLongestPath = function(route) {
 // Pre-phase-8 saves stored an arc as a chord plus a signed "sagitta" (the
 // perpendicular bulge, in px, of the arc's apex from the chord midpoint,
 // toward n̂ = chord rotated +90°). Live arcs are real sketch entities now;
-// this is only how migrateRoutesToElements turns an old bulge into a centre.
+// this is only how migrateRoutesToActions turns an old bulge into a centre.
 RP.arcPerp = function(ax, ay, bx, by) {
   var dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy);
   if (L < 1e-9) return { x: 0, y: 0, L: 0 };
@@ -164,7 +164,7 @@ RP.computeArcGeom = function(ax, ay, bx, by, sag) {
 // removeSegment, removeNode, flipSegmentDirection, setSegmentMode,
 // setSegmentTeleportName, setSegmentJunctionCount and the RP.selectedSegment
 // they hung off — wrote to structures that the next rebuild discarded.
-// Route mode's element panel is the real editor; see RP.setRouteElementProps.
+// Route mode's action panel is the real editor; see RP.setMoveProps.
 
 // ---- Route CRUD ----
 // There is exactly ONE route. Multi-route support bought complexity that
@@ -179,12 +179,11 @@ RP.ensureSingleRoute = function() {
   if (RP.routes.length === 0) {
     RP.routes.push({
       id: RP.nextRouteId++, name: 'Route', visible: true,
-      actions: [], startCheckpoint: null
+      actions: []
     });
   }
   var r = RP.routes[0];
   if (!r.actions) r.actions = [];
-  if (!r.elements) r.elements = [];
   RP.activeRouteId = r.id;
   return r;
 };
@@ -200,7 +199,7 @@ RP.updateLayerList = function() {
   el.innerHTML = '';
 
   // ---- Routes (listed above construction lines) ----
-  // Visibility only. Per-element editing is Route mode's element list; the
+  // Visibility only. Per-action editing is Route mode's action list; the
   // segment sub-rows that used to live here edited a derived view.
   if (RP.routes.length > 0) {
     var rh = document.createElement('div');
@@ -226,8 +225,8 @@ RP.updateLayerList = function() {
 
         var lbl = document.createElement('span');
         lbl.className = 'layer-item-label';
-        var elCount = route.elements ? route.elements.length : 0;
-        lbl.textContent = route.name + ' (' + elCount + ' element' + (elCount === 1 ? '' : 's') + ')';
+        var actCount = route.actions ? route.actions.length : 0;
+        lbl.textContent = route.name + ' (' + actCount + ' action' + (actCount === 1 ? '' : 's') + ')';
         lbl.title = lbl.textContent;
         lbl.onclick = function() {
           if (RP.activeRouteId !== route.id) {

@@ -202,10 +202,10 @@ RP.render = function() {
       var isLineTrace = sMode === RP.SEG_MODE_LINETRACE_DIST || sMode === RP.SEG_MODE_LINETRACE_JUNCT;
       var isWallAlign = sMode === RP.SEG_MODE_WALL_ALIGN;
       var isArc = seg.entityType === 'arc';
-      // Segment ids ARE element ids, so the route-mode selection lines up
+      // Segment ids ARE move-action ids, so the route-mode selection lines up
       // with the derived segment view directly.
       var isSegSel = inRouteMode && r.id === RP.activeRouteId &&
-                     RP.selectedElementId === seg.id;
+                     RP.selectedMoveId === seg.id;
       var onPath = pathSegIds[seg.id];
       var segColor = (hasLongestPath && !onPath) ? dimColor
         : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isWallAlign ? waColor : (isArc ? arcColor : (isBack ? revColor : baseColor)))));

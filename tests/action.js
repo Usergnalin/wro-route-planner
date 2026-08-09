@@ -36,8 +36,8 @@ function lRoute(RP) {
   const b = RP.addConstructionLine(100, 0, 100, 80);
   RP.Sketch.addConstraint(RP.sketch, 'coincident', [a.p2.id, b.p1.id]);
   const route = RP.routes[0];
-  const e1 = RP.addRouteElement(route.id, a.line.id, { move: 'forward' });
-  const e2 = RP.addRouteElement(route.id, b.line.id, { move: 'forward' });
+  const e1 = RP.addMove(route.id, a.line.id, { move: 'forward' });
+  const e2 = RP.addMove(route.id, b.line.id, { move: 'forward' });
   return { route, a, b, e1, e2 };
 }
 
@@ -133,8 +133,8 @@ check('reordering a move carries its junction parameters', () => {
   const { route, e1, e2 } = lRoute(RP);
   RP.setActionProps(route.id, autos(route)[1].id, { speed: 175, style: 'pivot_right' });
 
-  RP.moveRouteElement(route.id, e2.id, 0);
-  assert(route.elements[0].id === e2.id, 'move actually reordered');
+  RP.reorderMove(route.id, e2.id, 0);
+  assert(RP.moveActions(route)[0].id === e2.id, 'move actually reordered');
 
   const carried = autos(route).filter(t => t.speed === 175);
   assert(carried.length === 1, 'the 175 turn survived the reorder');
@@ -159,8 +159,8 @@ check('reversing the route negates typed turns and keeps auto speeds', () => {
 check('removing a move takes its auto turn with it', () => {
   const RP = fresh();
   const { route, e2 } = lRoute(RP);
-  RP.removeRouteElement(route.id, e2.id);
-  assert(route.elements.length === 1, 'one move left');
+  RP.removeMove(route.id, e2.id);
+  assert(RP.moveActions(route).length === 1, 'one move left');
   assert(autos(route).length === 1, 'and one auto turn, got ' + autos(route).length);
 });
 
@@ -168,7 +168,7 @@ check('removing a move takes its auto turn with it', () => {
 check('no turn is derived across a teleport', () => {
   const RP = fresh();
   const { route, e1 } = lRoute(RP);
-  RP.setRouteElementProps(route.id, e1.id, { move: 'teleport' });
+  RP.setMoveProps(route.id, e1.id, { move: 'teleport' });
   const ts = RP.computeSteps(route).filter(s => s.kind === 'turn');
   assert(ts.length === 0, 'arriving heading is unknown, so there is nothing to derive');
 });
@@ -176,7 +176,7 @@ check('no turn is derived across a teleport', () => {
 check('resolveTimeline reports unknown headings rather than guessing', () => {
   const RP = fresh();
   const { route, e1 } = lRoute(RP);
-  RP.setRouteElementProps(route.id, e1.id, { move: 'teleport' });
+  RP.setMoveProps(route.id, e1.id, { move: 'teleport' });
   const tl = RP.resolveTimeline(route);
   assert(tl.ok, 'should still resolve');
   const tele = tl.items.filter(i => i.kind === 'move')[0];
@@ -185,11 +185,11 @@ check('resolveTimeline reports unknown headings rather than guessing', () => {
 });
 
 // ---- compat view -----------------------------------------------------
-check('route.elements aliases the live move actions', () => {
+check('RP.moveActions(route) aliases the live move actions', () => {
   const RP = fresh();
   const { route, e1 } = lRoute(RP);
-  assert(route.elements[0] === e1, 'the view must hand back the real action, not a copy');
-  route.elements[0].speed = 321;
+  assert(RP.moveActions(route)[0] === e1, 'the view must hand back the real action, not a copy');
+  RP.moveActions(route)[0].speed = 321;
   assert(RP.findAction(route, e1.id).speed === 321, 'writes reach the model');
 });
 
@@ -214,8 +214,8 @@ check('v4 element saves lift into actions with turn data preserved', () => {
     ]
   };
   RP.routes = [route];
-  RP.nextElementId = 200;
-  RP.migrateRoutesToElements();
+  RP.nextActionId = 200;
+  RP.migrateRoutesToActions();
 
   assert(route.actions, 'route was lifted to actions');
   assert(route.endExtraTurns === undefined, 'the end-turn hack is gone');
@@ -272,7 +272,7 @@ check('a point hit beats the lines running through it', () => {
   assert(hit.kind === 'action', 'the small target must win, got ' + hit.kind);
   // A few px along the line, away from the corner, is the move again.
   const off = RP.routeHitTest(corner.x - 40, corner.y);
-  assert(off && off.kind === 'element', 'along the line is the move, got ' + JSON.stringify(off));
+  assert(off && off.kind === 'move', 'along the line is the move, got ' + JSON.stringify(off));
 });
 
 check('clicking again cycles through actions sharing a junction', () => {
@@ -298,10 +298,10 @@ check('selecting a turn un-highlights every move', () => {
   const { route } = lRoute(RP);
   routeMode(RP);
   RP.selectedActionId = autos(route)[1].id;
-  assert(RP.selectedElementId === null,
-    'selectedElementId must read through only for moves');
-  RP.selectedActionId = route.elements[0].id;
-  assert(RP.selectedElementId === route.elements[0].id, 'and read through for a move');
+  assert(RP.selectedMoveId === null,
+    'selectedMoveId must read through only for moves');
+  RP.selectedActionId = RP.moveActions(route)[0].id;
+  assert(RP.selectedMoveId === RP.moveActions(route)[0].id, 'and read through for a move');
 });
 
 check('typing an angle overrides the junction without adding a second turn', () => {
@@ -377,14 +377,14 @@ check('checkpoint actions round-trip through the move panel field', () => {
   const { route, e1 } = lRoute(RP);
   routeMode(RP);
   RP.selectedActionId = e1.id;
-  RP.updateSelectedElement({ checkpoint: 'grab_block' });
+  RP.updateSelectedMove({ checkpoint: 'grab_block' });
 
   const cps = route.actions.filter(RP.isCheckpointAction);
   assert(cps.length === 1 && cps[0].name === 'grab_block', 'one checkpoint action');
   assert(RP.checkpointAfterMove(route, e1.id) === cps[0], 'found after its move');
   assert(/grab_block/.test(RP.generateCode(route)), 'and it reaches the code');
 
-  RP.updateSelectedElement({ checkpoint: null });
+  RP.updateSelectedMove({ checkpoint: null });
   assert(route.actions.filter(RP.isCheckpointAction).length === 0, 'blank removes it');
 });
 
@@ -399,8 +399,7 @@ check('the start checkpoint is just the first action now', () => {
   const code = RP.generateCode(route);
   const lines = code.split('\n').filter(l => l.indexOf('#') !== 0);
   assert(/start_cp/.test(lines[0]), 'fires before anything moves, got:\n' + code);
-  assert(route.startCheckpoint === undefined || route.startCheckpoint === null,
-    'the old field is not used');
+  assert(route.startCheckpoint === undefined, 'the old field is gone entirely');
 });
 
 if (!report()) process.exitCode = 1;

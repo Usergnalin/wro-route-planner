@@ -132,8 +132,8 @@ check('nearestFieldLine picks the wall actually being approached', () => {
 check('making an element a wall align constrains it off the wall', () => {
   const RP = fresh();
   const { el, route, lead } = approachRightWall(RP);
-  RP.selectedElementId = el.id;
-  RP.updateSelectedElement({ move: 'wall_align' });
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
 
   const sk = RP.sketch;
   const c = RP.wallConstraintFor(sk, lead.p2.id);
@@ -148,8 +148,8 @@ check('making an element a wall align constrains it off the wall', () => {
 check('changing clearance moves the stopping point', () => {
   const RP = fresh();
   const { el, lead } = approachRightWall(RP);
-  RP.selectedElementId = el.id;
-  RP.updateSelectedElement({ move: 'wall_align' });
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
 
   RP.robotConfig.frontClearance = 80;        // mm -> 160 px
   RP.syncAllWallAligns();
@@ -160,11 +160,11 @@ check('changing clearance moves the stopping point', () => {
 check('driving backwards uses the rear clearance', () => {
   const RP = fresh();
   const { el, lead } = approachRightWall(RP);
-  RP.selectedElementId = el.id;
-  RP.updateSelectedElement({ move: 'wall_align' });
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
   assertClose(RP.sketch.entities[lead.p2.id].x, 1900, 1e-6, 'front clearance first');
 
-  RP.updateSelectedElement({ reverse: true });   // rear clearance is 30 mm = 60 px
+  RP.updateSelectedMove({ reverse: true });   // rear clearance is 30 mm = 60 px
   assertClose(RP.sketch.entities[lead.p2.id].x, 1940, 1e-6,
     'reversing should switch to the rear clearance');
 });
@@ -172,11 +172,11 @@ check('driving backwards uses the rear clearance', () => {
 check('leaving wall_align drops the constraint', () => {
   const RP = fresh();
   const { el, lead } = approachRightWall(RP);
-  RP.selectedElementId = el.id;
-  RP.updateSelectedElement({ move: 'wall_align' });
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
   assert(RP.wallConstraintFor(RP.sketch, lead.p2.id), 'setup');
 
-  RP.updateSelectedElement({ move: 'forward' });
+  RP.updateSelectedMove({ move: 'forward' });
   assert(!RP.wallConstraintFor(RP.sketch, lead.p2.id),
     'a plain forward move should not be pinned to a wall');
 });
@@ -191,8 +191,8 @@ check('a point drawn onto a wall is stood off it, not left conflicting', () => {
   RP.setEditMode('route');
   const el = RP.appendGeometryToRoute(lead.line.id);
 
-  RP.selectedElementId = el.id;
-  RP.updateSelectedElement({ move: 'wall_align' });
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
 
   const onLine = RP.Sketch.constraintsOn(RP.sketch, lead.p2.id)
     .filter(c => c.type === 'point_on_line' && c.refs[1] === wall);
@@ -204,8 +204,8 @@ check('a point drawn onto a wall is stood off it, not left conflicting', () => {
 check('wall_align still generates its move', () => {
   const RP = fresh();
   const { el, route } = approachRightWall(RP);
-  RP.selectedElementId = el.id;
-  RP.updateSelectedElement({ move: 'wall_align' });
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
   const code = RP.generateCode(route);
   assert(/wall_align/.test(code), 'expected a wall_align call, got:\n' + code);
 });

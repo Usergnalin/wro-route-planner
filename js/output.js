@@ -180,7 +180,7 @@ RP.generateCode = function(route) {
     return cp + ' Route: ' + (route.name || '?') + '\n' +
            cp + ' ⚠ ' + resolved.message;
   }
-  var elCount = resolved.elements.length;
+  var moveCount = resolved.moves.length;
 
   var speed = RP.codeConfig.defaultSpeed;
   var unit = RP.codeConfig.defaultUnit || 'mm';
@@ -190,7 +190,7 @@ RP.generateCode = function(route) {
   function spd(st) { return (st.speed != null && st.speed !== '') ? st.speed : speed; }
 
   lines_out.push(cp + ' Route: ' + route.name);
-  lines_out.push(cp + ' Path: ' + (elCount + 1) + ' nodes, ' + elCount + ' segments');
+  lines_out.push(cp + ' Path: ' + (moveCount + 1) + ' nodes, ' + moveCount + ' segments');
 
   var totalMm = 0;
   for (var i = 0; i < steps.length; i++) {
@@ -277,7 +277,7 @@ RP.updateInstructions = function() {
   }
   var check = RP.resolveRoute(active);
   if (!check.ok && check.code === 'EMPTY') {
-    RP.dom.codeOutput.textContent = '// Route has no elements yet';
+    RP.dom.codeOutput.textContent = '// Route has no moves yet';
     return;
   }
   try {

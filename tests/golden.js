@@ -46,7 +46,7 @@ function main() {
       // Fixtures are written against the OLD node/segment model on
       // purpose: running them through the migration is what proves old
       // projects still generate byte-identical code.
-      ctx.RP.migrateRoutesToElements();
+      ctx.RP.migrateRoutesToActions();
       actual = ctx.RP.generateCode(route);
       if (typeof actual !== 'string' || actual.length === 0) {
         throw new Error('generateCode returned empty output');

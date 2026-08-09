@@ -631,7 +631,7 @@ RP.updateGeometryDetail = function() {
 
   var g = RP.Sketch.arcGeometry(sk, sel);
   host.innerHTML =
-    '<div class="elp"><span>Arc radius</span><span>' +
+    '<div class="ap-row"><span>Arc radius</span><span>' +
       (g ? RP.constructionLabel(0, 0, g.radius, 0) : '-') + '</span></div>' +
     '<button id="geo-flip-arc" class="sidebar-small-btn" style="margin-top:6px">⇄ Flip to other side</button>' +
     '<div class="sidebar-hint">Two points bound two arcs; this picks the other one. ' +
@@ -658,10 +658,10 @@ RP.updateConstraintDetail = function() {
     return;
   }
   var def = RP.Sketch.constraintDefs[c.type];
-  var html = '<div class="elp"><span>' + RP.constraintIconHTML(c.type) + ' ' +
+  var html = '<div class="ap-row"><span>' + RP.constraintIconHTML(c.type) + ' ' +
              ((def && def.label) || c.type) + '</span></div>';
   if (def && def.hasValue) {
-    html += '<label class="elp"><span>Value (' + RP.constraintUnit(c.type) + ')</span>' +
+    html += '<label class="ap-row"><span>Value (' + RP.constraintUnit(c.type) + ')</span>' +
             '<input type="number" id="cd-value" step="0.1" value="' +
             RP.constraintToDisplay(c.type, c.value).toFixed(2) + '" ' +
             'style="width:70px;background:#3a3a3a;border:1px solid #555;color:#ddd;' +
