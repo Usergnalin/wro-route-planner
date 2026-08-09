@@ -359,4 +359,100 @@ check('a radius constraint bolds the arc readout instead of adding a badge', () 
     'and must not also add an overlapping badge');
 });
 
+// ---- the S-curve that used to go red ---------------------------------
+// line — arc — arc — line, tangent at each straight, as in a chicane.
+function sCurve(RP, withDims) {
+  const S = RP.Sketch, sk = () => RP.sketch;
+  const l1 = RP.addConstructionLine(0, 300, 200, 300);
+  S.addConstraint(sk(), 'horizontal', [l1.line.id]);
+  S.addConstraint(sk(), 'fix', [l1.p1.id]);
+  const s1 = RP.computeSnap(200, 300, { kind: 'point' });
+  const a1 = RP.addConstructionArc(200, 300, 350, 200, { startSnap: s1 });
+  const s2 = RP.computeSnap(350, 200, { kind: 'point' });
+  const a2 = RP.addConstructionArc(350, 200, 500, 100, { startSnap: s2 });
+  const s3 = RP.computeSnap(500, 100, { kind: 'point' });
+  const l2 = RP.addConstructionLine(500, 100, 700, 100, { startSnap: s3 });
+  S.addConstraint(sk(), 'horizontal', [l2.line.id]);
+  if (withDims) {
+    S.addConstraint(sk(), 'radius', [a1.arc.id], 155);
+    S.addConstraint(sk(), 'radius', [a2.arc.id], 210);
+  }
+  return { l1, a1, a2, l2 };
+}
+
+check('auto-tangency uses the endpoint form, which has no captured side', () => {
+  const RP = fresh();
+  sCurve(RP, false);
+  const sk = RP.sketch;
+  const ts = RP.Sketch.constraintIds(sk).map(id => sk.constraints[id])
+    .filter(c => /^tangent/.test(c.type));
+  assert(ts.length === 2, 'a tangent at each straight, got ' + ts.length);
+  for (const c of ts) {
+    assert(c.type === 'tangent_at', 'expected tangent_at, got ' + c.type);
+    assert(c.side === undefined, 'endpoint tangency must not capture a side');
+    assert(c.refs.length === 3, 'line, arc and the point they meet at');
+  }
+});
+
+check('dragging the S-curve never reports the sketch as conflicting', () => {
+  const RP = fresh();
+  const { l2 } = sCurve(RP, true);
+  const sk = RP.sketch;
+  let red = 0, steps = 0;
+  // Sweep the free end far past where the old side-locked tangent gave up.
+  for (let y = 100; y >= -260; y -= 20) {
+    const res = RP.Sketch.dragPoint(sk, l2.p2.id, 700, y);
+    steps++;
+    if (res.status === 'conflict') red++;
+  }
+  assert(red === 0, red + ' of ' + steps + ' drag steps went red');
+  const settled = RP.Sketch.solve(sk);
+  assert(settled.status !== 'conflict',
+    'and the sketch is left solvable, got ' + settled.status);
+});
+
+check('the joins stay tangent throughout the drag', () => {
+  const RP = fresh();
+  const { l1, a1, l2 } = sCurve(RP, false);
+  const sk = RP.sketch;
+  function offBy(lineId, arcId, ptId) {
+    const L = sk.entities[lineId], A = sk.entities[arcId];
+    const a = sk.entities[L.p1], b = sk.entities[L.p2];
+    const c = sk.entities[A.center], p = sk.entities[ptId];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    // radius vector projected on the line direction: zero when tangent
+    return Math.abs(((p.x - c.x) * dx + (p.y - c.y) * dy) / len);
+  }
+  for (let y = 100; y >= -100; y -= 25) {
+    RP.Sketch.dragPoint(sk, l2.p2.id, 700, y);
+    assert(offBy(l1.line.id, a1.arc.id, a1.p1.id) < 1e-6,
+      'tangency slipped at y=' + y + ', off by ' +
+      offBy(l1.line.id, a1.arc.id, a1.p1.id));
+  }
+});
+
+check('an arc tangent to a line can be dragged to the other side of it', () => {
+  const RP = fresh();
+  const S = RP.Sketch, sk = () => RP.sketch;
+  const l = RP.addConstructionLine(0, 300, 400, 300);
+  S.addConstraint(sk(), 'fix', [l.p1.id]);
+  S.addConstraint(sk(), 'fix', [l.p2.id]);
+  const snap = RP.computeSnap(0, 300, { kind: 'point' });
+  const a = RP.addConstructionArc(0, 300, 150, 200, { startSnap: snap });
+  assert(a.tangents.length === 1, 'tangent applied');
+
+  // Above the line, then below. The old side-locked form could not cross.
+  RP.Sketch.dragPoint(sk(), a.p2.id, 150, 150);
+  const above = sk().entities[sk().entities[a.arc.id].center].y;
+  RP.Sketch.dragPoint(sk(), a.p2.id, 150, 450);
+  const res = RP.Sketch.solve(sk());
+  const below = sk().entities[sk().entities[a.arc.id].center].y;
+
+  assert(res.status !== 'conflict', 'crossing must not fault the sketch, got ' + res.status);
+  assert(above < 300 && below > 300,
+    'the centre should follow the arc across the line: ' +
+    above.toFixed(1) + ' -> ' + below.toFixed(1));
+});
+
 if (!report()) process.exitCode = 1;

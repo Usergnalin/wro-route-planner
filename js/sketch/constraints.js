@@ -416,6 +416,69 @@ RP.Sketch.registerConstraint('tangent', {
   }
 });
 
+// tangent_at(line, arc, point) — the arc meets the line smoothly AT that
+// point, which must be one of the arc's own ends.
+//
+// This is the endpoint tangency FreeCAD recommends for smooth joins, and
+// it exists because plain `tangent` above cannot express it. That one
+// constrains the CENTRE to stand one radius off the line, with the side
+// captured at creation so the arc cannot flip. The side lock makes whole
+// regions of the sketch unreachable: drag an end far enough and the
+// solver has to push the centre through the line to follow, cannot, and
+// grinds to a halt in a configuration it can no longer solve — the
+// sketch goes red and stays red.
+//
+// Stating it at the point removes the problem entirely. The radius at
+// that end must be perpendicular to the line:
+//
+//     f = (p − c) · û          û = unit direction of the line
+//
+// Zero when perpendicular, whichever side the centre is on and whichever
+// way the arc sweeps. Smooth everywhere, no captured state, and it is
+// exactly what "tangent at this end" means. Normalised by the line
+// length so the residual is a length and mixes with the positional rows.
+RP.Sketch.registerConstraint('tangent_at', {
+  label: 'Tangent at point',
+  glyph: 'T',
+  equations: 1,
+  weight: 'position',
+  accepts: function(e) {
+    return e.length === 3 && isLine(e[0]) && e[1] && e[1].type === 'arc' && isPoint(e[2]);
+  },
+  residual: function(g, c, r, row) {
+    var line = g.ent(c.refs[0]), arc = g.ent(c.refs[1]), p = c.refs[2];
+    var dx = g.px(line.p2) - g.px(line.p1);
+    var dy = g.py(line.p2) - g.py(line.p1);
+    var L = Math.hypot(dx, dy);
+    if (L < EPS) { r[row] = 0; return; }
+    var wx = g.px(p) - g.px(arc.center);
+    var wy = g.py(p) - g.py(arc.center);
+    r[row] = (wx * dx + wy * dy) / L;
+  },
+  jacobian: function(g, c, J, row) {
+    var line = g.ent(c.refs[0]), arc = g.ent(c.refs[1]), p = c.refs[2];
+    var a = line.p1, b = line.p2, cen = arc.center;
+    var dx = g.px(b) - g.px(a);
+    var dy = g.py(b) - g.py(a);
+    var L = Math.hypot(dx, dy);
+    if (L < EPS) return;
+    var ux = dx / L, uy = dy / L;
+    var wx = g.px(p) - g.px(cen);
+    var wy = g.py(p) - g.py(cen);
+    var f = wx * ux + wy * uy;
+
+    // d/dw of (w·û) is û; the point and the centre move w in opposition.
+    J_(J, row, g.cx(p), ux);      J_(J, row, g.cy(p), uy);
+    J_(J, row, g.cx(cen), -ux);   J_(J, row, g.cy(cen), -uy);
+
+    // d/dd of (w·d/|d|) = (w − f·û)/|d|, and d = b − a.
+    var gx = (wx - f * ux) / L;
+    var gy = (wy - f * uy) / L;
+    J_(J, row, g.cx(b), gx);      J_(J, row, g.cy(b), gy);
+    J_(J, row, g.cx(a), -gx);     J_(J, row, g.cy(a), -gy);
+  }
+});
+
 // ======================================================================
 // ENTITY-CONTRIBUTED EQUATIONS
 //

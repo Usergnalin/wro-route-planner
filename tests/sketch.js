@@ -216,7 +216,7 @@ check('drag pulls a linkage along while holding its constraints', () => {
   assertClose(p0.y, 0, 1e-9, 'anchor must not move');
 });
 
-check('drag beyond reach reports conflict instead of exploding', () => {
+check('a drag beyond reach lags the cursor without faulting the sketch', () => {
   const sk = S.create();
   const p0 = S.addPoint(sk, 0, 0);
   const p1 = S.addPoint(sk, 100, 0);
@@ -225,9 +225,23 @@ check('drag beyond reach reports conflict instead of exploding', () => {
   S.addConstraint(sk, 'distance', [l1.id], 100);
 
   const res = S.dragPoint(sk, p1.id, 500, 0);   // rigid link, cannot stretch
-  assert(!res.ok, 'expected conflict');
-  assert(res.status === 'conflict', 'expected conflict, got ' + res.status);
+  // The cursor being unreachable says nothing about the sketch: these
+  // constraints are perfectly consistent. Reporting conflict here painted
+  // the whole sketch red for the rest of the drag.
+  assert(res.status !== 'conflict',
+    'a sketch that still solves must not be called conflicting, got ' + res.status);
+  assert(res.laggedCursor === true, 'the drag should say it could not keep up');
   assert(isFinite(p1.x) && isFinite(p1.y), 'geometry must stay finite');
+  assertClose(Math.hypot(p1.x - p0.x, p1.y - p0.y), 100, 1e-6,
+    'the link keeps its length instead of stretching to the cursor');
+});
+
+check('a genuinely inconsistent sketch is still reported as conflicting', () => {
+  const { sk, top } = buildRect();
+  S.addConstraint(sk, 'distance', [top.id], 150);   // already pinned at 100
+  const res = S.solve(sk);
+  assert(!res.ok && res.status === 'conflict',
+    'real conflicts must survive the drag fix, got ' + res.status);
 });
 
 // ---- entity-contributed equations ------------------------------------

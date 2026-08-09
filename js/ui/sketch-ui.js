@@ -256,9 +256,31 @@ RP.formatConstraintValue = function(c) {
 // displayValue omitted -> measure the current geometry.
 // A user-added constraint that conflicts is KEPT (and shown red) so the
 // conflict is visible and fixable; only auto-constraints roll back.
+// The arc endpoint that already sits on one of the line's ends, or null.
+// Two entities joined at a point can use the endpoint form of tangency,
+// which is far better behaved than the centre-offset form.
+RP.sharedTangentPoint = function(lineId, arcId) {
+  var sk = RP.sketch;
+  var line = sk.entities[lineId], arc = sk.entities[arcId];
+  if (!line || !arc) return null;
+  var find = RP.Sketch.coincidenceClusters(sk);
+  var ends = [line.p1, line.p2].map(find);
+  if (ends.indexOf(find(arc.p1)) >= 0) return arc.p1;
+  if (ends.indexOf(find(arc.p2)) >= 0) return arc.p2;
+  return null;
+};
+
 RP.applyConstraint = function(type, displayValue) {
   var refs = RP.constraintRefsFor(type);
   if (!refs) return { ok: false, message: 'Selection does not fit "' + type + '"' };
+
+  // Upgrade a plain tangent to endpoint tangency when the two already
+  // meet. Same intent, but it drops the captured side that otherwise
+  // stops the arc ever flipping — see the constraint's own comment.
+  if (type === 'tangent') {
+    var atPt = RP.sharedTangentPoint(refs[0], refs[1]);
+    if (atPt != null) { type = 'tangent_at'; refs = [refs[0], refs[1], atPt]; }
+  }
   var def = RP.Sketch.constraintDefs[type];
   var value;
   if (def.hasValue) {
@@ -403,6 +425,13 @@ RP.drawConstraintIcon = function(ctx, type, x, y, size, color) {
     case 'angle':
       ctx.moveTo(x - h, y + h); ctx.lineTo(x + h, y + h);
       ctx.moveTo(x - h, y + h); ctx.lineTo(x + h * 0.6, y - h); ctx.stroke();
+      break;
+    case 'tangent':
+    case 'tangent_at':
+      // A circle resting on a line, which is what tangency looks like.
+      ctx.moveTo(x - h, y + h * 0.75); ctx.lineTo(x + h, y + h * 0.75); ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y - h * 0.05, h * 0.72, 0, Math.PI * 2); ctx.stroke();
       break;
     default:
       ctx.restore();
@@ -567,6 +596,8 @@ RP.CONSTRAINT_ICON_SVG = {
                  '<circle cx="8" cy="5" r="2" fill="currentColor" stroke="none"/></svg>',
   radius:        '<svg viewBox="0 0 16 16"><path d="M2 12 A 7 7 0 0 1 14 12" fill="none"/>' +
                  '<line x1="8" y1="12" x2="13" y2="8"/></svg>',
+  tangent_at:    '<svg viewBox="0 0 16 16"><circle cx="8" cy="9" r="4.5"/>' +
+                 '<path d="M1 14h14"/><circle cx="8" cy="14" r="1.6" fill="currentColor"/></svg>',
   tangent:       '<svg viewBox="0 0 16 16"><circle cx="8" cy="10" r="4.5"/>' +
                  '<line x1="1" y1="4" x2="15" y2="4"/></svg>'
 };

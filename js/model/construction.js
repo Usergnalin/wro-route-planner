@@ -236,9 +236,11 @@ RP.entitiesEndingAt = function(sk, pointId, type) {
 // instead of kinking, and it is the whole reason to draw an arc between
 // two legs. So offer it the same way snap offers coincident.
 //
-// `tangent` constrains the arc's centre to stand one radius off the line.
-// Combined with the coincident that put the endpoints together, the point
-// of tangency IS that shared endpoint, which is the constraint we want.
+// Stated as `tangent_at`, at the shared end, rather than the plain
+// `tangent` that constrains the centre to stand one radius off the line.
+// The plain one captures which SIDE the centre started on and can never
+// let the arc flip, which leaves regions of the sketch unreachable and
+// the solver stuck in them. See the constraint's own comment.
 //
 // Only applied when exactly one candidate ends at the point: at a corner
 // where two lines already meet, a second tangent would over-constrain and
@@ -247,21 +249,29 @@ RP.autoConstrainTangent = function(newEntity, pointId, snap) {
   if (!RP.autoConstrain || !snap || snap.kind !== 'endpoint' || snap.pointId == null) return null;
   if (!newEntity) return null;
   var sk = RP.ensureSketch();
-  var lineId = null, arcId = null;
+  var lineId = null, arcId = null, atPoint = null;
 
   if (newEntity.type === 'arc') {
     var lines = RP.entitiesEndingAt(sk, snap.pointId, 'line');
     if (lines.length !== 1) return null;
     lineId = lines[0].id;
     arcId = newEntity.id;
+    atPoint = pointId;                 // the ARC end being joined
   } else if (newEntity.type === 'line') {
     var arcs = RP.entitiesEndingAt(sk, snap.pointId, 'arc');
     if (arcs.length !== 1) return null;
     lineId = newEntity.id;
     arcId = arcs[0].id;
+    atPoint = snap.pointId;            // the arc's end, which we snapped to
   } else {
     return null;
   }
+
+  // tangent_at needs the arc's OWN endpoint; a coincident partner will
+  // not do, because the residual measures the radius vector from the
+  // centre to that exact point.
+  var arcEnt = sk.entities[arcId];
+  if (!arcEnt || (atPoint !== arcEnt.p1 && atPoint !== arcEnt.p2)) return null;
 
   // Which entity was already there — the new one should be the one that
   // moves to satisfy the guess.
@@ -269,7 +279,7 @@ RP.autoConstrainTangent = function(newEntity, pointId, snap) {
 
   try {
     var before = RP.Sketch.solve(sk);
-    var c = RP.Sketch.addConstraint(sk, 'tangent', [lineId, arcId]);
+    var c = RP.Sketch.addConstraint(sk, 'tangent_at', [lineId, arcId, atPoint]);
 
     // Solve once with the pre-existing geometry pinned. Without this the
     // solver is free to satisfy tangency by swinging the line the user

@@ -304,7 +304,8 @@ check('deleting a standalone point removes it; one in use is kept', () => {
 // ---- auto-tangency ---------------------------------------------------
 function tangentsIn(RP) {
   const sk = RP.sketch;
-  return RP.Sketch.constraintIds(sk).filter(id => sk.constraints[id].type === 'tangent');
+  return RP.Sketch.constraintIds(sk)
+    .filter(id => /^tangent/.test(sk.constraints[id].type));
 }
 
 // The tangent direction of an arc at one of its endpoints.

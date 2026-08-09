@@ -1,3 +1,98 @@
+# Changes — 2026-08-09 (6)
+
+## Solver: arcs no longer go red under the cursor
+
+Reported as "conflicting constraints, or flashing red and green as I drag,
+on a shape FreeCAD handles freely". It turned out to be three separate
+faults, only one of which was really about the maths.
+
+### 1. A drag that could not reach the cursor was reported as a conflict
+
+`dragPoint` pins the dragged point and solves. When the cursor goes
+somewhere the constraints cannot follow, that pinned solve fails — and
+the failure was being reported as `conflict` and written to `sk.status`,
+which is what colours the sketch. So an unreachable cursor painted the
+whole sketch red, and it stayed red for the rest of the drag.
+
+The pin is an interaction device, not part of the model. Now: try pinned;
+if it cannot be satisfied, release the pin and solve the real system
+instead. Geometry lags the cursor — what a CAD sketcher does — and the
+status reported is the model's own. `laggedCursor` on the result says the
+point did not keep up, for anything that wants to know.
+
+This alone removed 8 of the 13 red frames in the reported case.
+
+### 2. Tangency captured which side the centre was on
+
+`tangent(line, arc)` constrains the centre to stand one radius off the
+line, and captured the sign at creation so the arc would not flip. That
+side lock makes regions of the sketch simply unreachable: drag an end far
+enough and the solver has to push the centre through the line to follow,
+cannot, and grinds to a halt in a configuration it can no longer solve.
+
+New `tangent_at(line, arc, point)` states it at the shared end instead:
+
+    f = (p − c)·û = 0
+
+the radius at that end is perpendicular to the line. Zero when tangent,
+whichever side the centre is on and whichever way the arc sweeps. Smooth
+everywhere, no captured state, and the exact meaning of "tangent at this
+end" — which is what was being asked for anyway. It is the same endpoint
+tangency FreeCAD recommends for smooth joins.
+
+It is also much better conditioned: the reported drag settles in **3
+iterations instead of 16–30**.
+
+Auto-tangency now produces it, and the palette upgrades a plain tangent
+to it whenever the selected line and arc already meet at a point.
+
+### 3. A flattened arc could never come back
+
+Even with the sign gone, an arc cannot change sides *continuously* — the
+centre would have to travel through infinity, and the arc straightens out
+on the way. Levenberg-Marquardt follows that path faithfully and strands
+the arc at a radius of 1e5, un-flippable.
+
+The escape is that the right centre is available in closed form. For an
+arc tangent at `p` and passing through its other end `q`, with `n̂` the
+line normal:
+
+    R = |q − p|² / (2 |(q − p)·n̂|)      c = p + sign((q − p)·n̂)·R·n̂
+
+`Sketch.rescueFlatArcs` re-seeds a runaway centre there and re-solves,
+keeping the guess only if it satisfies the sketch better. It has to run
+while the dragged point is still at the cursor — once the pin is released
+the point falls back onto the flattened arc, and the closed form then
+correctly declines because that endpoint is already on the tangent line.
+
+An arc dragged across the line it is tangent to now crosses cleanly and
+comes back the same way.
+
+### Measured
+
+Random mouse-like dragging of the reported shape, 1200 steps:
+
+| | before | after |
+|---|---|---|
+| S-curve, no dimensions | 36.8% frames red | **1.3%** |
+| S-curve + two radii    | 50.4% frames red | **1.4%** |
+
+The reported sequential drag went from 13/19 red frames to **0/19**. In
+Chromium, drawing line–arc–arc–line and hauling an end around for 60
+frames stayed green the whole way.
+
+### What is still not fixed
+
+- **Arc-to-arc tangency is not inferred.** Auto-tangency handles line↔arc
+  only, so the inflection where two arcs meet gets a coincident and can
+  still kink. The constraint to add is the arc-arc analogue of
+  `tangent_at`.
+- **A line dragged to zero length** has no direction, so tangency against
+  it is undefined and the solve stalls. That is the entire remaining 1.3%
+  above, and it is a degeneracy the other line constraints share.
+
+---
+
 # Changes — 2026-08-09 (5)
 
 ## Fix: the Point tool was dead on arrival

@@ -128,10 +128,32 @@ arcs constrainable without a redundant parameter.
 `fix` is **not** on the original minimum list but is required — see
 objection 2. `angle` with one line measures against +X.
 
+### Tangency comes in two forms
+
+| Name         | Args                | Meaning |
+|--------------|---------------------|---------|
+| `tangent`    | line, arc           | the centre stands one radius off the line, with the SIDE captured at creation |
+| `tangent_at` | line, arc, point    | `(p − c)·û = 0` — the radius at that end is perpendicular to the line |
+
+`tangent_at` is what auto-tangency and the palette produce whenever the
+two already meet at a point, and it exists because the side capture in
+`tangent` makes whole regions of the sketch unreachable: the arc can
+never flip, so dragging an end far enough forces the solver to push the
+centre through the line, which it cannot do, and the sketch goes red and
+stays red. Stating tangency at the shared point removes the sign
+entirely. It is also far better conditioned — the same drag settles in 3
+iterations instead of 16–30.
+
+A tangent arc still cannot change sides *continuously* (the centre would
+travel through infinity, flattening the arc on the way), so
+`Sketch.rescueFlatArcs` re-seeds the centre from the closed form
+`R = |q−p|² / 2|(q−p)·n̂|` when a radius runs away. The solver keeps the
+guess only if it satisfies the sketch better.
+
 ### Extension points — designed for, not implemented
 
-`parallel`, `perpendicular`, `equal`, `symmetric`, `tangent`,
-`point_on_arc`, `radius`, `point_line_distance`.
+`parallel`, `perpendicular`, `equal`, `symmetric`,
+`point_on_arc`, `radius`, `point_line_distance`, arc-to-arc tangency.
 
 Each is a registry entry, so adding one is a self-contained ~20-line
 addition with no changes to the solver:
