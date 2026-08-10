@@ -322,6 +322,22 @@ RP.Sketch.registerConstraint('fix', {
 // are what make arcs usable rather than merely representable.
 // ======================================================================
 
+// Length of a line, and the derivative of that length written into a row
+// with a sign — which is all `distance` and `equal` need between them.
+function spanLen(g, line) {
+  return Math.hypot(g.px(line.p2) - g.px(line.p1), g.py(line.p2) - g.py(line.p1));
+}
+
+function spanJacobian(g, line, J, row, sign) {
+  var a = line.p1, b = line.p2;
+  var dx = g.px(b) - g.px(a), dy = g.py(b) - g.py(a);
+  var d = Math.hypot(dx, dy);
+  if (d < EPS) { dx = 1; dy = 0; d = 1; }   // degenerate: pick a direction
+  var ux = sign * dx / d, uy = sign * dy / d;
+  J_(J, row, g.cx(b),  ux); J_(J, row, g.cy(b),  uy);
+  J_(J, row, g.cx(a), -ux); J_(J, row, g.cy(a), -uy);
+}
+
 // Unit vector from the arc centre to a point, or null if degenerate.
 function radialUnit(g, centerId, pointId) {
   var dx = g.px(pointId) - g.px(centerId);
@@ -377,6 +393,52 @@ RP.Sketch.registerConstraint('radius', {
     J_(J, row, g.cx(arc.p1), u.x);  J_(J, row, g.cy(arc.p1), u.y);
     J_(J, row, g.cx(arc.center), -u.x);
     J_(J, row, g.cy(arc.center), -u.y);
+  }
+});
+
+// equal(a, b) — two lines the same length, or two arcs the same radius.
+//
+// Deliberately same-type only. A line and an arc have no shared quantity
+// to equate (length against radius is a coincidence, not a relationship),
+// and FreeCAD refuses the pairing for the same reason.
+//
+// The maths is two constraints you already have, subtracted: line-line is
+// `distance` twice with opposite signs, arc-arc is `radius` twice.
+RP.Sketch.registerConstraint('equal', {
+  label: 'Equal',
+  glyph: '=',
+  equations: 1,
+  weight: 'position',
+  accepts: function(e) {
+    if (e.length !== 2 || !e[0] || !e[1]) return false;
+    if (isLine(e[0]) && isLine(e[1])) return true;
+    return e[0].type === 'arc' && e[1].type === 'arc';
+  },
+  residual: function(g, c, r, row) {
+    var A = g.ent(c.refs[0]), B = g.ent(c.refs[1]);
+    if (A.type === 'arc') {
+      var ua = radialUnit(g, A.center, A.p1);
+      var ub = radialUnit(g, B.center, B.p1);
+      r[row] = (ua && ub) ? (ua.r - ub.r) : 0;
+      return;
+    }
+    r[row] = spanLen(g, A) - spanLen(g, B);
+  },
+  jacobian: function(g, c, J, row) {
+    var A = g.ent(c.refs[0]), B = g.ent(c.refs[1]);
+    if (A.type === 'arc') {
+      // d(radius)/d(params): grows with the endpoint, shrinks with the centre.
+      var ua = radialUnit(g, A.center, A.p1);
+      var ub = radialUnit(g, B.center, B.p1);
+      if (!ua || !ub) return;
+      J_(J, row, g.cx(A.p1), ua.x);       J_(J, row, g.cy(A.p1), ua.y);
+      J_(J, row, g.cx(A.center), -ua.x);  J_(J, row, g.cy(A.center), -ua.y);
+      J_(J, row, g.cx(B.p1), -ub.x);      J_(J, row, g.cy(B.p1), -ub.y);
+      J_(J, row, g.cx(B.center), ub.x);   J_(J, row, g.cy(B.center), ub.y);
+      return;
+    }
+    spanJacobian(g, A, J, row, 1);
+    spanJacobian(g, B, J, row, -1);
   }
 });
 

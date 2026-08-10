@@ -394,4 +394,69 @@ function fakeCtx() {
   };
 }
 
+// ---- equal, from the palette -----------------------------------------
+check('equal accepts two lines or two arcs, and nothing else', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(0, 60, 40, 60);
+  const arc1 = RP.addConstructionArc(300, 0, 400, 60, {});
+  const arc2 = RP.addConstructionArc(300, 200, 360, 240, {});
+  RP.setTool('constrain');
+
+  const sel = (...ids) => { RP.sketchSelection = ids; };
+
+  sel(a.line.id, b.line.id);
+  assert(RP.canApplyConstraint('equal'), 'two lines should be accepted');
+
+  sel(arc1.arc.id, arc2.arc.id);
+  assert(RP.canApplyConstraint('equal'), 'two arcs should be accepted');
+
+  sel(a.line.id, arc1.arc.id);
+  assert(!RP.canApplyConstraint('equal'), 'a line and an arc must be refused');
+
+  sel(a.line.id);
+  assert(!RP.canApplyConstraint('equal'), 'one line is not a pair');
+
+  sel(a.line.id, b.line.id, arc1.arc.id);
+  assert(!RP.canApplyConstraint('equal'), 'a mixed trio must be refused');
+});
+
+check('applying equal from the palette resizes the geometry', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(0, 60, 40, 60);
+  RP.Sketch.addConstraint(RP.sketch, 'fix', [a.p1.id]);
+  RP.Sketch.addConstraint(RP.sketch, 'fix', [a.p2.id]);
+  RP.Sketch.addConstraint(RP.sketch, 'fix', [b.p1.id]);
+  RP.solveSketch();
+
+  RP.setTool('constrain');
+  RP.sketchSelection = [a.line.id, b.line.id];
+  const res = RP.applyConstraint('equal');
+  assert(res.ok, 'apply failed: ' + JSON.stringify(res));
+
+  const l = RP.lines.find(x => x.id === b.line.id);
+  assertClose(Math.hypot(l.x2 - l.x1, l.y2 - l.y1), 100, 1e-6,
+    'the second line should now match the first');
+  assert(RP.sketchSelection.length === 0, 'applying clears the selection');
+});
+
+check('equal has a real badge and a list icon, not a question mark', () => {
+  const RP = fresh();
+  assert(/<svg/.test(RP.constraintIconHTML('equal')), 'missing list icon');
+  // drawConstraintIcon falls through to "?" for anything it does not know.
+  const drawn = [];
+  const ctx = new Proxy({}, {
+    get: (t, k) => {
+      if (k === 'save' || k === 'restore' || k === 'beginPath') return () => {};
+      if (k === 'fillText') return (txt) => drawn.push(txt);
+      if (typeof k === 'string') return () => {};
+      return undefined;
+    },
+    set: () => true
+  });
+  RP.drawConstraintIcon(ctx, 'equal', 0, 0, 10, '#fff');
+  assert(drawn.indexOf('?') < 0, 'equal fell through to the "?" glyph');
+});
+
 if (!report()) process.exitCode = 1;

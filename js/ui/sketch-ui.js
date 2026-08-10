@@ -165,6 +165,12 @@ RP.constraintRefsFor = function(type) {
     case 'tangent':
       return (lns.length === 1 && arcs.length === 1 && pts.length === 0)
         ? [lns[0], arcs[0]] : null;
+    case 'equal':
+      // Same type only: a line's length and an arc's radius are not the
+      // same kind of quantity, so pairing them means nothing.
+      if (lns.length === 2 && arcs.length === 0 && pts.length === 0) return lns;
+      if (arcs.length === 2 && lns.length === 0 && pts.length === 0) return arcs;
+      return null;
   }
   if (arcs.length) return null;   // the remaining types do not accept arcs
   switch (type) {
@@ -426,6 +432,11 @@ RP.drawConstraintIcon = function(ctx, type, x, y, size, color) {
       ctx.moveTo(x - h, y + h); ctx.lineTo(x + h, y + h);
       ctx.moveTo(x - h, y + h); ctx.lineTo(x + h * 0.6, y - h); ctx.stroke();
       break;
+    case 'equal':
+      ctx.moveTo(x - h, y - h * 0.4); ctx.lineTo(x + h, y - h * 0.4);
+      ctx.moveTo(x - h, y + h * 0.4); ctx.lineTo(x + h, y + h * 0.4);
+      ctx.stroke();
+      break;
     case 'tangent':
     case 'tangent_at':
       // A circle resting on a line, which is what tangency looks like.
@@ -596,6 +607,7 @@ RP.CONSTRAINT_ICON_SVG = {
                  '<circle cx="8" cy="5" r="2" fill="currentColor" stroke="none"/></svg>',
   radius:        '<svg viewBox="0 0 16 16"><path d="M2 12 A 7 7 0 0 1 14 12" fill="none"/>' +
                  '<line x1="8" y1="12" x2="13" y2="8"/></svg>',
+  equal:         '<svg viewBox="0 0 16 16"><path d="M3 6h10M3 10h10"/></svg>',
   tangent_at:    '<svg viewBox="0 0 16 16"><circle cx="8" cy="9" r="4.5"/>' +
                  '<path d="M1 14h14"/><circle cx="8" cy="14" r="1.6" fill="currentColor"/></svg>',
   tangent:       '<svg viewBox="0 0 16 16"><circle cx="8" cy="10" r="4.5"/>' +

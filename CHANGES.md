@@ -1,3 +1,57 @@
+# Changes — 2026-08-09 (9)
+
+## Equal constraint
+
+Two lines the same length, or two arcs the same radius. Select a pair in
+Constrain mode and press **E**, or use the new palette button.
+
+The maths is two constraints already in the file, subtracted: line-line
+is `distance` twice with opposite signs, arc-arc is `radius` twice. The
+shared length-and-derivative bits came out into `spanLen` / `spanJacobian`
+so `distance` and `equal` are not carrying two copies of the same
+formula.
+
+**Same type only.** A line's length and an arc's radius are not the same
+quantity, so pairing them means nothing — `accepts` refuses it and the
+palette greys out, the same rule FreeCAD uses. Pairs only, too: selecting
+three lines does nothing rather than quietly applying two constraints.
+
+### Where it touched
+
+Exactly what the registry design promised, and no solver change:
+
+| file | what |
+|---|---|
+| `js/sketch/constraints.js` | the constraint, plus two extracted helpers |
+| `js/ui/sketch-ui.js` | selection→refs case, list icon, canvas badge |
+| `index.html` | 12th palette button |
+| `js/events.js` | `E` shortcut — the key was free |
+
+### The part worth knowing
+
+Equality is the constraint most likely to make a sketch **redundant**:
+`equal(A,B) + equal(B,C) + equal(A,C)` is one equation too many, and
+chaining is the natural way people reach for it. That is diagnosed
+correctly — `redundant`, not `conflict`, and there is now a test pinning
+that — but the status is still aggregate. It cannot say *which* of the
+three to delete. That is objection 9 in the plan doc, deferred as needing
+QR with column pivoting or SVD, and `equal` will make you meet it far
+more often than `distance` or `angle` did.
+
+### Verification
+
+Both Jacobians checked against central differences (worst error 1.4e-8
+line-line, 7.2e-9 arc-arc) before anything was wired up. 11 suites pass;
+solver tests 18 → 23, constraint UI 25 → 28.
+
+In Chromium, through the real UI: shift-click two lines and press `E`
+(180 mm → 400 mm), palette button on two arcs (R 52 → R 131), and a line
+paired with an arc refused with a message rather than a crash. The `=`
+badge draws on the canvas and in the constraint list rather than falling
+through to the `?` glyph. No console errors.
+
+---
+
 # Changes — 2026-08-09 (8)
 
 ## Portable single-file build

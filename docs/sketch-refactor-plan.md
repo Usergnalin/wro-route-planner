@@ -123,6 +123,7 @@ arcs constrainable without a redundant parameter.
 | `distance`      | line(a,b) \| pA,pB — value  | 1   | `hypot(bx−ax, by−ay) − L`                       |
 | `angle`         | lineA, lineB? — value       | 1   | `wrap(atan2(cross, dot) − θ)`                   |
 | `fix`           | p                           | 2   | `px − x₀`, `py − y₀`                            |
+| `equal`         | lineA, lineB \| arcA, arcB  | 1   | `\|b−a\| − \|d−c\|`, or `rA − rB`                 |
 
 `fix` is **not** on the original minimum list but is required — see
 objection 2. `angle` with one line measures against +X.
@@ -149,10 +150,19 @@ travel through infinity, flattening the arc on the way), so
 `R = |q−p|² / 2|(q−p)·n̂|` when a radius runs away. The solver keeps the
 guess only if it satisfies the sketch better.
 
+`equal` is same-type only: a length and a radius are not the same
+quantity, so a line paired with an arc is refused rather than guessed at.
+It is also the constraint most likely to make a sketch *redundant* — a
+chain of three is one equation too many, and chaining is the natural way
+to use it. That is diagnosed correctly as redundant rather than
+conflicting, but see objection 9: the aggregate status still cannot name
+the culprit.
+
 ### Extension points — designed for, not implemented
 
-`parallel`, `perpendicular`, `equal`, `symmetric`,
-`point_on_arc`, `radius`, `point_line_distance`, arc-to-arc tangency.
+`parallel`, `perpendicular`, `symmetric`, arc-to-arc tangency.
+(`point_on_arc`, `radius`, `point_line_distance` and `equal` started on
+this list and have since been built, each without touching the solver.)
 
 Each is a registry entry, so adding one is a self-contained ~20-line
 addition with no changes to the solver:

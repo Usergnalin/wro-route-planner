@@ -258,4 +258,86 @@ check('arc keeps both endpoints on the same radius', () => {
   assertClose(dist(c, b), 100, 1e-7, 'arc endpoint radius');
 });
 
+// ---- equal ------------------------------------------------------------
+check('equal makes two lines the same length', () => {
+  const sk = S.create();
+  const a = S.addPoint(sk, 0, 0), b = S.addPoint(sk, 100, 0);
+  const c = S.addPoint(sk, 0, 50), d = S.addPoint(sk, 40, 50);
+  const l1 = S.addLine(sk, a.id, b.id), l2 = S.addLine(sk, c.id, d.id);
+  S.addConstraint(sk, 'fix', [a.id]);
+  S.addConstraint(sk, 'fix', [b.id]);
+  S.addConstraint(sk, 'fix', [c.id]);
+  S.addConstraint(sk, 'equal', [l1.id, l2.id]);
+
+  const res = S.solve(sk);
+  assert(res.ok, 'solve failed: ' + JSON.stringify(res));
+  assertClose(Math.hypot(d.x - c.x, d.y - c.y), 100, 1e-6,
+    'the free line should have grown to match the pinned one');
+});
+
+check('equal makes two arcs the same radius', () => {
+  const sk = S.create();
+  const c1 = S.addPoint(sk, 0, 0), p1 = S.addPoint(sk, 100, 0), p2 = S.addPoint(sk, 0, 100);
+  const c2 = S.addPoint(sk, 400, 0), q1 = S.addPoint(sk, 440, 0), q2 = S.addPoint(sk, 400, 40);
+  const a1 = S.addArc(sk, c1.id, p1.id, p2.id, true);
+  const a2 = S.addArc(sk, c2.id, q1.id, q2.id, true);
+  S.addConstraint(sk, 'fix', [c1.id]);
+  S.addConstraint(sk, 'fix', [p1.id]);
+  S.addConstraint(sk, 'fix', [c2.id]);
+  S.addConstraint(sk, 'equal', [a1.id, a2.id]);
+
+  const res = S.solve(sk);
+  assert(res.ok, 'solve failed: ' + JSON.stringify(res));
+  assertClose(Math.hypot(q1.x - c2.x, q1.y - c2.y), 100, 1e-6,
+    'the second arc should have taken the first one\'s radius');
+});
+
+check('equal is symmetric — either line can be the one that moves', () => {
+  const sk = S.create();
+  const a = S.addPoint(sk, 0, 0), b = S.addPoint(sk, 40, 0);
+  const c = S.addPoint(sk, 0, 50), d = S.addPoint(sk, 100, 50);
+  const l1 = S.addLine(sk, a.id, b.id), l2 = S.addLine(sk, c.id, d.id);
+  S.addConstraint(sk, 'fix', [a.id]);
+  S.addConstraint(sk, 'fix', [c.id]);
+  S.addConstraint(sk, 'fix', [d.id]);            // pin the LONG one this time
+  S.addConstraint(sk, 'equal', [l1.id, l2.id]);
+
+  assert(S.solve(sk).ok, 'solve failed');
+  assertClose(Math.hypot(b.x - a.x, b.y - a.y), 100, 1e-6,
+    'the short line should have grown instead');
+});
+
+check('equal refuses a line paired with an arc', () => {
+  const sk = S.create();
+  const a = S.addPoint(sk, 0, 0), b = S.addPoint(sk, 100, 0);
+  const line = S.addLine(sk, a.id, b.id);
+  const c = S.addPoint(sk, 300, 0), p = S.addPoint(sk, 340, 0), q = S.addPoint(sk, 300, 40);
+  const arc = S.addArc(sk, c.id, p.id, q.id, true);
+
+  let threw = null;
+  try { S.addConstraint(sk, 'equal', [line.id, arc.id]); } catch (e) { threw = e; }
+  assert(threw !== null,
+    'a length and a radius are not the same quantity; the pairing means nothing');
+});
+
+check('a chain of equals is reported as redundant, not conflicting', () => {
+  // equal(A,B) + equal(B,C) + equal(A,C) is one equation too many, and it
+  // is the natural way people reach for this constraint. It must not be
+  // mistaken for a contradiction.
+  const sk = S.create();
+  const mk = (y) => {
+    const p = S.addPoint(sk, 0, y), q = S.addPoint(sk, 60 + y, y);
+    return S.addLine(sk, p.id, q.id);
+  };
+  const A = mk(0), B = mk(10), C = mk(20);
+  S.addConstraint(sk, 'equal', [A.id, B.id]);
+  S.addConstraint(sk, 'equal', [B.id, C.id]);
+  S.addConstraint(sk, 'equal', [A.id, C.id]);
+
+  const res = S.solve(sk);
+  assert(res.ok, 'the sketch is satisfiable: ' + JSON.stringify(res));
+  assert(res.status === 'redundant',
+    'expected redundant, got ' + res.status);
+});
+
 if (!report()) process.exitCode = 1;

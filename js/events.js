@@ -776,7 +776,8 @@ RP.initEvents = function() {
     if (RP.activeTool === 'constrain' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       var CONSTRAINT_KEYS = {
         c: 'coincident', o: 'point_on_line', h: 'horizontal',
-        v: 'vertical', d: 'distance', a: 'angle', l: 'fix'
+        v: 'vertical', d: 'distance', a: 'angle', l: 'fix',
+        e: 'equal'
       };
       var ckType = CONSTRAINT_KEYS[String(e.key).toLowerCase()];
       if (ckType) {
