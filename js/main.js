@@ -22,7 +22,6 @@ var RP = window.RP || {};
   RP.updateRouteSelect();
   RP.updateSideRouteList();
   RP.updateLayerList();
-  RP.updateMapList();
   RP.updateRobotUI();
   RP.updateCodeConfigUI();
   RP.setTool('construction');

@@ -50,7 +50,6 @@ RP.setEditMode = function(mode) {
   } else {
     RP.selectedMoveId = null;
   }
-  RP._forceMapPanel = false;
   RP.editMode = mode;
 
   if (mode === 'sketch' && RP.setTool) RP.setTool(RP._lastSketchTool);
@@ -81,9 +80,6 @@ RP.updateModeUI = function() {
   show('panel-geometry', sketchOn);
   show('panel-constraints', sketchOn);
   show('instr-panel', !sketchOn && RP.instructionsVisible !== false);
-  // Saved Maps is project management rather than route data, but it is
-  // noise while sketching — hidden unless Load Map explicitly asks for it.
-  show('panel-maps', !sketchOn || !!RP._forceMapPanel);
   var instrBtn = document.getElementById('btn-instr-toggle');
   if (instrBtn) instrBtn.style.display = sketchOn ? 'none' : '';
   if (!sketchOn) {

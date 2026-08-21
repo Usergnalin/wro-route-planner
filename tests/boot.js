@@ -84,7 +84,7 @@ check('no duplicate element ids', () => {
 });
 
 check('bottom panels are split by edit mode', () => {
-  for (const id of ['panel-geometry', 'panel-constraints', 'instr-panel', 'panel-maps']) {
+  for (const id of ['panel-geometry', 'panel-constraints', 'instr-panel']) {
     assert(html.indexOf('id="' + id + '"') >= 0, 'missing panel: ' + id);
   }
   // The sketch-mode lists live in the bottom panels, not the sidebar.
@@ -193,6 +193,38 @@ check('the element-era vocabulary is gone', () => {
   for (const id of ['element-list', 'element-params', 'element-params-section']) {
     assert(html.indexOf('id="' + id + '"') < 0, id + ' should be renamed');
   }
+});
+
+check('projects live in files, not localStorage', () => {
+  // A saved project embeds the mat photo as base64, and photos are large
+  // enough that localStorage's ~5 MB quota fit about one project at a
+  // time -- defeating the point of "saved projects", plural. Save/Open
+  // now go through .json files exclusively; there is nothing left for
+  // the app to read out of or write into localStorage.
+  const js = scripts
+    .filter(s => fs.existsSync(path.join(ROOT, s)))
+    .map(s => fs.readFileSync(path.join(ROOT, s), 'utf8'))
+    .join('\n');
+  // A mention in prose (persist.js explains the switch away from it) is
+  // fine; an actual call is not.
+  assert(!/localStorage\s*[.[]/.test(js), 'localStorage should not be called from any source file');
+
+  const ctx = loadApp(scripts);
+  const RP = ctx.RP;
+  for (const fn of ['saveMapProject', 'loadMapProject', 'deleteMapProject',
+                    'updateMapList', 'exportProject', 'importProject',
+                    '_buildSavePayload', '_writeLocalStorage']) {
+    assert(RP[fn] === undefined, 'RP.' + fn + ' should be gone');
+  }
+  assert(typeof RP.saveProject === 'function', 'RP.saveProject should exist');
+  assert(typeof RP.openProject === 'function', 'RP.openProject should exist');
+
+  for (const id of ['btn-save-map', 'btn-load-map', 'btn-export-project',
+                    'btn-import-project', 'panel-maps', 'map-list']) {
+    assert(html.indexOf('id="' + id + '"') < 0, id + ' should be removed');
+  }
+  assert(html.indexOf('id="btn-save-project"') >= 0, 'Save Project button missing');
+  assert(html.indexOf('id="btn-open-project"') >= 0, 'Open Project button missing');
 });
 
 if (!report()) process.exitCode = 1;

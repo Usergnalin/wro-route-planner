@@ -57,7 +57,7 @@ node build.js          # -> dist/wro-planner.html
 
 That folds the stylesheet and all 18 scripts into **one self-contained ~320 KB HTML file** with no dependencies. Copy it to a USB stick, double-click it, and it works — no install, no admin rights, nothing for a school laptop's policy to block. `build.js` itself has no dependencies either; it is plain Node.
 
-**One thing to know if you are carrying it between machines:** *Save Map* writes to the browser's `localStorage`, which belongs to the browser, not to the file — your saved maps do not travel with the HTML, and they are shared with any other local page you open in that browser. Use **Export Project** for anything you need to move or keep. That is what the `.json` export is for.
+Projects are ordinary `.json` files — **File → Save Project** / **Open Project** — so they travel with you exactly as you'd expect: copy the file, copy the project. There is no in-browser project store to lose track of, and no size limit beyond what your filesystem has.
 
 ---
 
@@ -86,7 +86,7 @@ That folds the stylesheet and all 18 scripts into **one self-contained ~320 KB H
    - **Human-readable step-by-step instructions** (e.g. "Turn right 90°", "Forward 450 mm")
    - **Code template output** — customizable code generation with user-defined templates for `move()`, `turn_right()`, `turn_left()`, comment prefix, default speed, and unit (mm/cm/m/in)
    - Total distance summary
-7. **Save/Load** maps via localStorage or export/import `.json` project files
+7. **Save/Open** projects as `.json` files (mat image + routes + calibration + config, all in one)
 8. **Full undo/redo** (80 levels) for all edits
 
 ---
@@ -106,7 +106,7 @@ wro-route-planner/
 │   │                     UI sync (dropdown + sidebar list)
 │   ├── output.js       # Instruction generation + code template output
 │   │                     (single computeSteps() source for both)
-│   ├── persist.js      # localStorage save/load, JSON export/import, image loading
+│   ├── persist.js      # save/open project as .json, image loading
 │   ├── config.js       # Robot config panel, code template config UI, calibration
 │   │                     prompt, recalibration
 │   ├── events.js       # All mouse/touch/keyboard/button event handlers
@@ -163,16 +163,14 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - [x] Total distance summary
 
 ### Persistence
-- [x] Save/Load map projects to browser localStorage
-- [x] Export/Import projects as `.json` files (includes image, routes, calibration, config)
+- [x] Save/Open projects as `.json` files (includes image, routes, calibration, config)
 - [x] Undo/Redo (80 levels, covers all mutations)
-- [x] Quota handling with clear error message
 
 ### UX
 - [x] Dark theme, consistent styling
 - [x] Tool switching via top-bar tabs and sidebar buttons
 - [x] Right-side info panel (tool, snap, hover position, click position, line/route counts, calibration)
-- [x] Collapsible bottom panels (Instructions/Code, Saved Routes, Saved Maps)
+- [x] Collapsible bottom panels (Construction Lines/Constraints, Instructions/Code)
 - [x] Snap indicator crosshair
 - [x] Construction line drawing preview
 - [x] Route continuation magnet circle on last waypoint
@@ -219,7 +217,6 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - [ ] Replace native `prompt()`/`alert()`/`confirm()` with in-app styled modals
 - [ ] Magic number constants consolidation (screen-distance thresholds, snap radius, etc.)
 - [ ] Tab-dropdown keyboard accessibility (currently hover-only)
-- [ ] Auto-save to localStorage at intervals (with optional opt-in)
 - [ ] Print-friendly route card layout
 - [ ] Dark/light theme toggle
 - [ ] Session auto-recovery (restore last state on accidental close)
@@ -246,7 +243,7 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 6. Switch to **📍 Route** tool. Click near the last waypoint dot and drag to extend the route. Waypoints snap to your construction lines.
 7. Click **🤖 Robot Config** to set chassis dimensions, start position, and heading.
 8. Read the turn-by-turn instructions and copy the generated code from the **📋 Instructions** panel at the bottom.
-9. Save your work: **File** → **💾 Save Map** or **📥 Export Project**.
+9. Save your work: **File** → **💾 Save Project**.
 
 ### For an AI Agent
 1. This is a browser-based offline tool. You can inspect the codebase (see [Architecture](#architecture) above) and the [AUDIT.md](./AUDIT.md) for known issues.
@@ -260,7 +257,7 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 ## Technical Notes
 
 - **Zero dependencies** — no npm, no bundler, no CDN. Pure vanilla JS, CSS, and HTML.
-- **localStorage** for persistence (with ~5 MB quota). For larger projects, use **Export Project** to save as `.json`.
+- **Projects persist as `.json` files** — no browser storage, no size quota. **File → Save Project** / **Open Project**.
 - **Canvas rendering** scales everything by `1/RP.scale` so visual elements stay constant pixel size regardless of zoom.
 - **Snap priority:** construction-line endpoint/intersection → 90° angle from anchor → perpendicular projection onto construction line.
 - **Undo/redo** snapshots all state with `JSON.parse(JSON.stringify(...))` deep clones — safe from reference-sharing bugs.

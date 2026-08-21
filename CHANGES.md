@@ -1,3 +1,66 @@
+# Changes — 2026-08-09 (10)
+
+## Projects are files now — localStorage is gone
+
+The Saved Maps tray stored whole projects in `localStorage`: mat photo as
+base64, plus routes, calibration and config. Mat photos are high
+resolution, so one project was roughly all that fit under the ~5 MB
+quota — which rather defeats the point of a list of *saved projects*.
+It was also the only save that never left the machine, because
+`localStorage` belongs to the browser, not to the HTML file.
+
+So it is all files now, and only files.
+
+### File menu
+
+| was | now |
+|---|---|
+| 📂 Open Image | 🖼️ Open Image |
+| 💾 Save Map (→ localStorage) | 💾 **Save Project** (→ `.json`) |
+| 📂 Load Map (→ reveal the tray) | 📂 **Open Project** (→ file picker) |
+| 📥 Export Project | *(merged into Save Project)* |
+| 📤 Import Project | *(merged into Open Project)* |
+
+Four confusingly-overlapping entries became two. Save and Open were
+already doing the real work under the names Export and Import; they just
+had a second, worse save path sitting next to them.
+
+### Removed
+
+- The **Saved Maps** panel and everything that fed it:
+  `saveMapProject`, `loadMapProject`, `deleteMapProject`, `updateMapList`,
+  `_buildSavePayload`, `_writeLocalStorage`
+- `_forceMapPanel` and the mode-switch logic that revealed the tray in
+  Sketch mode
+- The quota-exceeded alert, which no longer has anything to warn about
+- `.saved-project` CSS
+
+`exportProject` / `importProject` became `saveProject` / `openProject`.
+The on-disk `.json` format is unchanged, so existing project files open
+exactly as before.
+
+### Verification
+
+11 suites pass, goldens byte-identical. A new boot check fails if
+`localStorage` is ever *called* from a source file again (a mention in
+prose is fine — `persist.js` explains why the switch happened), if any of
+the removed functions come back, or if the old buttons and panel ids
+reappear.
+
+Driven through the real UI in Chromium, on both `index.html` and the
+portable `dist/wro-planner.html`:
+
+```
+Save Project  -> My_Route.json, 32,434 bytes on disk
+localStorage  -> [] (untouched)
+wreck route   -> 0 moves
+Open Project  -> 2 moves, generated code byte-identical
+```
+
+No console errors. Portable bundle is now 319 KB, down from 326 KB.
+
+---
+
 # Changes — 2026-08-09 (9)
 
 ## Equal constraint

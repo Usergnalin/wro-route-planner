@@ -641,41 +641,14 @@ RP.initEvents = function() {
 
   // (Route create/switch/delete handlers removed — there is one route.)
 
-  if (RP.dom.btnSaveMap) RP.dom.btnSaveMap.addEventListener('click', RP.saveMapProject);
+  if (RP.dom.btnSaveProject) RP.dom.btnSaveProject.addEventListener('click', RP.saveProject);
 
-  if (RP.dom.btnLoadMap) {
-    RP.dom.btnLoadMap.addEventListener('click', function() {
-      var keys = Object.keys(localStorage).filter(function(k) { return k.startsWith('wro-map-'); });
-      if (keys.length === 0) {
-        alert('No saved maps yet. Use "Save Map" or "Import Project" first.');
-        return;
-      }
-      // The panel is hidden in Sketch mode; asking to load a map is an
-      // explicit request to see it.
-      RP._forceMapPanel = true;
-      if (RP.updateModeUI) RP.updateModeUI();
-      RP.updateMapList();
-      if (RP.dom.mapListEl) {
-        RP.dom.mapListEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        var panel = RP.dom.mapListEl.closest && RP.dom.mapListEl.closest('.side-panel');
-        if (panel) {
-          panel.style.transition = 'background .3s';
-          var oldBg = panel.style.background;
-          panel.style.background = '#3a4a5a';
-          setTimeout(function() { panel.style.background = oldBg; }, 600);
-        }
-      }
-    });
-  }
-
-  if (RP.dom.btnExportProject) RP.dom.btnExportProject.addEventListener('click', RP.exportProject);
-
-  if (RP.dom.btnImportProject) {
-    RP.dom.btnImportProject.addEventListener('click', function() {
+  if (RP.dom.btnOpenProject) {
+    RP.dom.btnOpenProject.addEventListener('click', function() {
       var input = document.createElement('input');
       input.type = 'file';
       input.accept = '.json';
-      input.onchange = function(e) { if (e.target.files[0]) RP.importProject(e.target.files[0]); };
+      input.onchange = function(e) { if (e.target.files[0]) RP.openProject(e.target.files[0]); };
       input.click();
     });
   }
