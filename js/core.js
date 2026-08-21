@@ -356,6 +356,7 @@ RP.computeSnap = function(ix, iy, opts) {
   for (var li = 0; li < RP.lines.length; li++) {
     if (li === excludeLineIdx) continue;
     var l = RP.lines[li];
+    if (l.visible === false) continue;   // hidden means out of the way entirely
     considerPoint(l.x1, l.y1, l.p1);
     considerPoint(l.x2, l.y2, l.p2);
   }
@@ -377,9 +378,9 @@ RP.computeSnap = function(ix, iy, opts) {
 
   // Intersections (still a "precise" construction-line feature)
   for (var i = 0; i < RP.lines.length; i++) {
-    if (i === excludeLineIdx) continue;
+    if (i === excludeLineIdx || RP.lines[i].visible === false) continue;
     for (var j = i + 1; j < RP.lines.length; j++) {
-      if (j === excludeLineIdx) continue;
+      if (j === excludeLineIdx || RP.lines[j].visible === false) continue;
       var a = RP.lines[i], b = RP.lines[j];
       var p = RP.segIntersect(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1, b.x2, b.y2);
       if (!p) continue;
@@ -412,6 +413,7 @@ RP.computeSnap = function(ix, iy, opts) {
   for (var li2 = 0; li2 < RP.lines.length; li2++) {
     if (li2 === excludeLineIdx) continue;
     var l2 = RP.lines[li2];
+    if (l2.visible === false) continue;
     var proj = RP.perpendicularProject(ix, iy, l2.x1, l2.y1, l2.x2, l2.y2);
     if (!proj) continue;
     var pdx = ix - proj.x, pdy = iy - proj.y;

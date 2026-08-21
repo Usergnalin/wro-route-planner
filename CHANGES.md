@@ -1,3 +1,80 @@
+# Changes — 2026-08-09 (11)
+
+## Hide geometry so overlapping lines stop fighting for the cursor
+
+Two lines a few pixels apart made routing miserable: clicking picked
+whichever the loop happened to reach first, and there was no way to get
+one out of the way.
+
+### Hiding
+
+- **Right-click any construction geometry → 🙈 Hide.** Right-click now
+  finds arcs and standalone points too, not just lines — it would have
+  been odd for Hide to work on one kind of geometry only.
+- **The geometry list is shown in Route mode**, not just Sketch mode. It
+  is how you hide a line that overlaps the one you are trying to click,
+  and the only way to bring a hidden one back. Constraints stay a
+  Sketch-mode panel.
+- **Clicking a list row highlights that geometry on the canvas** in Route
+  mode as well. Route mode dims geometry to a guide, and that dimming was
+  unconditionally overriding the selection colour, so the list could not
+  be used to find anything. A line already used by the route highlights
+  through its route segment, so the row never appears to do nothing.
+
+### Hidden now genuinely means inert
+
+Hiding only drew nothing before — the geometry still answered clicks and
+still pulled the snap. All of these skipped hidden lines already, or do
+now:
+
+| | before | now |
+|---|---|---|
+| snap: endpoints | ✗ | ✓ |
+| snap: intersections | ✗ | ✓ |
+| snap: along-line projection | ✗ | ✓ |
+| Select-mode endpoint grab | ✗ | ✓ |
+| Route-mode click | ✓ | ✓ |
+| Sketch-mode click | ✓ | ✓ |
+| right-click menu | ✓ | ✓ |
+
+(Arcs and points were already filtered everywhere; lines were the gap.)
+
+### Nearest wins
+
+Both the Route-mode hit test and the right-click menu returned the *first*
+geometry within range rather than the nearest. With two overlapping lines
+"first" is entity-creation order — arbitrary, and wrong half the time.
+Caught in the browser: right-clicking nearer the lower of two lines
+offered to hide the upper one. Both now pick the nearest.
+
+### Also fixed
+
+`refreshRouteUI` did not refresh the geometry list, so entering Route mode
+showed whatever the list held when it was last built. Harmless while the
+list was Sketch-only; not harmless now.
+
+### Verification
+
+11 suites pass, goldens byte-identical. `tests/construction.js` 32 → 37,
+boot 15 → 16.
+
+In Chromium, two lines 8 px apart:
+
+```
+click at y=297 -> TOP(y=296)          nearest wins
+click at y=303 -> BOTTOM(y=304)
+right-click y=303 -> hides BOTTOM     the nearest one
+  now y=303 hits  -> TOP              hidden one no longer competes
+  snap at y=303   -> projects onto TOP, not the hidden line
+list shows        -> ● Line 1   ○ Line 2
+un-hide from list -> 0 hidden
+highlight from list -> selects and draws yellow
+```
+
+No console errors.
+
+---
+
 # Changes — 2026-08-09 (10)
 
 ## Projects are files now — localStorage is gone

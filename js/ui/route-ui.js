@@ -74,10 +74,11 @@ RP.updateModeUI = function() {
   show('route-mode-section', !sketchOn);          // action list, left
   show('action-params-section', !sketchOn);      // action detail, right
 
-  // Bottom panels follow the mode: sketch gets the geometry and constraint
-  // lists, route gets the generated code. Nothing about routes clutters
-  // Sketch mode.
-  show('panel-geometry', sketchOn);
+  // Bottom panels follow the mode, except the geometry list, which is
+  // wanted in both: in Route mode it is how you hide lines that overlap
+  // the one you are trying to click, and how you find a line you cannot
+  // see. Constraints stay a Sketch-mode concern.
+  show('panel-geometry', true);
   show('panel-constraints', sketchOn);
   show('instr-panel', !sketchOn && RP.instructionsVisible !== false);
   var instrBtn = document.getElementById('btn-instr-toggle');
@@ -100,6 +101,10 @@ RP.updateModeUI = function() {
 RP.refreshRouteUI = function() {
   if (RP.rebuildRouteViews) RP.rebuildRouteViews();
   RP.updateRouteModePanel();
+  // The geometry list is visible in Route mode, so it has to be kept
+  // current here as well — otherwise it shows whatever existed when the
+  // mode was last entered.
+  if (RP.updateLayerList) RP.updateLayerList();
   if (RP.updateInfoPanel) RP.updateInfoPanel();
   if (RP.updateInstructions) RP.updateInstructions();
   if (RP.render) RP.render();
@@ -163,22 +168,23 @@ RP.routeHitTest = function(ix, iy) {
       }
     }
   }
+  // Nearest wins rather than first-in-entity-order. Where two lines
+  // overlap, "first" is arbitrary and picks the wrong one half the time,
+  // which is precisely the situation hiding exists to help with.
+  var bestGeo = null, bestGeoSq = threshSq;
   for (var j = 0; j < RP.lines.length; j++) {
     var l = RP.lines[j];
     if (l.visible === false) continue;
-    if (RP.pointToSegDistSq(ix, iy, l.x1, l.y1, l.x2, l.y2) < threshSq) {
-      return { kind: 'geometry', id: l.id };
-    }
+    var dSqL = RP.pointToSegDistSq(ix, iy, l.x1, l.y1, l.x2, l.y2);
+    if (dSqL < bestGeoSq) { bestGeoSq = dSqL; bestGeo = l.id; }
   }
-  // Arcs live in their own view, and were being missed entirely here.
   for (var k = 0; k < RP.arcs.length; k++) {
     var arc = RP.arcs[k];
     if (arc.visible === false) continue;
-    if (RP.arcHitDistSq(arc.id, ix, iy) < threshSq) {
-      return { kind: 'geometry', id: arc.id };
-    }
+    var dSqA = RP.arcHitDistSq(arc.id, ix, iy);
+    if (dSqA < bestGeoSq) { bestGeoSq = dSqA; bestGeo = arc.id; }
   }
-  return null;
+  return bestGeo === null ? null : { kind: 'geometry', id: bestGeo };
 };
 
 RP.getSelectedMove = function() {

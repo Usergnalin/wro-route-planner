@@ -446,4 +446,81 @@ check('adding a point is undoable', () => {
   assert(RP.points.length === 1, 'redone');
 });
 
+// ---- hiding geometry -------------------------------------------------
+// Hiding exists so overlapping lines stop competing for the cursor while
+// routing. A hidden line that still snaps or still answers a click has
+// not actually got out of the way.
+check('a hidden line is not a snap target', () => {
+  const RP = fresh();
+  const made = RP.addConstructionLine(0, 0, 200, 0);
+
+  const before = RP.computeSnap(100, 3, { kind: 'point' });
+  assert(before && before.kind === 'along-line',
+    'a visible line should project, got ' + JSON.stringify(before));
+
+  RP.setConstructionVisible(made.line.id, false);
+  RP.rebuildLines();
+  assert(RP.computeSnap(100, 3, { kind: 'point' }) === null,
+    'a hidden line must not project');
+  assert(RP.computeSnap(0, 2, { kind: 'point' }) === null,
+    'nor offer its endpoints');
+});
+
+check('a hidden line contributes no intersection snap', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 100, 200, 100);
+  RP.addConstructionLine(100, 0, 100, 200);
+  const hit = RP.computeSnap(102, 102, { kind: 'point' });
+  assert(hit && hit.kind === 'intersection', 'crossing lines should intersect');
+
+  RP.setConstructionVisible(a.line.id, false);
+  RP.rebuildLines();
+  const after = RP.computeSnap(102, 102, { kind: 'point' });
+  assert(!after || after.kind !== 'intersection',
+    'hiding either line removes the intersection, got ' + JSON.stringify(after));
+});
+
+check('a hidden line cannot be picked in Route mode', () => {
+  const RP = fresh();
+  const made = RP.addConstructionLine(0, 0, 200, 0);
+  RP.setEditMode('route');
+
+  const before = RP.routeHitTest(100, 0);
+  assert(before && before.kind === 'geometry', 'a visible line is pickable');
+
+  RP.setConstructionVisible(made.line.id, false);
+  RP.rebuildLines();
+  assert(RP.routeHitTest(100, 0) === null,
+    'a hidden line must not answer a click — that is the whole point');
+});
+
+check('a hidden line cannot be picked in Sketch mode either', () => {
+  const RP = fresh();
+  const made = RP.addConstructionLine(0, 0, 200, 0);
+  assert(RP.sketchHitTest(100, 0) !== null, 'a visible line is pickable');
+
+  RP.setConstructionVisible(made.line.id, false);
+  RP.rebuildLines();
+  assert(RP.sketchHitTest(100, 0) === null, 'hidden is hidden in both modes');
+  assert(RP.sketchPoints().every(pt => pt.id !== made.p1.id),
+    'and its endpoints drop out of the point handles');
+});
+
+check('hiding leaves the geometry itself untouched', () => {
+  const RP = fresh();
+  const made = RP.addConstructionLine(0, 0, 200, 0);
+  RP.setConstructionVisible(made.line.id, false);
+  RP.rebuildLines();
+
+  // Still in the sketch, still in the list, still solvable — just not drawn.
+  assert(!!RP.Sketch.get(RP.sketch, made.line.id), 'the entity must survive');
+  assert(RP.lines.some(l => l.id === made.line.id && l.visible === false),
+    'and stay listed so it can be shown again');
+
+  RP.setConstructionVisible(made.line.id, true);
+  RP.rebuildLines();
+  assert(RP.routeHitTest !== undefined, 'sanity');
+  assert(RP.lines.find(l => l.id === made.line.id).visible !== false, 'shown again');
+});
+
 if (!report()) process.exitCode = 1;

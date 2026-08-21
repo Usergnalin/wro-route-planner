@@ -43,9 +43,12 @@ RP.render = function() {
     // Unselected construction geometry is tinted by solver status:
     // green under-constrained, blue fully constrained, orange redundant,
     // red conflicting.
+    // Route mode dims geometry to a guide — but a line picked in the
+    // geometry list still has to stand out, or the list cannot be used to
+    // find anything.
     var color = isSel ? '#ffee44'
-                      : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44');
-    if (inRouteMode) color = 'rgba(90,150,90,0.45)';   // geometry is only a guide here
+                      : (inRouteMode ? 'rgba(90,150,90,0.45)'
+                                     : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44'));
     // Field walls are fixed reference geometry, not something you drew.
     var isField = l.role === 'field';
     if (isField && !isSel) color = inRouteMode ? 'rgba(200,200,210,0.30)' : 'rgba(190,190,205,0.75)';
@@ -71,8 +74,8 @@ RP.render = function() {
     var arcSel = RP.selectedLineId === arc.id ||
                  (RP.isSketchSelected ? RP.isSketchSelected(arc.id) : false);
     var arcColor = arcSel ? '#ffee44'
-                          : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44');
-    if (inRouteMode) arcColor = 'rgba(90,150,90,0.45)';
+                          : (inRouteMode ? 'rgba(90,150,90,0.45)'
+                                         : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44'));
     var apts = RP.Sketch.arcPoints(RP.sketch, RP.sketch.entities[arc.id], 48);
     if (apts.length < 2) continue;
     ctx.strokeStyle = arcColor;

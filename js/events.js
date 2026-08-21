@@ -104,6 +104,7 @@ RP.initEvents = function() {
         for (var liPri = 0; liPri < RP.lines.length; liPri++) {
           if (RP.lines[liPri].id !== RP.selectedLineId) continue;
           var lPri = RP.lines[liPri];
+          if (lPri.visible === false) break;   // hidden geometry is not grabbable
           if (RP.screenDist(pSel.x, pSel.y, lPri.x1, lPri.y1) < 14) {
             RP.elementDrag = { type: 'line-endpoint', lineIdx: liPri, which: 'start' };
             RP.updateInfoPanel();
@@ -121,6 +122,7 @@ RP.initEvents = function() {
       // Construction line endpoints — also select the line in the layer list
       for (var li = 0; li < RP.lines.length; li++) {
         var l = RP.lines[li];
+        if (l.visible === false) continue;
         if (RP.screenDist(pSel.x, pSel.y, l.x1, l.y1) < 14 ||
             RP.screenDist(pSel.x, pSel.y, l.x2, l.y2) < 14) {
           var which = RP.screenDist(pSel.x, pSel.y, l.x1, l.y1) < 14 ? 'start' : 'end';
@@ -422,6 +424,7 @@ RP.initEvents = function() {
   var ctxMenu       = document.getElementById('ctx-menu');
   var ctxTitle      = document.getElementById('ctx-menu-title');
   var ctxDelBtn     = document.getElementById('ctx-menu-delete');
+  var ctxHideBtn    = document.getElementById('ctx-menu-hide');
   // Only construction geometry is right-clickable. The node and segment
   // entries deleted here mutated route.nodes / route.segments, which are
   // derived views — Route mode's element list is the real editor.
@@ -445,6 +448,22 @@ RP.initEvents = function() {
     if (mr.bottom > window.innerHeight) ctxMenu.style.top  = (y - mr.height - 4) + 'px';
   }
 
+  if (ctxHideBtn) {
+    ctxHideBtn.addEventListener('click', function() {
+      // Right-clicking only ever finds VISIBLE geometry, so this is
+      // always a hide. Unhiding is the geometry list's job — a hidden
+      // line has no clickable presence on the canvas by design.
+      if (ctxTarget && ctxTarget.kind === 'line') {
+        RP.pushHistory('Hide geometry');
+        RP.setConstructionVisible(ctxTarget.lineId, false);
+        if (RP.selectedLineId === ctxTarget.lineId) RP.selectedLineId = null;
+        if (RP.updateLayerList) RP.updateLayerList();
+        RP.render();
+      }
+      hideCtxMenu();
+    });
+  }
+
   if (ctxDelBtn) {
     ctxDelBtn.addEventListener('click', function() {
       if (ctxTarget && ctxTarget.kind === 'line') RP.removeConstructionLine(ctxTarget.lineId);
@@ -465,16 +484,44 @@ RP.initEvents = function() {
     if (!RP.img) return;
     var p = RP.screenToImage(e.clientX, e.clientY);
 
-    // Construction lines are the only right-click target.
-    var lineThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
+    // Construction geometry is the only right-click target, and only
+    // while it is visible — a hidden line has no presence to click.
+    // Points first: they are the smallest target and sit on top.
+    var geoThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
+    var ptThresh = RP.snapThresholdImg(RP.ACTION_POINT_HIT_PX || 13);
+    for (var pi = 0; pi < RP.points.length; pi++) {
+      var sp = RP.points[pi];
+      if (sp.visible === false) continue;
+      if (RP.dist(p.x, p.y, sp.x, sp.y) < ptThresh) {
+        showCtxMenu(e.clientX, e.clientY, sp.name || ('Point ' + (pi + 1)),
+          { kind: 'line', lineId: sp.id });
+        return;
+      }
+    }
+    // Nearest wins among lines and arcs. First-in-order would pick an
+    // arbitrary one of two overlapping lines, and hiding the wrong one is
+    // worse than useless.
+    var bestId = null, bestTitle = null, bestSq = geoThreshSq;
+    for (var ai = 0; ai < RP.arcs.length; ai++) {
+      var arc = RP.arcs[ai];
+      if (arc.visible === false) continue;
+      var dSqA = RP.arcHitDistSq(arc.id, p.x, p.y);
+      if (dSqA < bestSq) {
+        bestSq = dSqA; bestId = arc.id;
+        bestTitle = arc.label ? ('Arc: ' + arc.label) : ('Arc ' + (ai + 1));
+      }
+    }
     for (var li = 0; li < RP.lines.length; li++) {
       var l = RP.lines[li];
       if (l.visible === false) continue;
       var ldSq = RP.pointToSegDistSq(p.x, p.y, l.x1, l.y1, l.x2, l.y2);
-      if (ldSq < lineThreshSq) {
-        showCtxMenu(e.clientX, e.clientY, l.label ? ('Line: ' + l.label) : ('Line ' + (li + 1)), { kind: 'line', lineId: l.id });
-        return;
+      if (ldSq < bestSq) {
+        bestSq = ldSq; bestId = l.id;
+        bestTitle = l.label ? ('Line: ' + l.label) : ('Line ' + (li + 1));
       }
+    }
+    if (bestId !== null) {
+      showCtxMenu(e.clientX, e.clientY, bestTitle, { kind: 'line', lineId: bestId });
     }
   });
 

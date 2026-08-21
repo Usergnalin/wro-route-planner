@@ -147,6 +147,12 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - [x] Move waypoints and line endpoints by dragging (Select tool)
 - [x] Delete waypoints via right-click
 - [x] Show/hide individual routes
+- [x] Show/hide individual construction lines, arcs and points — from the
+      geometry list or by right-clicking them. Hidden geometry is fully
+      inert: it is not drawn, not snapped to, and not clickable, which is
+      how you get a line out of the way when several overlap
+- [x] Geometry list available in **both** Sketch and Route mode; clicking a
+      row highlights that geometry on the canvas
 - [x] Robot start position marker with heading arrow
 - [x] Snap system: endpoints, intersections, 90° angle, along-line projection
 - [x] Ctrl to temporarily disable snap

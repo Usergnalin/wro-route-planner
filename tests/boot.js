@@ -227,4 +227,28 @@ check('projects live in files, not localStorage', () => {
   assert(html.indexOf('id="btn-open-project"') >= 0, 'Open Project button missing');
 });
 
+check('geometry can be hidden from the menu and listed in both modes', () => {
+  assert(html.indexOf('id="ctx-menu-hide"') >= 0, 'right-click Hide is missing');
+
+  const ctx = loadApp(scripts);
+  const RP = ctx.RP;
+  // The geometry list is shown in Route mode too: it is how you hide a
+  // line that overlaps the one you are trying to click, and how you find
+  // one you have already hidden.
+  const shown = {};
+  ctx.document.getElementById = (id) => ({
+    style: { set display(v) { shown[id] = v; }, get display() { return shown[id]; } },
+    classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
+    addEventListener() {}, appendChild() {}, querySelector() { return null; },
+    querySelectorAll() { return []; }, children: [], textContent: '', innerHTML: ''
+  });
+  RP.editMode = 'sketch';
+  RP.updateModeUI();
+  assert(shown['panel-geometry'] !== 'none', 'geometry list hidden in Sketch mode');
+  RP.editMode = 'route';
+  RP.updateModeUI();
+  assert(shown['panel-geometry'] !== 'none', 'geometry list should stay visible in Route mode');
+  assert(shown['panel-constraints'] === 'none', 'constraints stay a Sketch-mode panel');
+});
+
 if (!report()) process.exitCode = 1;
