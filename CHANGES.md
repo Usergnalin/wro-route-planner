@@ -1,3 +1,34 @@
+# Changes — 2026-08-22 (5)
+
+## Fix: the route action list had no scrollbar
+
+`#action-list` (Route mode's list of moves/turns/checkpoints) had no
+`overflow` rule at all, and its parent, `#left-sidebar`, is
+`overflow:hidden`. A route with enough actions to exceed the sidebar's
+height just had the excess silently clipped — no scrollbar, and the
+`↻ Turn` / `🏁 Checkpoint` / `⇄ Reverse route` buttons below it could get
+pushed out of view entirely with no way to reach them.
+
+`#route-mode-section` is the sole visible sidebar section in Route mode
+(`RP.setEditMode` hides everything else), so this gives it the same
+treatment `.layers-section`/`#layer-list` already has for the sketch
+geometry list: the section becomes a flex column filling the sidebar's
+full height, and `#action-list` alone gets `flex:1; overflow-y:auto` —
+it scrolls while the header, hint, and button rows around it stay put.
+
+CSS only; no JS or model changes.
+
+### Verification
+
+12 suites pass (unaffected — CSS only). Verified in Chromium with a
+25-move route in a deliberately short viewport: list content (450px)
+exceeded its visible area (275px), `overflow-y` computed to `auto`,
+scrolling actually revealed the later items, and the Reverse route
+button stayed within the sidebar's bounds instead of being pushed off
+the bottom.
+
+---
+
 # Changes — 2026-08-22 (4)
 
 ## Per-move-kind default speeds

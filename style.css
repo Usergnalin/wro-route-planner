@@ -33,6 +33,12 @@ body{background:#1a1a1a;color:#ccc;font-family:-apple-system,BlinkMacSystemFont,
 #left-sidebar{width:175px;background:#242424;border-right:1px solid #444;flex-shrink:0;overflow:hidden;padding:8px;display:flex;flex-direction:column;gap:10px;font-size:12px}
 .layers-section{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
 #layer-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:1px}
+/* Route mode's action list is the sole visible sidebar section (see
+   RP.setEditMode), so it fills the leftover height the same way
+   .layers-section/#layer-list does — long routes scroll instead of
+   running the Turn/Checkpoint/Reverse buttons off the bottom. */
+#route-mode-section{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+#action-list{overflow-y:auto;flex:1;min-height:0}
 .layer-group-title{color:#555;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:4px 2px 2px;border-top:1px solid #333;margin-top:2px}
 .layer-group-title:first-child{border-top:none;margin-top:0}
 .layer-item{display:flex;align-items:center;gap:4px;padding:2px 3px;border-radius:3px;cursor:pointer}
