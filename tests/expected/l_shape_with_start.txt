@@ -3,9 +3,9 @@
 # Total distance: 450.0 mm
 # Start at (100.0, 300.0) heading 0°
 # ─────────────────────────────────────
-robot.turn_arc(angle=-90.0, speed=200)
-robot.move_distance(distance=100.0, speed=200)
-robot.turn_arc(angle=90.0, speed=200)
-robot.move_distance(distance=200.0, speed=200)
-robot.turn_arc(angle=90.0, speed=200)
-robot.move_distance(distance=150.0, speed=200)
+robot.turn_in_place(-90.0, power=200)
+robot.move_distance(100.0, power=200)
+robot.turn_in_place(90.0, power=200)
+robot.move_distance(200.0, power=200)
+robot.turn_in_place(90.0, power=200)
+robot.move_distance(150.0, power=200)

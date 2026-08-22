@@ -75,10 +75,12 @@ RP.computeSteps = function(route) {
         steps.push({ kind: 'turn', deg: turnInit, startLeg: true,
                      actionId: firstTurn ? firstTurn.id : null,
                      speed: firstTurn ? firstTurn.speed : null,
-                     style: firstTurn ? firstTurn.style : RP.DEFAULT_TURN_STYLE });
+                     style: firstTurn ? firstTurn.style : RP.DEFAULT_TURN_STYLE,
+                     extraArgs: firstTurn ? firstTurn.extraArgs : '' });
       }
       steps.push({ kind: 'forward', mm: mmFromStart, startLeg: true,
-                   actionId: el0.id, reverse: backward0, speed: el0.speed });
+                   actionId: el0.id, reverse: backward0, speed: el0.speed,
+                   extraArgs: el0.extraArgs });
       prevHeading = legHeading;
     } else {
       prevHeading = RP.robotConfig.startHeading;
@@ -89,7 +91,8 @@ RP.computeSteps = function(route) {
     var it = items[i];
 
     if (it.kind === 'checkpoint') {
-      steps.push({ kind: 'checkpoint', actionId: it.action.id, name: it.action.name || 'checkpoint' });
+      steps.push({ kind: 'checkpoint', actionId: it.action.id, name: it.action.name || 'checkpoint',
+                   extraArgs: it.action.extraArgs });
       continue;
     }
 
@@ -102,7 +105,7 @@ RP.computeSteps = function(route) {
         var typedDeg = Number(t.angle);
         if (Math.abs(typedDeg) > 0.01) {
           steps.push({ kind: 'turn', deg: typedDeg, extra: t.angleMode === RP.TURN_FIXED,
-                       actionId: t.id, speed: t.speed, style: t.style });
+                       actionId: t.id, speed: t.speed, style: t.style, extraArgs: t.extraArgs });
           if (prevHeading !== null) prevHeading = ((prevHeading + typedDeg) % 360 + 360) % 360;
         }
         continue;
@@ -115,7 +118,7 @@ RP.computeSteps = function(route) {
       if (prevHeading === null || !next || next.entryHeading === null) continue;
       var deg = RP.turnAngle(prevHeading, next.entryHeading);
       if (Math.abs(deg) > 0.5) {
-        steps.push({ kind: 'turn', deg: deg, actionId: t.id, speed: t.speed, style: t.style });
+        steps.push({ kind: 'turn', deg: deg, actionId: t.id, speed: t.speed, style: t.style, extraArgs: t.extraArgs });
       }
       prevHeading = next.entryHeading;
       continue;
@@ -153,13 +156,17 @@ RP.computeSteps = function(route) {
       } else if (mode === RP.MOVE_LINETRACE_JUNCT) {
         steps.push({ kind: 'linetrace_junct', junctions: el.junctions || 1, reverse: backward, speed: el.speed });
       } else if (mode === RP.MOVE_WALL_ALIGN) {
-        steps.push({ kind: 'wall_align', reverse: backward, speed: el.speed });
+        // The solver already knows this leg's length (it pinned the exit
+        // point to stand `clearance` off the wall) — hand it out as
+        // expected_distance so a real robot can slow down on approach
+        // instead of driving blind at wall_align speed the whole leg.
+        steps.push({ kind: 'wall_align', reverse: backward, speed: el.speed, expectedDistanceMm: legMm });
       } else {
         steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: backward, speed: el.speed });
       }
     }
 
-    for (var b = before; b < steps.length; b++) steps[b].actionId = el.id;
+    for (var b = before; b < steps.length; b++) { steps[b].actionId = el.id; steps[b].extraArgs = el.extraArgs; }
     prevHeading = it.exitHeading;
   }
 
@@ -188,6 +195,9 @@ RP.generateCode = function(route) {
   var steps = RP.computeSteps(route);
   var lines_out = [];
   function spd(st) { return (st.speed != null && st.speed !== '') ? st.speed : speed; }
+  // Raw, unescaped: the whole point is that the user typed exactly what
+  // they want spliced into their own template, comma and all.
+  function extra(st) { return st.extraArgs || ''; }
 
   lines_out.push(cp + ' Route: ' + route.name);
   lines_out.push(cp + ' Path: ' + (moveCount + 1) + ' nodes, ' + moveCount + ' segments');
@@ -217,14 +227,16 @@ RP.generateCode = function(route) {
         .replace(/\{angle\}/g, st.deg.toFixed(1))
         .replace(/\{speed\}/g, spd(st))
         .replace(/\{radius\}/g, '0')
-        .replace(/\{distance\}/g, '0'));
+        .replace(/\{distance\}/g, '0')
+        .replace(/\{extra_args\}/g, extra(st)));
     } else if (st.kind === 'arc') {
       var arcTmpl = RP.codeConfig.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
       lines_out.push(arcTmpl
         .replace(/\{angle\}/g, st.angle.toFixed(1))
         .replace(/\{radius\}/g, (st.radiusMm / uFactor).toFixed(1))
         .replace(/\{speed\}/g, spd(st))
-        .replace(/\{distance\}/g, ((st.mm) / uFactor).toFixed(1)));
+        .replace(/\{distance\}/g, ((st.mm) / uFactor).toFixed(1))
+        .replace(/\{extra_args\}/g, extra(st)));
     } else if (st.kind === 'teleport') {
       var dx2 = st.toX - st.fromX, dy2 = st.toY - st.fromY;
       var distMm2 = RP.calibration ? Math.hypot(dx2, dy2) / RP.calibration.pixelsPerMm : 0;
@@ -235,21 +247,27 @@ RP.generateCode = function(route) {
         st.toX.toFixed(0) + ',' + st.toY.toFixed(0) + ')');
       lines_out.push('');
     } else if (st.kind === 'checkpoint') {
-      var cpTmpl = RP.codeConfig.checkpointTemplate || 'if callable({name}): {name}()';
-      lines_out.push(cpTmpl.replace(/\{name\}/g, st.name || 'checkpoint'));
+      var cpTmpl = RP.codeConfig.checkpointTemplate || 'if callable({name}): {name}({extra_args})';
+      lines_out.push(cpTmpl
+        .replace(/\{name\}/g, st.name || 'checkpoint')
+        .replace(/\{extra_args\}/g, extra(st)));
     } else if (st.kind === 'wall_align') {
-      lines_out.push((RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed})')
+      lines_out.push((RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed}, {expected_distance})')
         .replace(/\{reversed\}/g, st.reverse ? 'True' : 'False')
-        .replace(/\{speed\}/g, spd(st)));
+        .replace(/\{speed\}/g, spd(st))
+        .replace(/\{expected_distance\}/g, ((st.expectedDistanceMm || 0) / uFactor).toFixed(1))
+        .replace(/\{extra_args\}/g, extra(st)));
     } else if (st.kind === 'linetrace') {
       lines_out.push(RP.codeConfig.lineTraceDistTemplate
         .replace(/\{distance\}/g, ((st.mm + (st.offsetMm || 0)) / uFactor).toFixed(1))
         .replace(/\{speed\}/g, spd(st))
-        .replace(/\{angle\}/g, '0'));
+        .replace(/\{angle\}/g, '0')
+        .replace(/\{extra_args\}/g, extra(st)));
     } else if (st.kind === 'linetrace_junct') {
       lines_out.push(RP.codeConfig.lineTraceJunctTemplate
         .replace(/\{junctions\}/g, st.junctions)
-        .replace(/\{speed\}/g, spd(st)));
+        .replace(/\{speed\}/g, spd(st))
+        .replace(/\{extra_args\}/g, extra(st)));
     } else {
       // forward
       var mag = (st.mm + (st.offsetMm || 0)) / uFactor;
@@ -257,7 +275,8 @@ RP.generateCode = function(route) {
       lines_out.push(RP.codeConfig.forwardTemplate
         .replace(/\{distance\}/g, distOut)
         .replace(/\{speed\}/g, spd(st))
-        .replace(/\{angle\}/g, '0'));
+        .replace(/\{angle\}/g, '0')
+        .replace(/\{extra_args\}/g, extra(st)));
     }
   }
 

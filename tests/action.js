@@ -238,7 +238,7 @@ check('a blank pivot template falls back to the spin template', () => {
   RP.codeConfig.turnPivotLeftTemplate = 'robot.pivot_left({angle}, {speed})';
   const pivot = RP.generateCode(route);
 
-  assert(spin.indexOf('robot.turn_arc(angle=90.0') >= 0,
+  assert(spin.indexOf('robot.turn_in_place(90.0') >= 0,
     'blank pivot template emits the ordinary turn');
   assert(pivot.indexOf('robot.pivot_left(90.0, 200)') >= 0,
     'a filled-in pivot template is used instead, got:\n' + pivot);
@@ -511,6 +511,66 @@ check('v4 lift translates the old hidden field to visible', () => {
   assert(moves.length === 1, 'the move survived the lift');
   assert(moves[0].visible === false, 'hidden:true became visible:false');
   assert(!('hidden' in moves[0]), 'the old field name is gone, not just shadowed');
+});
+
+// ---- {extra_args}: raw user text spliced into an action's own template --
+check('extraArgs is blank by default on a fresh move, turn and checkpoint', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  assert(e1.extraArgs === '', 'a fresh move starts with no extra args');
+  assert(autos(route)[0].extraArgs === '', 'a fresh auto turn starts with no extra args');
+  const cp = RP.insertCheckpoint(route.id, e1.id, 'cp');
+  assert(cp.extraArgs === '', 'a fresh checkpoint starts with no extra args');
+});
+
+check('a v4 lift with no extraArgs field does not crash codegen', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const route = {
+    id: 1, name: 'v4', visible: true,
+    elements: [
+      { id: 101, entityId: a.line.id, move: 'forward', flip: false, reverse: false,
+        speed: null, offset: 0, junctions: null, teleportName: null,
+        turnSpeed: null, extraTurnsBefore: [], checkpoint: null, hidden: false }
+    ]
+  };
+  RP.routes = [route];
+  RP.nextActionId = 200;
+  RP.migrateRoutesToActions();
+  const code = RP.generateCode(route);
+  assert(!/\{extra_args\}/.test(code), 'a missing extraArgs field must fall back to blank, not leak the token');
+});
+
+check('extraArgs on a forward move lands only on that move’s own line', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  RP.setMoveProps(route.id, e1.id, { extraArgs: ', blocking=True' });
+  const code = RP.generateCode(route);
+  const lines = code.split('\n').filter(l => l.indexOf('move_distance') >= 0);
+  assert(lines.length === 2, 'both legs still generate a move line, got ' + lines.length);
+  assert(lines[0].indexOf('blocking=True') >= 0, 'the first move carries its own extra args');
+  assert(lines[1].indexOf('blocking=True') < 0, 'the second move must not inherit the first’s extra args');
+});
+
+check('extraArgs on a turn lands only on that turn’s own line', () => {
+  const RP = fresh();
+  const { route } = lRoute(RP);
+  const corner = autos(route)[1];
+  RP.setActionProps(route.id, corner.id, { extraArgs: ', slow=True' });
+  const code = RP.generateCode(route);
+  const lines = code.split('\n').filter(l => l.indexOf('turn_in_place') >= 0);
+  assert(lines.length === 1, 'one geometric turn at the corner, got ' + lines.length);
+  assert(lines[0].indexOf('slow=True') >= 0, 'the corner turn carries its extra args, got:\n' + code);
+});
+
+check('extraArgs on a checkpoint lands inside its own call', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  const cp = RP.insertCheckpoint(route.id, e1.id, 'grab');
+  RP.setActionProps(route.id, cp.id, { extraArgs: "reason='junction'" });
+  const code = RP.generateCode(route);
+  assert(/if callable\(grab\): grab\(reason='junction'\)/.test(code),
+    'expected the extra args inside the checkpoint call, got:\n' + code);
 });
 
 if (!report()) process.exitCode = 1;

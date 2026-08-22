@@ -218,19 +218,19 @@
   <h4 class="modal-section">Code templates</h4>
   <div class="tmpl-grid">
   <label>Comment Prefix <input type="text" id="code-comment" value="#"></label>
-  <label>Forward Template <input type="text" id="code-forward" value="robot.move_distance(distance={distance}, speed={speed})"></label>
-  <label>Turn <small style="color:#888">(+CW / -CCW)</small> <input type="text" id="code-turn" value="robot.turn_arc(angle={angle}, speed={speed})"></label>
+  <label>Forward Template <input type="text" id="code-forward" value="robot.move_distance({distance}, power={speed}{extra_args})"></label>
+  <label>Turn <small style="color:#888">(+CW / -CCW)</small> <input type="text" id="code-turn" value="robot.turn_in_place({angle}, power={speed}{extra_args})"></label>
   <label>Turn · pivot left <small style="color:#888">(blank = same as Turn)</small> <input type="text" id="code-turn-pivot-l" value="" placeholder="robot.pivot_left({angle}, {speed})"></label>
   <label>Turn · pivot right <small style="color:#888">(blank = same as Turn)</small> <input type="text" id="code-turn-pivot-r" value="" placeholder="robot.pivot_right({angle}, {speed})"></label>
   <label>Arc <small style="color:#888">(angle +fwd/-back, radius +right/-left)</small> <input type="text" id="code-turn-arc" value="robot.turn_arc(angle={angle}, speed={speed}, radius={radius})"></label>
-  <label>Wall Align <input type="text" id="code-wall-align" value="robot.wall_align(reversed={reversed}, speed={speed})"></label>
-  <label>Line Trace Dist <input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed})"></label>
-  <label>Line Trace Junct <input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed})"></label>
-  <label>Checkpoint <input type="text" id="code-checkpoint" value="if callable({name}): {name}()"></label>
+  <label>Wall Align <input type="text" id="code-wall-align" value="robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})"></label>
+  <label>Line Trace Dist <input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed}{extra_args})"></label>
+  <label>Line Trace Junct <input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed}{extra_args})"></label>
+  <label>Checkpoint <input type="text" id="code-checkpoint" value="if callable({name}): {name}({extra_args})"></label>
   <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>
   <label>Unit <input type="text" id="code-unit" value="mm"></label>
   </div>
-  <div class="hint">Placeholders: {distance}, {angle}, {speed}, {reversed}, {junctions}, {radius}, {name}. Leave a pivot template blank to fall back to the plain turn.</div>
+  <div class="hint">Placeholders: {distance}, {angle}, {speed}, {reversed}, {junctions}, {radius}, {name}, {expected_distance} (wall align only), {extra_args} (per-action, typed on the action itself in Route mode). Leave a pivot template blank to fall back to the plain turn.</div>
   </div>
 </div>
 

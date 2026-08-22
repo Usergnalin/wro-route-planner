@@ -1,3 +1,76 @@
+# Changes — 2026-08-22 (2)
+
+## New default code templates, wall_align expected_distance, per-action extra args
+
+### Default templates
+
+The defaults now match the target robot API's actual calling convention:
+
+- Forward: `robot.move_distance({distance}, power={speed})` (was
+  `robot.move_distance(distance={distance}, speed={speed})`)
+- Turn: `robot.turn_in_place({angle}, power={speed})` (was
+  `robot.turn_arc(angle={angle}, speed={speed})` — turn and arc used to
+  share a function name, which was never right for a plain spin)
+- Wall align: `robot.wall_align(reversed={reversed}, power={speed},
+  expected_distance={expected_distance})`
+- Arc's default (`robot.turn_arc(angle={angle}, speed={speed},
+  radius={radius})`) is untouched — it already had the right shape.
+
+These are just the *shipped defaults*; the Robot & Code panel's template
+fields are unchanged and still fully user-editable, so an existing
+project that already customized its templates is unaffected — this only
+changes what a brand new project starts with.
+
+### `{expected_distance}` for wall_align
+
+The point-line-distance solver already knows exactly how far a wall_align
+leg is once its exit point is pinned `clearance` off the wall — this
+change just hands that number out. The idea: a real robot can use it to
+start slowing down on approach instead of driving at `wall_align` speed
+blind for the whole leg, and only backing off once it actually feels the
+wall. Computed in `RP.computeSteps` alongside every other wall_align
+step (`js/output.js`), so it's always the solved distance, not a stale
+one — changing `frontClearance`/`rearClearance` and re-solving moves it
+right along with the stopping point.
+
+### `{extra_args}`: per-action free text
+
+Every move, turn and checkpoint now carries its own `extraArgs` string
+(default blank), editable from an "Extra args" field in that action's
+detail panel in Route mode. It's spliced verbatim into `{extra_args}`
+wherever that token sits in the action's own template — literally
+whatever the user types, comma and all, so it fits whatever position a
+project's own template puts it in.
+
+This is deliberately not a structured key/value system: the app can't
+anticipate what a given robot API needs (`blocking=True`, a retry count,
+a per-move sensor threshold, ...), so instead of guessing at a schema,
+the user just writes the Python (or whatever) themselves and the
+template splices it in raw. Blank is the default and vanishes cleanly —
+existing projects and routes are unaffected until someone types
+something.
+
+Added `{extra_args}` to every templated line except arc's (arc's default
+is intentionally untouched, per above — a user who wants extra args on
+arc moves can add the token to their own custom arc template, the
+substitution already handles it either way).
+
+### Verification
+
+12 suites pass. All 7 golden fixtures were regenerated (`node
+tests/golden.js --update`) and the diff reviewed line by line — every
+change is exactly the template-text swap above, nothing else moved.
+`action model` gained extraArgs tests (34 → 39); `field + wall align`
+gained expected_distance tests (14 → 18).
+
+In Chromium: typed extra args into a move, a turn, and a checkpoint via
+their real detail-panel inputs and confirmed each one lands only on its
+own generated line, never bleeding onto a neighboring action; confirmed
+a wall_align move emits `expected_distance=<solved leg length>`. No
+console errors.
+
+---
+
 # Changes — 2026-08-22 (1)
 
 ## Hide route lines, not just construction lines

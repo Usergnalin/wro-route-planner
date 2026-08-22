@@ -2,5 +2,5 @@
 # Path: 3 nodes, 2 segments
 # Total distance: 400.0 mm
 # ─────────────────────────────────────
-robot.move_distance(distance=-200.0, speed=200)
-robot.move_distance(distance=-200.0, speed=200)
+robot.move_distance(-200.0, power=200)
+robot.move_distance(-200.0, power=200)

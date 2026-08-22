@@ -103,12 +103,12 @@ RP.TOOL_LABELS = {
 // Code configuration
 RP.codeConfig = {
   commentPrefix: '#',
-  forwardTemplate: 'robot.move_distance(distance={distance}, speed={speed})',
-  turnTemplate: 'robot.turn_arc(angle={angle}, speed={speed})',
+  forwardTemplate: 'robot.move_distance({distance}, power={speed}{extra_args})',
+  turnTemplate: 'robot.turn_in_place({angle}, power={speed}{extra_args})',
   turnArcTemplate: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})',
-  wallAlignTemplate: 'robot.wall_align(reversed={reversed}, speed={speed})',
-  lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
-  lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
+  wallAlignTemplate: 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})',
+  lineTraceDistTemplate: 'line_trace_distance({distance}, {speed}{extra_args})',
+  lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed}{extra_args})',
   defaultSpeed: 200,
   defaultUnit: 'mm'
 };
@@ -145,17 +145,21 @@ RP.DEFAULT_ROBOT_CONFIG = {
 };
 RP.DEFAULT_CODE_CONFIG_VALUES = {
   commentPrefix: '#',
-  forwardTemplate: 'robot.move_distance(distance={distance}, speed={speed})',
-  turnTemplate: 'robot.turn_arc(angle={angle}, speed={speed})',
+  forwardTemplate: 'robot.move_distance({distance}, power={speed}{extra_args})',
+  turnTemplate: 'robot.turn_in_place({angle}, power={speed}{extra_args})',
   // Blank = fall back to turnTemplate. Fill these in only if the robot
   // has a real one-wheel pivot that differs from a centre spin.
   turnPivotLeftTemplate: '',
   turnPivotRightTemplate: '',
   turnArcTemplate: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})',
-  wallAlignTemplate: 'robot.wall_align(reversed={reversed}, speed={speed})',
-  lineTraceDistTemplate: 'line_trace_distance({distance}, {speed})',
-  lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed})',
-  checkpointTemplate: 'if callable({name}): {name}()',
+  // expected_distance is how far the robot should have to travel before
+  // it actually reaches the wall — the point-line-distance solver already
+  // knows this leg's length, so a real robot can use it to slow down on
+  // approach instead of driving blind at wall_align speed the whole time.
+  wallAlignTemplate: 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})',
+  lineTraceDistTemplate: 'line_trace_distance({distance}, {speed}{extra_args})',
+  lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed}{extra_args})',
+  checkpointTemplate: 'if callable({name}): {name}({extra_args})',
   defaultSpeed: 200,
   defaultUnit: 'mm'
 };

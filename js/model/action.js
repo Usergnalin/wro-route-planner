@@ -70,7 +70,11 @@ RP.makeTurnAction = function(pointId, opts) {
     angleMode: opts.angleMode === RP.TURN_FIXED ? RP.TURN_FIXED : RP.TURN_AUTO,
     angle: opts.angle != null ? Number(opts.angle) : null,
     speed: opts.speed != null ? opts.speed : null,
-    style: opts.style || RP.DEFAULT_TURN_STYLE
+    style: opts.style || RP.DEFAULT_TURN_STYLE,
+    // Raw text spliced into {extra_args} in this action's code template,
+    // verbatim — the user's own comma and all, so it can be dropped into
+    // any position that template happens to put it in.
+    extraArgs: opts.extraArgs || ''
   };
 };
 
@@ -93,7 +97,9 @@ RP.makeMoveAction = function(entityId, entType, opts) {
     // you might want separately, so a move gets its own flag rather than
     // reading the entity's. Same name/polarity as every other visible
     // flag in the app (route.visible, line.visible, ...).
-    visible: opts.visible !== false
+    visible: opts.visible !== false,
+    // See makeTurnAction: raw text for this move's {extra_args}.
+    extraArgs: opts.extraArgs || ''
   };
 };
 
@@ -106,7 +112,9 @@ RP.makeCheckpointAction = function(pointId, name) {
     id: RP.nextActionId++,
     type: RP.ACTION_CHECKPOINT,
     pointId: pointId != null ? pointId : null,
-    name: name || 'checkpoint'
+    name: name || 'checkpoint',
+    // See makeTurnAction: raw text for this checkpoint's {extra_args}.
+    extraArgs: ''
   };
 };
 

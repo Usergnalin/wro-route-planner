@@ -42,16 +42,16 @@ RP.ensureCodeConfig = function() {
   var cfg = RP.codeConfig;
   if (!cfg) { RP.codeConfig = RP.freshCodeConfig(); cfg = RP.codeConfig; }
   if (!cfg.commentPrefix) cfg.commentPrefix = d.commentPrefix || '#';
-  if (!cfg.forwardTemplate) cfg.forwardTemplate = d.forwardTemplate || 'robot.move_distance(distance={distance}, speed={speed})';
-  if (!cfg.turnTemplate) cfg.turnTemplate = d.turnTemplate || 'robot.turn_arc(angle={angle}, speed={speed})';
+  if (!cfg.forwardTemplate) cfg.forwardTemplate = d.forwardTemplate || 'robot.move_distance({distance}, power={speed}{extra_args})';
+  if (!cfg.turnTemplate) cfg.turnTemplate = d.turnTemplate || 'robot.turn_in_place({angle}, power={speed}{extra_args})';
   if (!cfg.turnArcTemplate) cfg.turnArcTemplate = d.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
-  if (!cfg.wallAlignTemplate) cfg.wallAlignTemplate = d.wallAlignTemplate || 'robot.wall_align(reversed={reversed}, speed={speed})';
+  if (!cfg.wallAlignTemplate) cfg.wallAlignTemplate = d.wallAlignTemplate || 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})';
   // Migrate old split templates
-  if (!cfg.turnTemplate && (cfg.turnRightTemplate || cfg.turnLeftTemplate)) cfg.turnTemplate = 'robot.turn_arc(angle={angle}, speed={speed})';
+  if (!cfg.turnTemplate && (cfg.turnRightTemplate || cfg.turnLeftTemplate)) cfg.turnTemplate = 'robot.turn_in_place({angle}, power={speed}{extra_args})';
   delete cfg.turnRightTemplate; delete cfg.turnLeftTemplate;
-  if (!cfg.lineTraceDistTemplate) cfg.lineTraceDistTemplate = d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
-  if (!cfg.lineTraceJunctTemplate) cfg.lineTraceJunctTemplate = d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
-  if (!cfg.checkpointTemplate) cfg.checkpointTemplate = d.checkpointTemplate || 'if callable({name}): {name}()';
+  if (!cfg.lineTraceDistTemplate) cfg.lineTraceDistTemplate = d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed}{extra_args})';
+  if (!cfg.lineTraceJunctTemplate) cfg.lineTraceJunctTemplate = d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed}{extra_args})';
+  if (!cfg.checkpointTemplate) cfg.checkpointTemplate = d.checkpointTemplate || 'if callable({name}): {name}({extra_args})';
   // Blank is a meaningful value here, so only backfill when absent.
   if (cfg.turnPivotLeftTemplate === undefined) cfg.turnPivotLeftTemplate = d.turnPivotLeftTemplate || '';
   if (cfg.turnPivotRightTemplate === undefined) cfg.turnPivotRightTemplate = d.turnPivotRightTemplate || '';
@@ -66,17 +66,17 @@ RP.updateCodeConfigFromUI = function() {
   var d = RP.DEFAULT_CODE_CONFIG_VALUES || {};
   function _el(id) { var e = document.getElementById(id); return e && e.value !== undefined ? e.value : ''; }
   RP.codeConfig.commentPrefix = _strOr(_el('code-comment'), d.commentPrefix || '//');
-  RP.codeConfig.forwardTemplate = _strOr(_el('code-forward'), d.forwardTemplate || 'move({distance}, {speed})');
-  RP.codeConfig.turnTemplate       = _strOr(_el('code-turn'),       d.turnTemplate       || 'turn({angle}, {speed})');
+  RP.codeConfig.forwardTemplate = _strOr(_el('code-forward'), d.forwardTemplate || 'robot.move_distance({distance}, power={speed}{extra_args})');
+  RP.codeConfig.turnTemplate       = _strOr(_el('code-turn'),       d.turnTemplate       || 'robot.turn_in_place({angle}, power={speed}{extra_args})');
   // Pivot templates are deliberately allowed to be blank — that is how a
   // style says "same as a plain turn", so _strOr's default must not apply.
   RP.codeConfig.turnPivotLeftTemplate  = _el('code-turn-pivot-l');
   RP.codeConfig.turnPivotRightTemplate = _el('code-turn-pivot-r');
   RP.codeConfig.turnArcTemplate    = _strOr(_el('code-turn-arc'),   d.turnArcTemplate    || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})');
-  RP.codeConfig.wallAlignTemplate  = _strOr(_el('code-wall-align'), d.wallAlignTemplate  || 'wall_align({reversed}, {speed})');
-  RP.codeConfig.lineTraceDistTemplate = _strOr(_el('code-lt-dist'), d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})');
-  RP.codeConfig.lineTraceJunctTemplate = _strOr(_el('code-lt-junct'), d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})');
-  RP.codeConfig.checkpointTemplate = _strOr(_el('code-checkpoint'), d.checkpointTemplate || 'if callable({name}): {name}()');
+  RP.codeConfig.wallAlignTemplate  = _strOr(_el('code-wall-align'), d.wallAlignTemplate  || 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})');
+  RP.codeConfig.lineTraceDistTemplate = _strOr(_el('code-lt-dist'), d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed}{extra_args})');
+  RP.codeConfig.lineTraceJunctTemplate = _strOr(_el('code-lt-junct'), d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed}{extra_args})');
+  RP.codeConfig.checkpointTemplate = _strOr(_el('code-checkpoint'), d.checkpointTemplate || 'if callable({name}): {name}({extra_args})');
   RP.codeConfig.defaultSpeed = _posNum(_el('code-speed'), d.defaultSpeed || 200);
   RP.codeConfig.defaultUnit = _strOr(_el('code-unit'), d.defaultUnit || 'mm');
   if (RP.render) RP.render();
@@ -85,18 +85,18 @@ RP.updateCodeConfigFromUI = function() {
 RP.updateCodeConfigUI = function() {
   document.getElementById('code-comment').value = RP.codeConfig.commentPrefix;
   document.getElementById('code-forward').value = RP.codeConfig.forwardTemplate;
-  document.getElementById('code-turn').value       = RP.codeConfig.turnTemplate      || 'turn({angle}, {speed})';
+  document.getElementById('code-turn').value       = RP.codeConfig.turnTemplate      || 'robot.turn_in_place({angle}, power={speed}{extra_args})';
   var pvL = document.getElementById('code-turn-pivot-l');
   if (pvL) pvL.value = RP.codeConfig.turnPivotLeftTemplate || '';
   var pvR = document.getElementById('code-turn-pivot-r');
   if (pvR) pvR.value = RP.codeConfig.turnPivotRightTemplate || '';
   var arcTmplEl = document.getElementById('code-turn-arc');
   if (arcTmplEl) arcTmplEl.value = RP.codeConfig.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
-  document.getElementById('code-wall-align').value = RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed})';
-  document.getElementById('code-lt-dist').value = RP.codeConfig.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed})';
-  document.getElementById('code-lt-junct').value = RP.codeConfig.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed})';
+  document.getElementById('code-wall-align').value = RP.codeConfig.wallAlignTemplate || 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})';
+  document.getElementById('code-lt-dist').value = RP.codeConfig.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed}{extra_args})';
+  document.getElementById('code-lt-junct').value = RP.codeConfig.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed}{extra_args})';
   var cpTmplEl = document.getElementById('code-checkpoint');
-  if (cpTmplEl) cpTmplEl.value = RP.codeConfig.checkpointTemplate || 'if callable({name}): {name}()';
+  if (cpTmplEl) cpTmplEl.value = RP.codeConfig.checkpointTemplate || 'if callable({name}): {name}({extra_args})';
   document.getElementById('code-speed').value = RP.codeConfig.defaultSpeed;
   document.getElementById('code-unit').value = RP.codeConfig.defaultUnit;
 };

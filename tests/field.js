@@ -210,4 +210,61 @@ check('wall_align still generates its move', () => {
   assert(/wall_align/.test(code), 'expected a wall_align call, got:\n' + code);
 });
 
+// ---- {expected_distance} ----------------------------------------------
+// The solver already knows how far this leg is once the exit point is
+// pinned off the wall — expected_distance hands that out so a real robot
+// can slow down on approach instead of driving blind the whole leg.
+check('wall_align reports the solved leg length as expected_distance', () => {
+  const RP = fresh();
+  const { el, route, lead } = approachRightWall(RP);
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
+
+  // Line ran 1000 -> stood off at 1900 (50mm front clearance @ 2px/mm),
+  // at 2px/mm that leg is (1900-1000)/2 = 450mm.
+  assertClose(RP.sketch.entities[lead.p2.id].x, 1900, 1e-6, 'setup: stood off');
+  const code = RP.generateCode(route);
+  assert(/expected_distance=450\.0/.test(code),
+    'expected_distance should be the solved leg length, got:\n' + code);
+});
+
+check('expected_distance tracks clearance changes through the solver', () => {
+  const RP = fresh();
+  const { el, route } = approachRightWall(RP);
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
+
+  RP.robotConfig.frontClearance = 80;   // mm -> 160 px
+  RP.syncAllWallAligns();
+  const code = RP.generateCode(route);
+  // (1950-160-1000... ) — same math as "changing clearance moves the
+  // stopping point" above: x lands at 1840, so leg = (1840-1000)/2 = 420.
+  assert(/expected_distance=420\.0/.test(code),
+    'expected_distance must follow the solved position, not the old one, got:\n' + code);
+});
+
+// ---- {extra_args} -------------------------------------------------------
+// A user-typed string spliced verbatim into the template, for whatever a
+// project's own robot API needs that no built-in placeholder covers.
+check('extraArgs is blank by default and does not touch the template', () => {
+  const RP = fresh();
+  const { el, route } = approachRightWall(RP);
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
+  const code = RP.generateCode(route);
+  assert(!/\{extra_args\}/.test(code), 'the placeholder itself must never leak into output');
+  assert(/wall_align\(reversed=False, power=200, expected_distance=450\.0\)/.test(code),
+    'blank extraArgs should vanish cleanly, got:\n' + code);
+});
+
+check('extraArgs on a wall_align move is spliced into its own line only', () => {
+  const RP = fresh();
+  const { el, route } = approachRightWall(RP);
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align', extraArgs: ', blocking=True' });
+  const code = RP.generateCode(route);
+  assert(/wall_align\([^)]*, blocking=True\)/.test(code),
+    'expected the user text appended verbatim, got:\n' + code);
+});
+
 if (!report()) process.exitCode = 1;

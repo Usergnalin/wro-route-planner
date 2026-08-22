@@ -615,6 +615,10 @@ RP.renderTurnParams = function(host, act) {
   html += '<div class="sidebar-hint">Each style has its own code template ' +
           '(blank pivot templates fall back to the plain turn).</div>';
 
+  html += '<label class="ap-row"><span>Extra args</span><input type="text" id="ap-t-extra" ' +
+          'placeholder="e.g. , blocking=True" value="' + (act.extraArgs || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>';
+  html += '<div class="sidebar-hint">Spliced verbatim into {extra_args} in this turn’s code template.</div>';
+
   if (!isAuto) {
     html += '<div style="display:flex;gap:3px;margin-top:6px">' +
             '<button id="ap-t-del" class="sidebar-small-btn">🗑 Remove turn</button></div>';
@@ -640,6 +644,9 @@ RP.renderTurnParams = function(host, act) {
   elpOn('ap-t-style', 'change', function() {
     RP.updateSelectedAction({ style: this.value });
   });
+  elpOn('ap-t-extra', 'change', function() {
+    RP.updateSelectedAction({ extraArgs: this.value });
+  });
   elpOn('ap-t-del', 'click', function() { RP.removeSelectedAction(); });
 };
 
@@ -650,10 +657,16 @@ RP.renderCheckpointParams = function(host, act) {
     'value="' + (act.name || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>' +
     '<div class="sidebar-hint">Emitted where it sits in the list, using the ' +
     'checkpoint template.</div>' +
+    '<label class="ap-row"><span>Extra args</span><input type="text" id="ap-c-extra" ' +
+    'placeholder="e.g. reason=\'junction\'" value="' + (act.extraArgs || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>' +
+    '<div class="sidebar-hint">Spliced verbatim into {extra_args} in the checkpoint template.</div>' +
     '<div style="display:flex;gap:3px;margin-top:6px">' +
     '<button id="ap-c-del" class="sidebar-small-btn">🗑 Remove</button></div>';
   elpOn('ap-c-name', 'change', function() {
     RP.updateSelectedAction({ name: this.value || 'checkpoint' });
+  });
+  elpOn('ap-c-extra', 'change', function() {
+    RP.updateSelectedAction({ extraArgs: this.value });
   });
   elpOn('ap-c-del', 'click', function() { RP.removeSelectedAction(); });
 };
@@ -705,6 +718,9 @@ RP.renderMoveParams = function(host, el) {
   var cpAct = RP.checkpointAfterMove(route, el.id);
   html += '<label class="ap-row"><span>Checkpoint</span><input type="text" id="ap-checkpoint" ' +
           'placeholder="none" value="' + (cpAct ? cpAct.name : '') + '" style="' + INPUT_CSS + ';text-align:left"></label>';
+  html += '<label class="ap-row"><span>Extra args</span><input type="text" id="ap-extra" ' +
+          'placeholder="e.g. , blocking=True" value="' + (el.extraArgs || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>';
+  html += '<div class="sidebar-hint">Spliced verbatim into {extra_args} in this move’s code template.</div>';
   html += '<div style="display:flex;gap:3px;margin-top:6px">' +
           '<button id="ap-up" class="sidebar-small-btn">↑</button>' +
           '<button id="ap-down" class="sidebar-small-btn">↓</button>' +
@@ -733,6 +749,9 @@ RP.renderMoveParams = function(host, el) {
   });
   elpOn('ap-checkpoint', 'change', function() {
     RP.updateSelectedMove({ checkpoint: this.value || null });
+  });
+  elpOn('ap-extra', 'change', function() {
+    RP.updateSelectedMove({ extraArgs: this.value });
   });
   elpOn('ap-up', 'click', function() { RP.reorderSelectedMove(-1); });
   elpOn('ap-down', 'click', function() { RP.reorderSelectedMove(1); });

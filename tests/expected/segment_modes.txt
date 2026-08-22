@@ -8,4 +8,4 @@ line_trace_until_junctions(3, 200)
 # TELEPORT: hop_to_zone_b
 # 150.0 mm, heading 90°, from (700,100) to (700,400)
 
-robot.wall_align(reversed=False, speed=200)
+robot.wall_align(reversed=False, power=200, expected_distance=150.0)

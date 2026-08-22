@@ -170,8 +170,16 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 ### Output
 - [x] Step-by-step turn/forward instructions
 - [x] Auto-generated code with customizable templates
-- [x] Template placeholders: `{distance}`, `{angle}`, `{speed}`
+- [x] Template placeholders: `{distance}`, `{angle}`, `{speed}`, `{reversed}`,
+      `{junctions}`, `{radius}`, `{name}`, `{expected_distance}` (wall align
+      only — the solved leg length, so a real robot can slow down on
+      approach instead of driving blind), `{extra_args}` (per-action, see
+      below)
 - [x] Configurable: comment prefix, forward/turn template, default speed, output unit
+- [x] Extra args per action — every move, turn and checkpoint has its own
+      free-text field (Route mode's detail panel) spliced verbatim into
+      `{extra_args}` in that action's template, for whatever a project's
+      robot API needs that no built-in placeholder covers
 - [x] Unit conversion (mm, cm, m, in)
 - [x] One-click copy (Instructions / Code)
 - [x] Total distance summary
