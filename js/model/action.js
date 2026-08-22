@@ -88,7 +88,12 @@ RP.makeMoveAction = function(entityId, entType, opts) {
     offset: opts.offset || 0,
     junctions: opts.junctions != null ? opts.junctions : null,
     teleportName: opts.teleportName || null,
-    hidden: !!opts.hidden
+    // Independent of the CONSTRUCTION line's own visible flag: hiding the
+    // geometry and hiding the route's use of it are two different things
+    // you might want separately, so a move gets its own flag rather than
+    // reading the entity's. Same name/polarity as every other visible
+    // flag in the app (route.visible, line.visible, ...).
+    visible: opts.visible !== false
   };
 };
 

@@ -402,4 +402,115 @@ check('the start checkpoint is just the first action now', () => {
   assert(route.startCheckpoint === undefined, 'the old field is gone entirely');
 });
 
+// ---- hiding a route move ------------------------------------------------
+// Overlapping ROUTE lines are a separate problem from overlapping
+// CONSTRUCTION lines: even after hiding the construction geometry, two
+// visually-close route moves still fight for the cursor, and there was
+// no way to get one out of the way to reach the other or the raw
+// geometry underneath.
+
+check('a move is visible by default', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  assert(e1.visible !== false, 'moves start visible');
+});
+
+check('hiding a move is purely presentational: generateCode is untouched', () => {
+  // The one invariant that matters most here: visible is a rendering and
+  // hit-testing flag ONLY. If this ever leaked into codegen, hiding a
+  // move to declutter the canvas would silently change what the robot
+  // does, which would be far worse than the clutter it was fixing.
+  const RP = fresh();
+  const { route, e1, e2 } = lRoute(RP);
+  const before = RP.generateCode(route);
+
+  RP.setActionProps(route.id, e1.id, { visible: false });
+  RP.setActionProps(route.id, e2.id, { visible: false });
+  const afterHidden = RP.generateCode(route);
+  assert(afterHidden === before, 'hidden moves must generate identical code');
+
+  RP.setActionProps(route.id, e1.id, { visible: true });
+  const afterShown = RP.generateCode(route);
+  assert(afterShown === before, 'showing it again must still match');
+});
+
+check('a hidden move has no presence in routeHitTest', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  // e1 sits on line a: (0,0)->(100,0). (50,1) is a near-miss on it.
+  const before = RP.routeHitTest(50, 1);
+  assert(before && before.kind === 'move' && before.id === e1.id, 'visible move is hit');
+
+  RP.setActionProps(route.id, e1.id, { visible: false });
+  const after = RP.routeHitTest(50, 1);
+  assert(!after || after.id !== e1.id,
+    'a hidden move must not answer a click — that is the whole point');
+});
+
+check('hiding a move frees its entity to render as a guide again', () => {
+  const RP = fresh();
+  const { route, a, e1 } = lRoute(RP);
+  const before = RP.routeReferencedEntities();
+  assert(before[a.line.id] === true, 'a visible move claims its entity');
+
+  RP.setActionProps(route.id, e1.id, { visible: false });
+  const after = RP.routeReferencedEntities();
+  assert(after[a.line.id] === undefined,
+    'a hidden move must free its entity so the construction-line guide shows through');
+});
+
+check('nearest wins among overlapping moves, not first-added', () => {
+  const RP = fresh();
+  // Two near-parallel lines, both added to the route as moves.
+  const a = RP.addConstructionLine(0, 100, 300, 100);
+  const b = RP.addConstructionLine(0, 106, 300, 106);
+  RP.setEditMode('route');
+  const eA = RP.appendGeometryToRoute(a.line.id);
+  const eB = RP.appendGeometryToRoute(b.line.id);
+
+  const hitNearA = RP.routeHitTest(150, 100);
+  assert(hitNearA && hitNearA.id === eA.id, 'closer to A should hit A, not whichever was added last');
+  const hitNearB = RP.routeHitTest(150, 106);
+  assert(hitNearB && hitNearB.id === eB.id, 'closer to B should hit B');
+});
+
+check('hiding the nearer of two overlapping moves reveals the farther one', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 100, 300, 100);
+  const b = RP.addConstructionLine(0, 103, 300, 103);
+  RP.setEditMode('route');
+  const eA = RP.appendGeometryToRoute(a.line.id);
+  const eB = RP.appendGeometryToRoute(b.line.id);
+
+  // Clicking between them currently favours A (closer).
+  const before = RP.routeHitTest(150, 101);
+  assert(before.id === eA.id, 'setup: A wins the click');
+
+  RP.setActionProps(RP.getActiveRoute().id, eA.id, { visible: false });
+  const after = RP.routeHitTest(150, 101);
+  assert(after && after.id === eB.id,
+    'with A hidden, the click should reach B instead of nothing');
+});
+
+check('v4 lift translates the old hidden field to visible', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const route = {
+    id: 1, name: 'v4', visible: true,
+    elements: [
+      { id: 101, entityId: a.line.id, move: 'forward', flip: false, reverse: false,
+        speed: null, offset: 0, junctions: null, teleportName: null,
+        turnSpeed: null, extraTurnsBefore: [], checkpoint: null, hidden: true }
+    ]
+  };
+  RP.routes = [route];
+  RP.nextActionId = 200;
+  RP.migrateRoutesToActions();
+
+  const moves = RP.moveActions(route);
+  assert(moves.length === 1, 'the move survived the lift');
+  assert(moves[0].visible === false, 'hidden:true became visible:false');
+  assert(!('hidden' in moves[0]), 'the old field name is gone, not just shadowed');
+});
+
 if (!report()) process.exitCode = 1;

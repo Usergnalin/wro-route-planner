@@ -151,6 +151,12 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
       geometry list or by right-clicking them. Hidden geometry is fully
       inert: it is not drawn, not snapped to, and not clickable, which is
       how you get a line out of the way when several overlap
+- [x] Show/hide individual route moves too — independent of the
+      construction line's own visibility, from the action list's eye
+      icon, the move's detail panel, or right-clicking the move. Hiding a
+      move is purely presentational (generated code is unaffected) and
+      also frees the construction line underneath to render as a guide
+      again, for when overlapping route lines fight for the cursor
 - [x] Geometry list available in **both** Sketch and Route mode; clicking a
       row highlights that geometry on the canvas, and clicking geometry on
       the canvas (in Select, Constrain or Route mode) selects and scrolls

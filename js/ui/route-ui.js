@@ -117,7 +117,13 @@ RP.routeReferencedEntities = function() {
   var set = {};
   for (var i = 0; i < RP.routes.length; i++) {
     var moves = RP.moveActions(RP.routes[i]);
-    for (var j = 0; j < moves.length; j++) set[moves[j].entityId] = true;
+    for (var j = 0; j < moves.length; j++) {
+      // A hidden move frees its entity to render as a construction-line
+      // guide again — that is the whole point of hiding it: getting the
+      // thick route line out of the way of whatever is underneath.
+      if (moves[j].visible === false) continue;
+      set[moves[j].entityId] = true;
+    }
   }
   return set;
 };
@@ -159,14 +165,19 @@ RP.routeHitTest = function(ix, iy) {
 
   // Moves of the active route win — they are what you edit here.
   // Measured against the actual geometry, so an arc move is clickable
-  // along its curve rather than only near its chord.
+  // along its curve rather than only near its chord. Nearest wins, same
+  // reasoning as construction geometry: two moves running close together
+  // are exactly the case this needs to get right. A hidden move has no
+  // presence to click, matching hidden construction geometry.
   if (route) {
     var moves = RP.moveActions(route);
-    for (var i = moves.length - 1; i >= 0; i--) {
-      if (RP.entityDistSq(sk, moves[i].entityId, ix, iy) < threshSq) {
-        return { kind: 'move', id: moves[i].id, entityId: moves[i].entityId };
-      }
+    var bestMove = null, bestMoveSq = threshSq;
+    for (var i = 0; i < moves.length; i++) {
+      if (moves[i].visible === false) continue;
+      var mDSq = RP.entityDistSq(sk, moves[i].entityId, ix, iy);
+      if (mDSq < bestMoveSq) { bestMoveSq = mDSq; bestMove = moves[i]; }
     }
+    if (bestMove) return { kind: 'move', id: bestMove.id, entityId: bestMove.entityId };
   }
   // Nearest wins rather than first-in-entity-order. Where two lines
   // overlap, "first" is arbitrary and picks the wrong one half the time,
@@ -447,7 +458,9 @@ RP.updateActionList = function() {
         var bits = [RP.MOVE_LABELS[act.move] || act.move];
         if (act.reverse) bits.push('rev');
         if (act.speed != null) bits.push(act.speed);
+        if (act.visible === false) bits.push('hidden');
         lbl.textContent = bits.join(' · ');
+        if (act.visible === false) lbl.style.color = '#777';
       } else if (RP.isTurnAction(act)) {
         var deg = RP.turnAngleFor(emitted, act);
         // "Typed" means the angle was typed, not that the action is a
@@ -480,6 +493,25 @@ RP.updateActionList = function() {
       };
 
       row.appendChild(glyph);
+
+      // A move's own rendering can be hidden — independent of whether the
+      // CONSTRUCTION line underneath is hidden — so two overlapping route
+      // moves (or a move and a not-yet-added line) can be told apart the
+      // same way overlapping construction lines already can.
+      if (isMove) {
+        var eye = document.createElement('button');
+        eye.className = 'layer-vis-btn';
+        eye.textContent = act.visible === false ? '○' : '●';
+        eye.title = act.visible === false ? 'Show this move\u2019s line' : 'Hide this move\u2019s line';
+        eye.onclick = function(e) {
+          e.stopPropagation();
+          RP.pushHistory(act.visible === false ? 'Show move' : 'Hide move');
+          RP.setMoveProps(route.id, act.id, { visible: act.visible === false });
+          RP.refreshRouteUI();
+        };
+        row.appendChild(eye);
+      }
+
       row.appendChild(lbl);
 
       // Auto turns belong to their move and cannot be deleted on their own.
@@ -648,6 +680,13 @@ RP.renderMoveParams = function(host, el) {
           '<button type="button" id="ap-drive" class="drive-toggle' + (el.reverse ? ' rev' : '') + '" ' +
           'title="Click to drive the other way along this leg">' +
           (el.reverse ? '◀ Backwards' : '▶ Forwards') + '</button></label>';
+  // Independent of the construction line's own show/hide — this is
+  // whether the ROUTE draws its use of it, for getting an overlapping
+  // move out of the way on canvas without touching the geometry itself.
+  html += '<label class="ap-row"><span>On canvas</span>' +
+          '<button type="button" id="ap-visible" class="drive-toggle' + (el.visible === false ? ' rev' : '') + '" ' +
+          'title="Click to hide/show this move\u2019s line on the canvas">' +
+          (el.visible === false ? '🙈 Hidden' : '👁 Shown') + '</button></label>';
   html += '<label class="ap-row"><span>Speed</span><input type="number" id="ap-speed" min="1" ' +
           'placeholder="default" value="' + (el.speed != null ? el.speed : '') + '" style="' + INPUT_CSS + '"></label>';
 
@@ -674,6 +713,9 @@ RP.renderMoveParams = function(host, el) {
 
   elpOn('ap-move', 'change', function() { RP.updateSelectedMove({ move: this.value }); });
   elpOn('ap-drive', 'click', function() { RP.updateSelectedMove({ reverse: !el.reverse }); });
+  elpOn('ap-visible', 'click', function() {
+    RP.updateSelectedMove({ visible: el.visible === false });
+  });
   elpOn('ap-speed', 'change', function() {
     var v = parseFloat(this.value);
     RP.updateSelectedMove({ speed: isFinite(v) && v > 0 ? v : null });

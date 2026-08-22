@@ -475,7 +475,7 @@ RP.initEvents = function() {
   // Only construction geometry is right-clickable. The node and segment
   // entries deleted here mutated route.nodes / route.segments, which are
   // derived views — Route mode's element list is the real editor.
-  var ctxTarget     = null; // { kind: 'line', lineId }
+  var ctxTarget     = null; // { kind: 'line', lineId } | { kind: 'move', routeId, moveId }
 
   function hideCtxMenu() {
     if (ctxMenu) ctxMenu.style.display = 'none';
@@ -486,6 +486,10 @@ RP.initEvents = function() {
     if (!ctxMenu) return;
     ctxTitle.textContent = title;
     ctxTarget = target;
+    // Removing a MOVE only drops the route's reference to it — the
+    // construction line is kept, same as everywhere else in Route mode.
+    // Wording it as Delete would read as "delete the line".
+    if (ctxDelBtn) ctxDelBtn.textContent = target.kind === 'move' ? '🗑 Remove from Route' : '🗑 Delete';
     ctxMenu.style.left = (x + 4) + 'px';
     ctxMenu.style.top  = (y + 4) + 'px';
     ctxMenu.style.display = 'block';
@@ -498,9 +502,15 @@ RP.initEvents = function() {
   if (ctxHideBtn) {
     ctxHideBtn.addEventListener('click', function() {
       // Right-clicking only ever finds VISIBLE geometry, so this is
-      // always a hide. Unhiding is the geometry list's job — a hidden
-      // line has no clickable presence on the canvas by design.
-      if (ctxTarget && ctxTarget.kind === 'line') {
+      // always a hide. Unhiding is the geometry/action list's job — a
+      // hidden line (construction or route) has no clickable presence on
+      // the canvas by design.
+      if (ctxTarget && ctxTarget.kind === 'move') {
+        RP.pushHistory('Hide move');
+        RP.setMoveProps(ctxTarget.routeId, ctxTarget.moveId, { visible: false });
+        if (RP.selectedActionId === ctxTarget.moveId) RP.selectedActionId = null;
+        RP.refreshRouteUI();
+      } else if (ctxTarget && ctxTarget.kind === 'line') {
         RP.pushHistory('Hide geometry');
         RP.setConstructionVisible(ctxTarget.lineId, false);
         if (RP.selectedLineId === ctxTarget.lineId) RP.selectedLineId = null;
@@ -513,7 +523,14 @@ RP.initEvents = function() {
 
   if (ctxDelBtn) {
     ctxDelBtn.addEventListener('click', function() {
-      if (ctxTarget && ctxTarget.kind === 'line') RP.removeConstructionLine(ctxTarget.lineId);
+      if (ctxTarget && ctxTarget.kind === 'move') {
+        // Reuse the exact path the action list's own ✕ button uses —
+        // one remove-a-move implementation, not two that can drift apart.
+        RP.selectedActionId = ctxTarget.moveId;
+        RP.removeSelectedAction();
+      } else if (ctxTarget && ctxTarget.kind === 'line') {
+        RP.removeConstructionLine(ctxTarget.lineId);
+      }
       hideCtxMenu();
     });
   }
@@ -530,11 +547,33 @@ RP.initEvents = function() {
     hideCtxMenu();
     if (!RP.img) return;
     var p = RP.screenToImage(e.clientX, e.clientY);
-
-    // Construction geometry is the only right-click target, and only
-    // while it is visible — a hidden line has no presence to click.
-    // Points first: they are the smallest target and sit on top.
     var geoThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
+
+    // In Route mode, the route's own use of a line is the more specific
+    // target — hiding or removing THAT is what overlapping route lines
+    // need. Falls through to raw construction geometry, below, exactly
+    // mirroring left-click's priority in routeHitTest.
+    if (RP.editMode === 'route') {
+      var rmRoute = RP.getActiveRoute();
+      if (rmRoute) {
+        var rmMoves = RP.moveActions(rmRoute);
+        var rmBestId = null, rmBestSq = geoThreshSq, rmBestNo = 0;
+        for (var mi = 0; mi < rmMoves.length; mi++) {
+          if (rmMoves[mi].visible === false) continue;
+          var mSq = RP.entityDistSq(RP.sketch, rmMoves[mi].entityId, p.x, p.y);
+          if (mSq < rmBestSq) { rmBestSq = mSq; rmBestId = rmMoves[mi].id; rmBestNo = mi + 1; }
+        }
+        if (rmBestId !== null) {
+          showCtxMenu(e.clientX, e.clientY, 'Route move ' + rmBestNo,
+            { kind: 'move', routeId: rmRoute.id, moveId: rmBestId });
+          return;
+        }
+      }
+    }
+
+    // Construction geometry is the only remaining right-click target, and
+    // only while it is visible — a hidden line has no presence to click.
+    // Points first: they are the smallest target and sit on top.
     var ptThresh = RP.snapThresholdImg(RP.ACTION_POINT_HIT_PX || 13);
     for (var pi = 0; pi < RP.points.length; pi++) {
       var sp = RP.points[pi];

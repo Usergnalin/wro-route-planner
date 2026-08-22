@@ -1,3 +1,84 @@
+# Changes — 2026-08-22 (1)
+
+## Hide route lines, not just construction lines
+
+Hiding construction geometry (previous entry) solved overlapping raw
+lines, but a route's own thick line has the same problem: two route
+moves a few pixels apart still fight for the cursor, and there was no
+way to get one out of the way to reach the other, or the construction
+guide underneath.
+
+A move is a separate thing from the construction line it draws — you
+might want to hide the route's use of a line while leaving the line
+itself, or its own hide state, completely alone. So this is a second,
+independent `visible` flag, on the move action, not a read of the
+entity's.
+
+- **Model**: `js/model/action.js` — `makeMoveAction` now sets
+  `visible: opts.visible !== false` on every move (was a dead `hidden`
+  field nothing ever set — see below).
+- **Hiding a move frees its entity.** `RP.routeReferencedEntities()`
+  skips hidden moves, so `render.js`'s "route mode dims/skips geometry a
+  route already draws" logic stops skipping it — the construction-line
+  guide reappears right where the route line used to cover it. This is
+  the actual point of the feature, not just a cosmetic toggle that would
+  otherwise leave a blank gap.
+- **Nearest wins, hidden-skip**, in both `routeHitTest` (left-click) and
+  the Route-mode-aware right-click pass — same rule already used for
+  construction geometry, now applied to moves too, and checked ahead of
+  the construction-geometry pass since a route's use of a line is the
+  more specific target while in Route mode.
+- **Three ways to toggle it**, all going through the one model call
+  (`RP.setMoveProps`):
+  - the action list gets an eye icon per move row, reusing the same
+    `.layer-vis-btn` the geometry list already uses;
+  - the move's detail panel gets an "On canvas" toggle next to Drive;
+  - right-click a route move for a Route-mode-aware context menu with
+    **🙈 Hide** / **🗑 Remove from Route** (label changes from the
+    construction-geometry menu's "Delete", since removing a move from a
+    route and deleting geometry are different actions).
+
+### A pre-existing bug this uncovered
+
+`render.js` already had `if (seg.visible === false) continue;` gating
+route-segment drawing — but the model populated the field as `hidden`,
+which nothing ever set. The gate was dead code; hiding a move could
+never have worked even before this change built the UI for it. Fixed by
+renaming the model's field to match what the renderer already expected,
+rather than changing the renderer to match a name nobody chose on
+purpose.
+
+v4 save files spelled this field `hidden` too (and never actually let
+you set it from the UI). `liftElementsToActions` now translates it
+explicitly (`el.visible = el.hidden !== true; delete el.hidden;`) rather
+than assuming it was always false.
+
+### The one thing this must never touch
+
+Hiding is presentational only. `RP.generateCode()` / `RP.computeSteps()`
+never read `.visible` — a hidden move still drives the robot exactly as
+before. This is asserted directly: `action model` now has a test that
+generates code with a move hidden, shown, and hidden again, and checks
+the output is byte-identical every time.
+
+### Verification
+
+12 suites pass, goldens byte-identical; action model tests 27 → 34.
+
+In Chromium, two overlapping route moves on parallel lines 6 px apart:
+
+```
+routeHitTest         nearer move wins, not whichever was added first
+Eye toggle (list)     hides move -> hit-test falls through to the other move
+On canvas (panel)     same toggle, same effect, from the detail panel
+Right-click           title "Route move N", labels "Hide" / "Remove from
+                       Route" (not generic "Delete"), Hide works
+```
+
+No console errors from the feature itself. Bundle rebuilt.
+
+---
+
 # Changes — 2026-08-09 (12)
 
 ## Clicking a line now focuses it in the list too

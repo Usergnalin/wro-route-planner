@@ -336,7 +336,7 @@ RP.rebuildRouteViews = function() {
         speed: el.speed, offset: el.offset,
         junctionCount: el.junctions,
         teleportName: el.teleportName,
-        hidden: el.hidden
+        visible: el.visible !== false
       });
     }
 
@@ -484,6 +484,11 @@ RP.liftElementsToActions = function(route) {
     delete el.extraTurnsBefore;
     delete el.checkpoint;
     delete el.sagitta;          // arcs became real entities in phase 8
+    // v4 called this `hidden` and it was never actually settable from the
+    // UI, so it is realistically always false — but translate it
+    // correctly regardless, rather than assume.
+    el.visible = el.hidden !== true;
+    delete el.hidden;
     acts.push(el);
     if (cpName) acts.push(RP.makeCheckpointAction(null, cpName));
   }
@@ -598,7 +603,10 @@ RP.migrateRoutesToActions = function() {
         speed: seg.speed, offset: seg.offset,
         junctions: seg.junctionCount,
         teleportName: seg.teleportName,
-        hidden: seg.hidden
+        // Old segments never actually carried this — the UI that set it
+        // was deleted before phase 9 — but translate it correctly on the
+        // rare save file where it does.
+        visible: seg.hidden !== true
       });
       if (b.isCheckpoint && b.checkpointName) {
         route.actions.push(RP.makeCheckpointAction(exitPoint, b.checkpointName));
