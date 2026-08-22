@@ -1,3 +1,55 @@
+# Changes — 2026-08-22 (3)
+
+## Fix: an already-solved sketch could be permanently stuck reporting "conflict"
+
+A user-supplied project loaded with `sketch.status === 'conflict'` (dof
+14, residual ~1.6e-8) despite the geometry being, by every visual and
+practical measure, fully solved. Traced it to one arc sitting between two
+construction lines (an S-curve): its start point was pinned by
+`point_on_line` onto one line AND `tangent` to that same line, while its
+end point was `coincident` with a second line's endpoint AND `tangent`
+to that line too. That cluster is exactly-determined — zero slack — so
+the two independently-measured radii (arc-center to each endpoint)
+agreed to 10 significant figures (`2164.893383848816` vs
+`2164.8933838664593`) but could never be driven to bit-for-bit equal.
+300 solver iterations and manually nudging the arc's center didn't
+change the outcome: this is not a slow-convergence problem, it's a
+tolerance problem.
+
+`RP.Sketch.solve` (`js/sketch/solver.js`) used ONE tolerance for two
+different jobs: deciding when to stop refining, and deciding whether the
+result counts as a conflict. A cluster with no slack can get stuck a
+hair above any tolerance, however tight, purely from float noise carried
+in from a save/load round-trip or an earlier drag — so tightening the
+number further would never have helped; it would only take longer to
+fail the same way.
+
+Split into two: `opts.tol` (default 1e-9, unchanged) still governs how
+hard the iteration chases full precision, so ordinarily-solvable sketches
+solve to the same precision as before. `opts.conflictTol` (new, default
+1e-6) is a separate, looser threshold used only to LABEL the outcome — a
+residual has to miss by six orders of magnitude more than machine noise
+before it's called a conflict. 1e-6 px is still meaningless at the mm
+scale this app actually measures in; a real contradiction (mismatched
+dimensions, etc.) misses by many more orders of magnitude than that, so
+genuine conflicts are caught exactly as reliably as before.
+
+### Verification
+
+12 suites pass; `sketch solver` gained two targeted tests (23 → 25): one
+proving an impossible `tol: 0` no longer falsely reports conflict now
+that classification is separate from iteration, one proving a real
+50-unit dimension mismatch still reads as conflict even with a
+deliberately loose `conflictTol`. The reporting user's actual project
+file (loaded via the Node test harness, no browser needed for this part)
+now solves to `status: 'under'`, `ok: true` — previously `'conflict'` —
+and its route resolves. Confirmed in Chromium via the app's real
+open-project path plus several small drags of the arc's center point:
+status stays `'under'` throughout, never flashes to `'conflict'`. No
+console errors.
+
+---
+
 # Changes — 2026-08-22 (2)
 
 ## New default code templates, wall_align expected_distance, per-action extra args

@@ -74,15 +74,33 @@ function assemble(plan, g, r, J, n, wAngle, withJ) {
 //   opts.fixedPoints  point ids held constant (this is how dragging pins
 //                     the point under the cursor)
 //   opts.maxIter      default 60
-//   opts.tol          convergence on max|r|, default 1e-9
+//   opts.tol          iteration keeps refining until max|r| is under this,
+//                     default 1e-9 — full float precision when the system
+//                     can actually reach it
+//   opts.conflictTol  looser threshold used only to LABEL the result,
+//                     default 1e-6 — see below
 //
 // Returns { ok, status, dof, rank, residual, iterations, n, m }.
 // Parameters are written back to the entities even on failure, so geometry
 // follows as far as it can and the UI can colour it as conflicting.
+//
+// Two separate thresholds on purpose. An EXACTLY-determined cluster (say,
+// an arc tangent to a line at a point that is also pinned by
+// point_on_line, with its other end coincident to a separately-tangent
+// line) has zero slack: any float noise at all, from a save/load
+// round-trip or an earlier drag, leaves a residual the iteration can
+// never fully zero out. Using one tight tolerance for both "keep
+// refining" and "is this a conflict" meant such a sketch — already
+// solved to 10 significant figures — was permanently painted red. Now
+// the iteration still chases full precision (tol), but only a residual
+// past conflictTol gets called a conflict; a genuine contradiction
+// (mismatched dimensions, etc.) misses by orders of magnitude more than
+// that, so real conflicts are still caught just as reliably.
 RP.Sketch.solve = function(sk, opts) {
   opts = opts || {};
   var maxIter = opts.maxIter || 60;
   var tol = opts.tol || 1e-9;
+  var conflictTol = opts.conflictTol || 1e-6;
   var wAngle = sk.charLength || 100;
 
   var fixedSet = {};
@@ -133,7 +151,7 @@ RP.Sketch.solve = function(sk, opts) {
   // Everything pinned: nothing to solve, just report whether it holds.
   if (n === 0) {
     var residFixed = RP.LinAlg.maxAbs(r, m);
-    return finish(residFixed < tol, 0, residFixed, 0);
+    return finish(residFixed < conflictTol, 0, residFixed, 0);
   }
 
   var f = RP.LinAlg.normSq(r, m);
@@ -199,7 +217,7 @@ RP.Sketch.solve = function(sk, opts) {
   RP.Sketch.writeBack(sk, idx, params);
 
   var resid = RP.LinAlg.maxAbs(r, m);
-  return finish(resid < tol, iter, resid, RP.LinAlg.rank(J, m, n));
+  return finish(resid < conflictTol, iter, resid, RP.LinAlg.rank(J, m, n));
 };
 
 // An arc held tangent to a line cannot change which side of it the centre

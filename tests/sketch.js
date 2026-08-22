@@ -194,6 +194,34 @@ check('contradictory dimensions are reported as conflicting', () => {
   assert(res.status === 'conflict', 'expected conflict, got ' + res.status);
 });
 
+// ---- conflictTol vs tol -------------------------------------------------
+// An exactly-determined cluster (an arc tangent to a line at a point that
+// is ALSO pinned by point_on_line, its other end coincident to a
+// separately-tangent line, etc.) has zero slack: it can be solved to 10
+// significant figures and STILL leave a residual a hair above a razor-
+// thin tolerance, purely from float noise carried in from a save/load
+// round-trip. That used to paint an already-solved sketch red forever.
+check('a residual that misses the iteration tol but clears conflictTol is not a conflict', () => {
+  const { sk, top } = buildRect();          // an ordinary, fully solvable system
+  // tol: 0 is unreachable by construction (max|r| can never be negative),
+  // so the OLD single-tolerance code — which classified using the same
+  // value it iterated against — would have called this conflict no
+  // matter how well solved the sketch actually was. conflictTol keeps its
+  // normal default, so classification is unaffected by the impossible tol.
+  const res = S.solve(sk, { tol: 0 });
+  assert(res.residual < 1e-6, 'sketch should still solve to near machine precision, got ' + res.residual);
+  assert(res.status !== 'conflict',
+    'a sketch solved to float precision must not be conflict just because tol=0 is unreachable, got ' + res.status);
+});
+
+check('a genuine conflict is still caught even with a generous conflictTol', () => {
+  const { sk, top } = buildRect();
+  S.addConstraint(sk, 'distance', [top.id], 150);   // already 100 — really contradictory
+  const res = S.solve(sk, { conflictTol: 1e-3 });   // far looser than the default
+  assert(res.status === 'conflict',
+    'a 50-unit mismatch must still read as conflict, got ' + res.status + ' (residual ' + res.residual + ')');
+});
+
 // ---- dragging --------------------------------------------------------
 check('drag pulls a linkage along while holding its constraints', () => {
   const sk = S.create();
