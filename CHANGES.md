@@ -1,3 +1,48 @@
+# Changes — 2026-08-09 (12)
+
+## Clicking a line now focuses it in the list too
+
+The previous change made the geometry list select geometry on the
+canvas. This closes the other direction: clicking geometry on the canvas
+now selects and scrolls to its row in the list.
+
+- **Select mode** could not select a line at all before this — only its
+  endpoints, for dragging. Clicking anywhere along a line's body (or an
+  arc, or a standalone point) now focuses it in the list, the same
+  nearest-wins rule the right-click menu and Route mode already use.
+- **Constrain mode** already picked geometry for constraint application;
+  it now also syncs the list, for lines, arcs and *standalone* points. A
+  line's own endpoint is not a row in the geometry list, so clicking one
+  leaves the list alone rather than focusing nothing.
+- **Route mode**: clicking a line now focuses its row whether the click
+  added it to the route or selected an existing move — both paths used to
+  leave the list wherever it last was.
+
+New `RP.focusGeometryInList(id)` is the one place this lives: sets the
+selection, rebuilds the list, **un-collapses the panel** if it was
+collapsed (focusing a line while its list is folded shut would select
+something you can't see), and scrolls the row into view with
+`scrollIntoView({ block: 'nearest' })` so a focus in a long list is
+actually visible rather than merely true.
+
+### Verification
+
+11 suites pass, goldens byte-identical; construction tests 37 → 39.
+
+In Chromium, 13 lines (enough to scroll the list) with the 13th far down
+the list and off in a different part of the canvas:
+
+```
+Select mode     click line body   -> selectedLineId matches, row active, SCROLLED INTO VIEW
+Constrain mode  click line        -> selectedLineId matches, sketchSelection also has it
+Route mode      click line        -> appended to the route AND focused in the list
+Collapsed panel click line        -> panel auto-expands
+```
+
+No console errors. Bundle 325 KB.
+
+---
+
 # Changes — 2026-08-09 (11)
 
 ## Hide geometry so overlapping lines stop fighting for the cursor

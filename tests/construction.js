@@ -523,4 +523,30 @@ check('hiding leaves the geometry itself untouched', () => {
   assert(RP.lines.find(l => l.id === made.line.id).visible !== false, 'shown again');
 });
 
+// ---- clicking a line also focuses it in the list ----------------------
+check('focusGeometryInList sets the selection and is DOM-safe headless', () => {
+  // The real row-tagging and scrollIntoView are DOM-dependent and covered
+  // by the browser pass; here we pin the part that is pure model state,
+  // and that the call never throws against the harness's stub DOM.
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 200, 0);
+  const b = RP.addConstructionLine(0, 60, 40, 60);
+
+  let threw = null;
+  try { RP.focusGeometryInList(b.line.id); } catch (e) { threw = e; }
+  assert(threw === null, 'must be safe without a real DOM: ' + threw);
+  assert(RP.selectedLineId === b.line.id, 'selection set to the focused geometry');
+
+  RP.focusGeometryInList(a.line.id);
+  assert(RP.selectedLineId === a.line.id, 'focusing again moves the selection');
+});
+
+check('focusGeometryInList ignores a null id rather than clearing the selection', () => {
+  const RP = fresh();
+  const made = RP.addConstructionLine(0, 0, 100, 0);
+  RP.focusGeometryInList(made.line.id);
+  RP.focusGeometryInList(null);
+  assert(RP.selectedLineId === made.line.id, 'a no-op call must not clear an existing focus');
+});
+
 if (!report()) process.exitCode = 1;

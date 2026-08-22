@@ -152,7 +152,9 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
       inert: it is not drawn, not snapped to, and not clickable, which is
       how you get a line out of the way when several overlap
 - [x] Geometry list available in **both** Sketch and Route mode; clicking a
-      row highlights that geometry on the canvas
+      row highlights that geometry on the canvas, and clicking geometry on
+      the canvas (in Select, Constrain or Route mode) selects and scrolls
+      to its row in return — the list and the canvas always agree
 - [x] Robot start position marker with heading arrow
 - [x] Snap system: endpoints, intersections, 90° angle, along-line projection
 - [x] Ctrl to temporarily disable snap

@@ -57,9 +57,11 @@ RP.initEvents = function() {
         if (hitRM.kind === 'action' || hitRM.kind === 'move') {
           // A turn or checkpoint at a junction point, or a move's geometry.
           RP.selectedActionId = hitRM.id;
+          if (hitRM.kind === 'move') RP.focusGeometryInList(hitRM.entityId);
         } else {
           var added = RP.appendGeometryToRoute(hitRM.id);
           RP.selectedActionId = added ? added.id : null;
+          RP.focusGeometryInList(hitRM.id);
         }
         RP.refreshRouteUI();
         return;
@@ -107,11 +109,13 @@ RP.initEvents = function() {
           if (lPri.visible === false) break;   // hidden geometry is not grabbable
           if (RP.screenDist(pSel.x, pSel.y, lPri.x1, lPri.y1) < 14) {
             RP.elementDrag = { type: 'line-endpoint', lineIdx: liPri, which: 'start' };
+            RP.focusGeometryInList(lPri.id);
             RP.updateInfoPanel();
             return;
           }
           if (RP.screenDist(pSel.x, pSel.y, lPri.x2, lPri.y2) < 14) {
             RP.elementDrag = { type: 'line-endpoint', lineIdx: liPri, which: 'end' };
+            RP.focusGeometryInList(lPri.id);
             RP.updateInfoPanel();
             return;
           }
@@ -127,11 +131,44 @@ RP.initEvents = function() {
             RP.screenDist(pSel.x, pSel.y, l.x2, l.y2) < 14) {
           var which = RP.screenDist(pSel.x, pSel.y, l.x1, l.y1) < 14 ? 'start' : 'end';
           RP.elementDrag = { type: 'line-endpoint', lineIdx: li, which: which };
-          RP.selectedLineId = l.id;
-          RP.updateLayerList();
+          RP.focusGeometryInList(l.id);
           RP.updateInfoPanel();
           return;
         }
+      }
+
+      // Clicking the BODY of a line/arc/point (not an endpoint) is not a
+      // drag — nothing is grabbable there — but it should still pick the
+      // geometry, the same way clicking it in Constrain or Route mode
+      // does. Without this, Select mode was the one place clicking a line
+      // did nothing, which made it useless for finding a line in an
+      // overlapping tangle. Nearest wins, same reasoning as the
+      // right-click menu and the Route-mode hit test.
+      var bodyThreshSq = Math.pow(RP.snapThresholdImg(8), 2);
+      var bodyId = null, bodyDSq = bodyThreshSq;
+      for (var lb = 0; lb < RP.lines.length; lb++) {
+        var lB = RP.lines[lb];
+        if (lB.visible === false) continue;
+        var dSqB = RP.pointToSegDistSq(pSel.x, pSel.y, lB.x1, lB.y1, lB.x2, lB.y2);
+        if (dSqB < bodyDSq) { bodyDSq = dSqB; bodyId = lB.id; }
+      }
+      for (var ab = 0; ab < RP.arcs.length; ab++) {
+        var arcB = RP.arcs[ab];
+        if (arcB.visible === false) continue;
+        var aDSqB = RP.arcHitDistSq(arcB.id, pSel.x, pSel.y);
+        if (aDSqB < bodyDSq) { bodyDSq = aDSqB; bodyId = arcB.id; }
+      }
+      for (var pb = 0; pb < RP.points.length; pb++) {
+        var ptB = RP.points[pb];
+        if (ptB.visible === false) continue;
+        var pDSqB = RP.dist(pSel.x, pSel.y, ptB.x, ptB.y);
+        pDSqB *= pDSqB;
+        if (pDSqB < bodyDSq) { bodyDSq = pDSqB; bodyId = ptB.id; }
+      }
+      if (bodyId !== null) {
+        RP.focusGeometryInList(bodyId);
+        RP.updateInfoPanel();
+        return;
       }
 
       // Nothing grabbable here — pan.
@@ -205,6 +242,16 @@ RP.initEvents = function() {
       // so a plain click does not litter the undo stack.
       if (hitCon.kind === 'point' && RP.isSketchSelected(hitCon.id)) {
         RP.sketchDrag = { pointId: hitCon.id, moved: false };
+      }
+      // Sync the geometry list too, so it shows what you just clicked
+      // rather than whatever was last touched there. Only for lines/arcs
+      // and STANDALONE points — a line's own endpoint is not a row in
+      // that list, so focusing it would select nothing visible.
+      if (hitCon.kind === 'line' || hitCon.kind === 'arc') {
+        RP.focusGeometryInList(hitCon.id);
+      } else if (hitCon.kind === 'point' &&
+                 RP.points.some(function(pt) { return pt.id === hitCon.id; })) {
+        RP.focusGeometryInList(hitCon.id);
       }
       RP.refreshSketchUI();
       return;

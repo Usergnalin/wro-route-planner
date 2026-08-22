@@ -193,6 +193,22 @@ RP.ensureSingleRoute = function() {
 RP.updateRouteSelect = function() { RP.updateSideRouteList(); };
 RP.updateSideRouteList = function() { RP.updateLayerList(); };
 
+// Select a piece of construction geometry (line / arc / standalone point)
+// in the layer list and make sure the row is actually ON SCREEN — a long
+// list scrolls, and "select it in the list" is not much use if the row
+// you wanted is still off the bottom. Un-collapses the panel too, since a
+// collapsed list cannot show anything no matter how hard it is focused.
+RP.focusGeometryInList = function(id) {
+  if (id == null) return;
+  RP.selectedLineId = id;
+  RP.updateLayerList();
+  var panel = document.getElementById('panel-geometry');
+  if (panel) panel.classList.remove('collapsed');
+  var el = document.getElementById('layer-list');
+  var row = el && el.querySelector('[data-geo-id="' + id + '"]');
+  if (row) row.scrollIntoView({ block: 'nearest' });
+};
+
 RP.updateLayerList = function() {
   var el = document.getElementById('layer-list');
   if (!el) return;
@@ -266,6 +282,7 @@ RP.updateLayerList = function() {
       (function(line, name, isArc) {
         var div = document.createElement('div');
         div.className = 'layer-item' + (RP.selectedLineId === line.id ? ' active' : '');
+        div.dataset.geoId = line.id;   // scroll target for RP.focusGeometryInList
 
         var eye = document.createElement('button');
         eye.className = 'layer-vis-btn';
