@@ -1,3 +1,62 @@
+# Changes — 2026-08-22 (4)
+
+## Per-move-kind default speeds
+
+The fallback chain for a step's speed used to have two rungs: the
+action's own typed Speed, else one plain global Default Speed shared by
+every move, turn, arc, wall align and line-trace step. A wall approach
+and a straight-line drive rarely want the same number, and the only way
+to say otherwise used to be typing an explicit speed onto every single
+action of that kind.
+
+Added a third rung in between: six new, independently-optional defaults
+in the Robot & Code panel — Forward, Turn, Arc, Wall Align, Line Trace
+Dist, Line Trace Junct — under a new "Default speeds per move" section.
+Each is blank by default and falls back to the plain Default Speed field
+above it when left blank; an action's own explicit speed still beats
+both.
+
+- `js/core.js`: `defaultSpeedForward`/`Turn`/`Arc`/`WallAlign`/
+  `LineTraceDist`/`LineTraceJunct`, all `null` in
+  `DEFAULT_CODE_CONFIG_VALUES` — same "blank is meaningful, only backfill
+  when the key is entirely absent" treatment as the existing pivot-turn
+  templates, so an old save file is unaffected rather than silently
+  gaining speed overrides it never asked for.
+- `js/output.js`: `RP.STEP_KIND_SPEED_KEYS` maps each step kind to its
+  codeConfig field; `spd(st)` now checks the action's own speed, then
+  that kind's default, then the plain global default, in that order.
+- `js/config.js`: new `_posNumOrNull` helper — unlike the existing
+  `_posNum`, a blank/invalid field must stay `null`, not collapse to a
+  fallback number, or a deliberately-blank override could never be told
+  apart from one that happens to numerically match the global default.
+
+### A bug the browser pass caught before it shipped
+
+The six new inputs' `change`/`input` listeners are wired from a
+hardcoded id list in `js/events.js`, not delegated — every existing
+`code-*` field is already in that list, and the new ones simply weren't
+yet. Typing into a fresh field silently did nothing until this was
+added; a plain unit-test pass (which calls `RP.updateCodeConfigFromUI`
+directly, never through a real DOM event) would not have caught it. This
+is exactly the class of bug the Chromium verification pass exists to
+catch.
+
+### Verification
+
+12 suites pass, goldens byte-identical (the feature is opt-in — nothing
+changes for a project that never sets one of the six fields).
+`action model` gained 5 tests (39 → 44) covering fallback-chain order and
+per-kind isolation; `field + wall align` gained one for
+`defaultSpeedWallAlign` specifically (18 → 19).
+
+In Chromium: opened the Robot & Code panel, confirmed all six fields
+render blank; typed a Forward-only override, confirmed it reached
+`move_distance` calls but not `turn_in_place` calls in the generated
+code; closed and reopened the panel and confirmed the value persisted
+rather than resetting to blank. No console errors.
+
+---
+
 # Changes — 2026-08-22 (3)
 
 ## Fix: an already-solved sketch could be permanently stuck reporting "conflict"

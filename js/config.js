@@ -11,6 +11,15 @@ function _posNum(raw, fallback) {
   var v = parseFloat(raw);
   return (isFinite(v) && v > 0) ? v : fallback;
 }
+// Unlike _posNum, a blank/invalid field here means "no override" — it
+// must stay null rather than collapse to some fallback number, or a
+// per-kind speed left blank could never be told apart from one that
+// happens to match the global default.
+function _posNumOrNull(raw) {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  var v = parseFloat(raw);
+  return (isFinite(v) && v > 0) ? v : null;
+}
 function _strOr(raw, fallback) {
   if (typeof raw !== 'string') return fallback;
   return raw.length > 0 ? raw : fallback;
@@ -56,6 +65,14 @@ RP.ensureCodeConfig = function() {
   if (cfg.turnPivotLeftTemplate === undefined) cfg.turnPivotLeftTemplate = d.turnPivotLeftTemplate || '';
   if (cfg.turnPivotRightTemplate === undefined) cfg.turnPivotRightTemplate = d.turnPivotRightTemplate || '';
   if (cfg.defaultSpeed === undefined || cfg.defaultSpeed === null) cfg.defaultSpeed = d.defaultSpeed || 200;
+  // null is meaningful here too — "no override, use defaultSpeed" — so
+  // only backfill when the key is missing entirely (an old save file).
+  if (cfg.defaultSpeedForward === undefined) cfg.defaultSpeedForward = d.defaultSpeedForward != null ? d.defaultSpeedForward : null;
+  if (cfg.defaultSpeedTurn === undefined) cfg.defaultSpeedTurn = d.defaultSpeedTurn != null ? d.defaultSpeedTurn : null;
+  if (cfg.defaultSpeedArc === undefined) cfg.defaultSpeedArc = d.defaultSpeedArc != null ? d.defaultSpeedArc : null;
+  if (cfg.defaultSpeedWallAlign === undefined) cfg.defaultSpeedWallAlign = d.defaultSpeedWallAlign != null ? d.defaultSpeedWallAlign : null;
+  if (cfg.defaultSpeedLineTraceDist === undefined) cfg.defaultSpeedLineTraceDist = d.defaultSpeedLineTraceDist != null ? d.defaultSpeedLineTraceDist : null;
+  if (cfg.defaultSpeedLineTraceJunct === undefined) cfg.defaultSpeedLineTraceJunct = d.defaultSpeedLineTraceJunct != null ? d.defaultSpeedLineTraceJunct : null;
   if (!cfg.defaultUnit) cfg.defaultUnit = d.defaultUnit || 'mm';
 };
 
@@ -78,6 +95,15 @@ RP.updateCodeConfigFromUI = function() {
   RP.codeConfig.lineTraceJunctTemplate = _strOr(_el('code-lt-junct'), d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed}{extra_args})');
   RP.codeConfig.checkpointTemplate = _strOr(_el('code-checkpoint'), d.checkpointTemplate || 'if callable({name}): {name}({extra_args})');
   RP.codeConfig.defaultSpeed = _posNum(_el('code-speed'), d.defaultSpeed || 200);
+  // Blank is the norm here — most kinds are happy sharing defaultSpeed —
+  // so these use _posNumOrNull, not _strOr's "fall back to a default"
+  // shape.
+  RP.codeConfig.defaultSpeedForward = _posNumOrNull(_el('code-speed-forward'));
+  RP.codeConfig.defaultSpeedTurn = _posNumOrNull(_el('code-speed-turn'));
+  RP.codeConfig.defaultSpeedArc = _posNumOrNull(_el('code-speed-arc'));
+  RP.codeConfig.defaultSpeedWallAlign = _posNumOrNull(_el('code-speed-wall-align'));
+  RP.codeConfig.defaultSpeedLineTraceDist = _posNumOrNull(_el('code-speed-lt-dist'));
+  RP.codeConfig.defaultSpeedLineTraceJunct = _posNumOrNull(_el('code-speed-lt-junct'));
   RP.codeConfig.defaultUnit = _strOr(_el('code-unit'), d.defaultUnit || 'mm');
   if (RP.render) RP.render();
 };
@@ -98,6 +124,16 @@ RP.updateCodeConfigUI = function() {
   var cpTmplEl = document.getElementById('code-checkpoint');
   if (cpTmplEl) cpTmplEl.value = RP.codeConfig.checkpointTemplate || 'if callable({name}): {name}({extra_args})';
   document.getElementById('code-speed').value = RP.codeConfig.defaultSpeed;
+  // null renders as an empty field, i.e. "no override" — never coerce to
+  // defaultSpeed here, or a blank field would look identical to one that
+  // was explicitly set to match it.
+  function _speedEl(id, val) { var e = document.getElementById(id); if (e) e.value = val != null ? val : ''; }
+  _speedEl('code-speed-forward', RP.codeConfig.defaultSpeedForward);
+  _speedEl('code-speed-turn', RP.codeConfig.defaultSpeedTurn);
+  _speedEl('code-speed-arc', RP.codeConfig.defaultSpeedArc);
+  _speedEl('code-speed-wall-align', RP.codeConfig.defaultSpeedWallAlign);
+  _speedEl('code-speed-lt-dist', RP.codeConfig.defaultSpeedLineTraceDist);
+  _speedEl('code-speed-lt-junct', RP.codeConfig.defaultSpeedLineTraceJunct);
   document.getElementById('code-unit').value = RP.codeConfig.defaultUnit;
 };
 

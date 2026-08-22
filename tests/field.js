@@ -267,4 +267,16 @@ check('extraArgs on a wall_align move is spliced into its own line only', () => 
     'expected the user text appended verbatim, got:\n' + code);
 });
 
+check('defaultSpeedWallAlign overrides the global default for wall_align only', () => {
+  const RP = fresh();
+  const { el, route } = approachRightWall(RP);
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
+  RP.codeConfig.defaultSpeed = 200;
+  RP.codeConfig.defaultSpeedWallAlign = 60;   // approach a wall slower than everything else
+  const code = RP.generateCode(route);
+  assert(/wall_align\(reversed=False, power=60,/.test(code),
+    'wall_align should pick up its own kind default, got:\n' + code);
+});
+
 if (!report()) process.exitCode = 1;

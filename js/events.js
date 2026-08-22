@@ -844,7 +844,9 @@ RP.initEvents = function() {
 
   ['code-comment', 'code-forward', 'code-turn', 'code-turn-pivot-l', 'code-turn-pivot-r',
    'code-turn-arc', 'code-wall-align', 'code-lt-dist', 'code-lt-junct',
-   'code-checkpoint', 'code-speed', 'code-unit'].forEach(function(id) {
+   'code-checkpoint', 'code-speed', 'code-unit',
+   'code-speed-forward', 'code-speed-turn', 'code-speed-arc',
+   'code-speed-wall-align', 'code-speed-lt-dist', 'code-speed-lt-junct'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateCodeConfigFromUI);

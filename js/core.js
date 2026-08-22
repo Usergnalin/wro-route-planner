@@ -161,6 +161,16 @@ RP.DEFAULT_CODE_CONFIG_VALUES = {
   lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed}{extra_args})',
   checkpointTemplate: 'if callable({name}): {name}({extra_args})',
   defaultSpeed: 200,
+  // Per-move-kind overrides. null = fall back to defaultSpeed above, same
+  // as if this project had never heard of them — a straight-line move
+  // and a wall approach rarely want the same speed, but most projects
+  // don't care to say so for every kind, so blank must stay free.
+  defaultSpeedForward: null,
+  defaultSpeedTurn: null,
+  defaultSpeedArc: null,
+  defaultSpeedWallAlign: null,
+  defaultSpeedLineTraceDist: null,
+  defaultSpeedLineTraceJunct: null,
   defaultUnit: 'mm'
 };
 RP.freshRobotConfig = function() { return JSON.parse(JSON.stringify(RP.DEFAULT_ROBOT_CONFIG)); };

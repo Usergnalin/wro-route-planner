@@ -28,6 +28,18 @@ RP.turnTemplateFor = function(style) {
   return (tmpl && String(tmpl).trim()) ? tmpl : null;
 };
 
+// Which codeConfig field holds this step kind's own default speed. Blank
+// (null) is the common case — most projects don't bother overriding most
+// kinds — so this only ever narrows the fallback chain, never widens it.
+RP.STEP_KIND_SPEED_KEYS = {
+  forward: 'defaultSpeedForward',
+  turn: 'defaultSpeedTurn',
+  arc: 'defaultSpeedArc',
+  wall_align: 'defaultSpeedWallAlign',
+  linetrace: 'defaultSpeedLineTraceDist',
+  linetrace_junct: 'defaultSpeedLineTraceJunct'
+};
+
 // Compute ordered list of steps for the longest path through a route graph.
 //
 // Steps:
@@ -194,7 +206,16 @@ RP.generateCode = function(route) {
   var uFactor = RP.unitFactor(unit);
   var steps = RP.computeSteps(route);
   var lines_out = [];
-  function spd(st) { return (st.speed != null && st.speed !== '') ? st.speed : speed; }
+  // An action's own typed speed always wins. Otherwise, this kind's own
+  // default (if the project bothered to set one) beats the plain global
+  // default — a wall approach and a straight-line drive rarely want the
+  // same number, but most kinds are happy sharing one.
+  function spd(st) {
+    if (st.speed != null && st.speed !== '') return st.speed;
+    var key = RP.STEP_KIND_SPEED_KEYS[st.kind];
+    var perKind = key ? RP.codeConfig[key] : null;
+    return (perKind != null && perKind !== '') ? perKind : speed;
+  }
   // Raw, unescaped: the whole point is that the user typed exactly what
   // they want spliced into their own template, comma and all.
   function extra(st) { return st.extraArgs || ''; }

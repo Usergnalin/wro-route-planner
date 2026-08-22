@@ -176,6 +176,10 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
       approach instead of driving blind), `{extra_args}` (per-action, see
       below)
 - [x] Configurable: comment prefix, forward/turn template, default speed, output unit
+- [x] Per-move-kind default speeds (Robot & Code panel) — forward, turn,
+      arc, wall align, and both line-trace modes can each override the
+      plain default speed; blank falls back to it, and an action's own
+      Speed field (Route mode) always wins over both
 - [x] Extra args per action — every move, turn and checkpoint has its own
       free-text field (Route mode's detail panel) spliced verbatim into
       `{extra_args}` in that action's template, for whatever a project's

@@ -573,4 +573,62 @@ check('extraArgs on a checkpoint lands inside its own call', () => {
     'expected the extra args inside the checkpoint call, got:\n' + code);
 });
 
+// ---- per-move-kind default speeds ---------------------------------------
+check('with no overrides, every kind falls back to the plain global default', () => {
+  const RP = fresh();
+  const { route } = lRoute(RP);
+  RP.codeConfig.defaultSpeed = 175;
+  const code = RP.generateCode(route);
+  assert(code.indexOf('power=175') >= 0 && code.indexOf('power=200') < 0,
+    'both the move and the turn should use the global default, got:\n' + code);
+});
+
+check('a per-kind default speed is used when the action has no explicit speed', () => {
+  const RP = fresh();
+  const { route } = lRoute(RP);
+  RP.codeConfig.defaultSpeed = 200;
+  RP.codeConfig.defaultSpeedForward = 350;
+  const code = RP.generateCode(route);
+  const moveLines = code.split('\n').filter(l => l.indexOf('move_distance') >= 0);
+  assert(moveLines.every(l => l.indexOf('power=350') >= 0),
+    'every forward move should pick up its kind default, got:\n' + code);
+  const turnLines = code.split('\n').filter(l => l.indexOf('turn_in_place') >= 0);
+  assert(turnLines.every(l => l.indexOf('power=200') >= 0),
+    'turns must not be affected by the forward-only override, got:\n' + code);
+});
+
+check('an action’s own explicit speed still beats its kind’s default', () => {
+  const RP = fresh();
+  const { route, e1, e2 } = lRoute(RP);
+  RP.codeConfig.defaultSpeedForward = 350;
+  RP.setMoveProps(route.id, e1.id, { speed: 77 });
+  const code = RP.generateCode(route);
+  const moveLines = code.split('\n').filter(l => l.indexOf('move_distance') >= 0);
+  assert(moveLines[0].indexOf('power=77') >= 0, 'the explicit speed must win over the kind default, got:\n' + code);
+  assert(moveLines[1].indexOf('power=350') >= 0, 'the other move still gets the kind default, got:\n' + code);
+});
+
+check('different kinds use independent defaults, not each other’s', () => {
+  const RP = fresh();
+  const { route } = lRoute(RP);
+  RP.codeConfig.defaultSpeedForward = 111;
+  RP.codeConfig.defaultSpeedTurn = 222;
+  const code = RP.generateCode(route);
+  assert(code.split('\n').filter(l => l.indexOf('move_distance') >= 0).every(l => l.indexOf('power=111') >= 0),
+    'forward moves should use defaultSpeedForward, got:\n' + code);
+  assert(code.split('\n').filter(l => l.indexOf('turn_in_place') >= 0).every(l => l.indexOf('power=222') >= 0),
+    'turns should use defaultSpeedTurn, got:\n' + code);
+});
+
+check('per-kind speeds default to null once ensured, so old save files are unaffected', () => {
+  const RP = fresh();
+  // ensureCodeConfig backfills fields an old save file never had — the
+  // same path a v4/v5 project takes on open, and the one generateCode
+  // itself calls before every run.
+  RP.ensureCodeConfig();
+  const keys = ['defaultSpeedForward', 'defaultSpeedTurn', 'defaultSpeedArc',
+                'defaultSpeedWallAlign', 'defaultSpeedLineTraceDist', 'defaultSpeedLineTraceJunct'];
+  for (const k of keys) assert(RP.codeConfig[k] === null, k + ' should default to null, got ' + RP.codeConfig[k]);
+});
+
 if (!report()) process.exitCode = 1;

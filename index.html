@@ -231,6 +231,17 @@
   <label>Unit <input type="text" id="code-unit" value="mm"></label>
   </div>
   <div class="hint">Placeholders: {distance}, {angle}, {speed}, {reversed}, {junctions}, {radius}, {name}, {expected_distance} (wall align only), {extra_args} (per-action, typed on the action itself in Route mode). Leave a pivot template blank to fall back to the plain turn.</div>
+
+  <h4 class="modal-section">Default speeds per move</h4>
+  <div class="tmpl-grid">
+  <label>Forward <input type="number" id="code-speed-forward" placeholder="Default Speed" min="1"></label>
+  <label>Turn <input type="number" id="code-speed-turn" placeholder="Default Speed" min="1"></label>
+  <label>Arc <input type="number" id="code-speed-arc" placeholder="Default Speed" min="1"></label>
+  <label>Wall Align <input type="number" id="code-speed-wall-align" placeholder="Default Speed" min="1"></label>
+  <label>Line Trace Dist <input type="number" id="code-speed-lt-dist" placeholder="Default Speed" min="1"></label>
+  <label>Line Trace Junct <input type="number" id="code-speed-lt-junct" placeholder="Default Speed" min="1"></label>
+  </div>
+  <div class="hint">Blank uses Default Speed above. An action's own Speed field (Route mode) always wins over both.</div>
   </div>
 </div>
 
