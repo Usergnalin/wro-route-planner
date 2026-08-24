@@ -195,8 +195,38 @@ RP.constraintRefsFor = function(type) {
   return null;
 };
 
+// FreeCAD-style merged entry points. One button and one key stand in for a
+// family of constraints, dispatched on whatever happens to be selected —
+// "coincident" joins two points, sticks a point to a line, or a point to an
+// arc; "dimension" is length, gap-to-a-line, radius, or angle between two
+// lines. Only the ENTRY POINT is shared: the solver, the saved file, and
+// the constraint list all still deal in the specific type, so nothing
+// downstream (or in any existing caller) has to know these groups exist.
+//
+// Order inside each group is the dispatch order, so the more specific
+// reading of an ambiguous selection has to come first. One line alone fits
+// both "distance" (its length) and "angle" (to horizontal); length is the
+// far commoner intent, so it wins here and "angle" keeps its own key for
+// the other one.
+RP.CONSTRAINT_MERGED = {
+  coincident: ['coincident', 'point_on_line', 'point_on_arc'],
+  distance:   ['distance', 'point_line_distance', 'radius', 'angle']
+};
+
+// The concrete constraint a merged type means for the current selection.
+// Anything not a merged head — or a merged head whose selection fits none
+// of its members — resolves to itself, so callers can resolve blindly.
+RP.resolveConstraintType = function(type) {
+  var group = RP.CONSTRAINT_MERGED[type];
+  if (!group) return type;
+  for (var i = 0; i < group.length; i++) {
+    if (RP.constraintRefsFor(group[i])) return group[i];
+  }
+  return type;
+};
+
 RP.canApplyConstraint = function(type) {
-  return RP.constraintRefsFor(type) !== null;
+  return RP.constraintRefsFor(RP.resolveConstraintType(type)) !== null;
 };
 
 // Current geometric value, used to pre-fill the dimension prompt.
@@ -277,6 +307,7 @@ RP.sharedTangentPoint = function(lineId, arcId) {
 };
 
 RP.applyConstraint = function(type, displayValue) {
+  type = RP.resolveConstraintType(type);
   var refs = RP.constraintRefsFor(type);
   if (!refs) return { ok: false, message: 'Selection does not fit "' + type + '"' };
 
@@ -779,6 +810,7 @@ RP.updateConstraintList = function() {
 
 // Prompted variant used by the palette buttons and keyboard shortcuts.
 RP.promptConstraint = function(type) {
+  type = RP.resolveConstraintType(type);
   var refs = RP.constraintRefsFor(type);
   if (!refs) return { ok: false, message: 'Selection does not fit "' + type + '"' };
   var def = RP.Sketch.constraintDefs[type];

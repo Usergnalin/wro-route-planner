@@ -1,3 +1,88 @@
+# Changes — 2026-08-24
+
+## FreeCAD-style merged constraints; WASD/arrow keys reserved for panning
+
+### Merged constraint heads
+
+The palette used to expose every constraint type as its own button, which
+meant knowing in advance whether the thing you wanted was "Coincident",
+"Point on line", "Point on arc", "Distance", "Distance to line" or
+"Radius" — six buttons for what a sketcher user thinks of as two ideas.
+FreeCAD collapses these: you select geometry, hit one key, and the tool
+works out which constraint that selection can actually mean.
+
+Two merged heads now do the same here:
+
+| Head | Selection | Constraint actually applied |
+|---|---|---|
+| **Coincident** (`C`) | 2 points | `coincident` |
+| | point + line | `point_on_line` |
+| | point + arc | `point_on_arc` |
+| **Dimension** (`K`) | 1 line | `distance` (its length) |
+| | 2 points | `distance` |
+| | point + line | `point_line_distance` |
+| | 1 arc | `radius` |
+| | 2 lines | `angle` |
+
+The merge is **entry-point only**. `RP.CONSTRAINT_MERGED` /
+`RP.resolveConstraintType` (`js/ui/sketch-ui.js`) sit in front of
+`applyConstraint`, `promptConstraint` and `canApplyConstraint`; the
+solver, the saved `.json`, the constraint list, the on-canvas badges and
+every existing caller still deal exclusively in the specific type.
+Anything that isn't a merged head — and a merged head whose selection
+fits none of its members — resolves to itself, so resolution is safe to
+call blindly and no existing code path changed behaviour.
+
+Dispatch order matters for one genuinely ambiguous case: a single
+selected line fits both `distance` (its length) and `angle` (to
+horizontal). Length is the far commoner intent, so it wins under `K`, and
+`angle` keeps its own key for the other reading.
+
+Palette buttons dropped as redundant: Point on line, Distance to line,
+Point on arc, Radius. Their constraints are unchanged and still fully
+reachable — through the merged heads, and in existing save files.
+
+### Keyboard
+
+W/A/S/D previously panned the canvas *except* under the Constrain tool,
+where `d` meant distance and `a` meant angle. Navigation silently
+changing meaning based on the active tool is the wrong trade, so W/A/S/D
+are now unconditionally reserved for panning and the two offending
+shortcuts moved:
+
+- `K` — dimension (was `D`)
+- `N` — angle (was `A`)
+- `T` — tangent (new; previously palette-only)
+- `O` — dropped (point-on-line now lives under `C`)
+- `C`, `H`, `V`, `L`, `E` — unchanged
+
+Arrow keys now pan too, identically to WASD and equally unconditionally.
+
+### Files
+
+- `js/ui/sketch-ui.js`: `RP.CONSTRAINT_MERGED`, `RP.resolveConstraintType`;
+  `applyConstraint`/`promptConstraint`/`canApplyConstraint` resolve first.
+- `js/events.js`: remapped `CONSTRAINT_KEYS`; arrow keys added to the pan
+  switch.
+- `index.html`: palette trimmed to 8 buttons, titles updated with the new
+  keys and the selections each head accepts.
+
+### Verification
+
+11 suites pass, 33/33 in the constraint UI suite (5 new: dispatch for
+every member of both heads, a merged head storing the *specific* type
+with a correctly unit-converted value, button-enable state following the
+group, and non-merged types resolving to themselves).
+
+Verified in Chromium against the real UI: the palette renders the
+expected 8 buttons; with a point and a line selected both the Coincident
+and Dimension buttons light up; clicking Dimension and entering a value
+stores a `point_line_distance`; pressing `K` with an arc selected stores
+a `radius`; pressing `C` with two points selected stores a `coincident`.
+With the Constrain tool active — the case that used to break — `A`/`D`
+and the arrow keys all pan the canvas as expected.
+---
+
 # Changes — 2026-08-22 (5)
 
 ## Fix: the route action list had no scrollbar

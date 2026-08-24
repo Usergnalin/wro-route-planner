@@ -882,10 +882,17 @@ RP.initEvents = function() {
     // Constraint shortcuts, constrain tool only so they cannot collide with
     // anything else. Modifier combos (Ctrl+V etc.) are left alone.
     if (RP.activeTool === 'constrain' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // W/A/S/D are reserved for panning in every tool, so nothing here may
+      // use them — that rules out the old 'd' (distance) and 'a' (angle).
+      // 'c' and 'k' are the merged FreeCAD-style heads: 'c' covers
+      // point-point / point-line / point-arc coincidence, 'k' covers every
+      // dimension (length, gap to a line, radius, angle between two lines).
+      // See RP.CONSTRAINT_MERGED. 'n' keeps the line-to-horizontal angle
+      // reachable, which the merged dimension can't express on its own.
       var CONSTRAINT_KEYS = {
-        c: 'coincident', o: 'point_on_line', h: 'horizontal',
-        v: 'vertical', d: 'distance', a: 'angle', l: 'fix',
-        e: 'equal'
+        c: 'coincident', k: 'distance', h: 'horizontal',
+        v: 'vertical', n: 'angle', l: 'fix',
+        t: 'tangent', e: 'equal'
       };
       var ckType = CONSTRAINT_KEYS[String(e.key).toLowerCase()];
       if (ckType) {
@@ -941,11 +948,13 @@ RP.initEvents = function() {
 
     if (!e.ctrlKey && !e.metaKey) {
       var panStep = 30 / RP.scale;
+      // Arrows do the same job as WASD — the hand stays wherever it already
+      // is. Both sets are unconditional: no tool may claim them.
       switch (e.key.toLowerCase()) {
-        case 'w': RP.offsetY += panStep; RP.render(); e.preventDefault(); return;
-        case 's': RP.offsetY -= panStep; RP.render(); e.preventDefault(); return;
-        case 'a': RP.offsetX += panStep; RP.render(); e.preventDefault(); return;
-        case 'd': RP.offsetX -= panStep; RP.render(); e.preventDefault(); return;
+        case 'w': case 'arrowup':    RP.offsetY += panStep; RP.render(); e.preventDefault(); return;
+        case 's': case 'arrowdown':  RP.offsetY -= panStep; RP.render(); e.preventDefault(); return;
+        case 'a': case 'arrowleft':  RP.offsetX += panStep; RP.render(); e.preventDefault(); return;
+        case 'd': case 'arrowright': RP.offsetX -= panStep; RP.render(); e.preventDefault(); return;
       }
     }
   });

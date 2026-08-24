@@ -164,7 +164,14 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - [x] Robot start position marker with heading arrow
 - [x] Snap system: endpoints, intersections, 90° angle, along-line projection
 - [x] Ctrl to temporarily disable snap
-- [x] Zoom (scroll/pinch/+/-/ctrl+wheel) and pan (drag/WASD)
+- [x] Zoom (scroll/pinch/+/-/ctrl+wheel) and pan (drag/WASD/arrow keys)
+- [x] FreeCAD-style merged constraints — one **Coincident** button (`C`)
+      joins two points, pins a point to a line, or pins a point to an arc;
+      one **Dimension** button (`K`) sets a line's length, the gap between
+      two points, a point's distance to a line, an arc's radius, or the
+      angle between two lines. Which one you get is decided by what's
+      selected. The solver and the saved file still store the specific
+      constraint — only the button and the key are shared
 - [x] Fit-to-view
 
 ### Output
@@ -200,7 +207,12 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - [x] Snap indicator crosshair
 - [x] Construction line drawing preview
 - [x] Route continuation magnet circle on last waypoint
-- [x] Keyboard shortcuts: Ctrl+Z/Y, Escape, WASD, +/-, F
+- [x] Keyboard shortcuts: Ctrl+Z/Y, Escape, WASD, arrow keys, +/-, F
+- [x] WASD and the arrow keys are reserved for panning in every tool — no
+      constraint shortcut may claim them, so navigation never depends on
+      which tool happens to be active. Constraint keys (Constrain tool
+      only): `C` coincident, `K` dimension, `H`/`V` horizontal/vertical,
+      `N` angle, `T` tangent, `E` equal, `L` lock
 - [x] Touch support (pan, pinch-zoom)
 - [x] No keyboard hijacking when focused in text inputs
 - [x] Live preview of code template changes
