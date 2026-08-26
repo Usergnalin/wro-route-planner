@@ -842,12 +842,13 @@ RP.initEvents = function() {
     el.addEventListener('input', RP.updateRobotConfigFromUI);
   });
 
-  ['code-comment', 'code-forward', 'code-turn', 'code-turn-pivot-l', 'code-turn-pivot-r',
-   'code-turn-arc', 'code-wall-align', 'code-lt-dist', 'code-lt-junct',
-   'code-checkpoint', 'code-speed', 'code-unit',
-   'code-speed-forward', 'code-speed-turn', 'code-speed-arc',
-   'code-speed-wall-align', 'code-speed-lt-dist', 'code-speed-lt-junct'].forEach(function(id) {
-    var el = document.getElementById(id);
+  // Driven by RP.CODE_CONFIG_FIELDS (core.js) — every code-config input
+  // gets wired automatically, so a new field never needs a matching entry
+  // here. (This list used to be hand-maintained and separate from the
+  // field table; a field added to one and not the other silently did
+  // nothing when typed into, with no error anywhere.)
+  RP.CODE_CONFIG_FIELDS.forEach(function(f) {
+    var el = document.getElementById(f.id);
     if (!el) return;
     el.addEventListener('change', RP.updateCodeConfigFromUI);
     el.addEventListener('input', RP.updateCodeConfigFromUI);

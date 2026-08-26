@@ -28,17 +28,15 @@ RP.turnTemplateFor = function(style) {
   return (tmpl && String(tmpl).trim()) ? tmpl : null;
 };
 
-// Which codeConfig field holds this step kind's own default speed. Blank
-// (null) is the common case — most projects don't bother overriding most
-// kinds — so this only ever narrows the fallback chain, never widens it.
-RP.STEP_KIND_SPEED_KEYS = {
-  forward: 'defaultSpeedForward',
-  turn: 'defaultSpeedTurn',
-  arc: 'defaultSpeedArc',
-  wall_align: 'defaultSpeedWallAlign',
-  linetrace: 'defaultSpeedLineTraceDist',
-  linetrace_junct: 'defaultSpeedLineTraceJunct'
-};
+// Which codeConfig field holds this step kind's own default speed —
+// derived from RP.CODE_CONFIG_FIELDS (core.js) so a new per-kind speed
+// field only has to be added in one place. Blank (null) is the common
+// case — most projects don't bother overriding most kinds — so this only
+// ever narrows the fallback chain, never widens it.
+RP.STEP_KIND_SPEED_KEYS = {};
+RP.CODE_CONFIG_FIELDS.forEach(function(f) {
+  if (f.stepKind) RP.STEP_KIND_SPEED_KEYS[f.stepKind] = f.key;
+});
 
 // Compute ordered list of steps for the longest path through a route graph.
 //

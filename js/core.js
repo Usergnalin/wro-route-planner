@@ -100,18 +100,8 @@ RP.TOOL_LABELS = {
   point: 'Point', constrain: 'Constrain'
 };
 
-// Code configuration
-RP.codeConfig = {
-  commentPrefix: '#',
-  forwardTemplate: 'robot.move_distance({distance}, power={speed}{extra_args})',
-  turnTemplate: 'robot.turn_in_place({angle}, power={speed}{extra_args})',
-  turnArcTemplate: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})',
-  wallAlignTemplate: 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})',
-  lineTraceDistTemplate: 'line_trace_distance({distance}, {speed}{extra_args})',
-  lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed}{extra_args})',
-  defaultSpeed: 200,
-  defaultUnit: 'mm'
-};
+// Code configuration — see RP.CODE_CONFIG_FIELDS below, defined further
+// down this file, for the actual field list and RP.codeConfig's value.
 
 // State for interaction
 RP.isDragging = false;
@@ -143,38 +133,68 @@ RP.DEFAULT_ROBOT_CONFIG = {
   startPos: null,
   startHeading: 0
 };
-RP.DEFAULT_CODE_CONFIG_VALUES = {
-  commentPrefix: '#',
-  forwardTemplate: 'robot.move_distance({distance}, power={speed}{extra_args})',
-  turnTemplate: 'robot.turn_in_place({angle}, power={speed}{extra_args})',
-  // Blank = fall back to turnTemplate. Fill these in only if the robot
-  // has a real one-wheel pivot that differs from a centre spin.
-  turnPivotLeftTemplate: '',
-  turnPivotRightTemplate: '',
-  turnArcTemplate: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})',
-  // expected_distance is how far the robot should have to travel before
-  // it actually reaches the wall — the point-line-distance solver already
+// ----------------------------------------------------------------------
+// Code config fields — THE single source of truth for every field in the
+// Robot & Code panel's template/speed section. Everything else (default
+// values, backfilling old saves, reading the panel into RP.codeConfig,
+// writing RP.codeConfig back into the panel, and wiring up each input's
+// change listener) walks this list instead of naming fields by hand. Add
+// a row here and a field works everywhere else — see RP.ensureCodeConfig
+// and RP.updateCodeConfigFromUI/UI in config.js, and the listener setup
+// in events.js.
+//
+// kind controls how a field's raw <input> string becomes a stored value:
+//   'text'         - blank in the UI falls back to `default` (a template
+//                    or unit string that should never actually be empty)
+//   'blank'        - stored verbatim, including ''; blank IS a meaningful
+//                    value here (e.g. "same as a plain turn"), so it must
+//                    never be coerced to `default`
+//   'posNum'       - a positive number; blank/invalid falls back to `default`
+//   'posNumOrNull' - a positive number, or null for "no override" — blank
+//                    must stay tellable apart from a value that happens
+//                    to match the global default, so it can never fall
+//                    back to one
+//
+// stepKind ties a per-move-kind speed field to the RP.computeSteps() step
+// kind it overrides the speed for — see RP.STEP_KIND_SPEED_KEYS/spd() in
+// output.js, itself derived from this same table.
+RP.CODE_CONFIG_FIELDS = [
+  { key: 'commentPrefix',          id: 'code-comment',      kind: 'text',  default: '#' },
+  { key: 'forwardTemplate',        id: 'code-forward',      kind: 'text',  default: 'robot.move_distance({distance}, power={speed}{extra_args})' },
+  { key: 'turnTemplate',           id: 'code-turn',         kind: 'text',  default: 'robot.turn_in_place({angle}, power={speed}{extra_args})' },
+  // Fill these in only if the robot has a real one-wheel pivot that
+  // differs from a centre spin; blank means "same as turnTemplate".
+  { key: 'turnPivotLeftTemplate',  id: 'code-turn-pivot-l', kind: 'blank', default: '' },
+  { key: 'turnPivotRightTemplate', id: 'code-turn-pivot-r', kind: 'blank', default: '' },
+  { key: 'turnArcTemplate',        id: 'code-turn-arc',     kind: 'text',  default: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})' },
+  // expected_distance is how far the robot should have left to travel
+  // when wall_align starts — the point-line-distance solver already
   // knows this leg's length, so a real robot can use it to slow down on
   // approach instead of driving blind at wall_align speed the whole time.
-  wallAlignTemplate: 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})',
-  lineTraceDistTemplate: 'line_trace_distance({distance}, {speed}{extra_args})',
-  lineTraceJunctTemplate: 'line_trace_until_junctions({junctions}, {speed}{extra_args})',
-  checkpointTemplate: 'if callable({name}): {name}({extra_args})',
-  defaultSpeed: 200,
-  // Per-move-kind overrides. null = fall back to defaultSpeed above, same
-  // as if this project had never heard of them — a straight-line move
-  // and a wall approach rarely want the same speed, but most projects
-  // don't care to say so for every kind, so blank must stay free.
-  defaultSpeedForward: null,
-  defaultSpeedTurn: null,
-  defaultSpeedArc: null,
-  defaultSpeedWallAlign: null,
-  defaultSpeedLineTraceDist: null,
-  defaultSpeedLineTraceJunct: null,
-  defaultUnit: 'mm'
-};
+  { key: 'wallAlignTemplate',      id: 'code-wall-align',   kind: 'text',  default: 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})' },
+  { key: 'lineTraceDistTemplate',  id: 'code-lt-dist',      kind: 'text',  default: 'line_trace_distance({distance}, {speed}{extra_args})' },
+  { key: 'lineTraceJunctTemplate', id: 'code-lt-junct',     kind: 'text',  default: 'line_trace_until_junctions({junctions}, {speed}{extra_args})' },
+  { key: 'checkpointTemplate',     id: 'code-checkpoint',   kind: 'text',  default: 'if callable({name}): {name}({extra_args})' },
+  { key: 'defaultSpeed',           id: 'code-speed',        kind: 'posNum', default: 200 },
+  // Per-move-kind speed overrides — a straight-line move and a wall
+  // approach rarely want the same speed, but most projects don't care to
+  // say so for every kind, so each one defaults to null ("use
+  // defaultSpeed above") and only narrows the fallback chain when set.
+  { key: 'defaultSpeedForward',        id: 'code-speed-forward',    kind: 'posNumOrNull', default: null, stepKind: 'forward' },
+  { key: 'defaultSpeedTurn',           id: 'code-speed-turn',       kind: 'posNumOrNull', default: null, stepKind: 'turn' },
+  { key: 'defaultSpeedArc',            id: 'code-speed-arc',        kind: 'posNumOrNull', default: null, stepKind: 'arc' },
+  { key: 'defaultSpeedWallAlign',      id: 'code-speed-wall-align', kind: 'posNumOrNull', default: null, stepKind: 'wall_align' },
+  { key: 'defaultSpeedLineTraceDist',  id: 'code-speed-lt-dist',    kind: 'posNumOrNull', default: null, stepKind: 'linetrace' },
+  { key: 'defaultSpeedLineTraceJunct', id: 'code-speed-lt-junct',   kind: 'posNumOrNull', default: null, stepKind: 'linetrace_junct' },
+  { key: 'defaultUnit',            id: 'code-unit',         kind: 'text',  default: 'mm' }
+];
+
+RP.DEFAULT_CODE_CONFIG_VALUES = {};
+RP.CODE_CONFIG_FIELDS.forEach(function(f) { RP.DEFAULT_CODE_CONFIG_VALUES[f.key] = f.default; });
+
 RP.freshRobotConfig = function() { return JSON.parse(JSON.stringify(RP.DEFAULT_ROBOT_CONFIG)); };
 RP.freshCodeConfig = function() { return JSON.parse(JSON.stringify(RP.DEFAULT_CODE_CONFIG_VALUES)); };
+RP.codeConfig = RP.freshCodeConfig();
 RP.robotConfig = {
   frontClearance: 50,
   rearClearance: 50,

@@ -459,4 +459,81 @@ check('equal has a real badge and a list icon, not a question mark', () => {
   assert(drawn.indexOf('?') < 0, 'equal fell through to the "?" glyph');
 });
 
+// ---- merged (FreeCAD-style) constraint heads -------------------------
+check('coincident dispatches on the selection: 2 points, point+line, point+arc', () => {
+  const RP = fresh();
+  const { a, b } = twoLines(RP);
+
+  RP.sketchSelection = [a.line.p2, b.line.p1];
+  assert(RP.resolveConstraintType('coincident') === 'coincident',
+    'two points should stay plain coincident');
+
+  RP.sketchSelection = [a.line.p1, b.line.id];
+  assert(RP.resolveConstraintType('coincident') === 'point_on_line',
+    'a point and a line should become point_on_line');
+
+  const arc = RP.addConstructionArc(400, 400, 500, 400);
+  RP.sketchSelection = [a.line.p1, arc.arc.id];
+  assert(RP.resolveConstraintType('coincident') === 'point_on_arc',
+    'a point and an arc should become point_on_arc');
+});
+
+check('dimension dispatches on the selection: line, 2 points, point+line, arc, 2 lines', () => {
+  const RP = fresh();
+  const { a, b } = twoLines(RP);
+
+  RP.sketchSelection = [a.line.id];
+  assert(RP.resolveConstraintType('distance') === 'distance',
+    "one line should dimension its own length, not its angle");
+
+  RP.sketchSelection = [a.line.p1, b.line.p2];
+  assert(RP.resolveConstraintType('distance') === 'distance',
+    'two points should be a plain distance');
+
+  RP.sketchSelection = [a.line.p1, b.line.id];
+  assert(RP.resolveConstraintType('distance') === 'point_line_distance',
+    'a point and a line should become point_line_distance');
+
+  const arc = RP.addConstructionArc(400, 400, 500, 400);
+  RP.sketchSelection = [arc.arc.id];
+  assert(RP.resolveConstraintType('distance') === 'radius',
+    'an arc should become radius');
+
+  RP.sketchSelection = [a.line.id, b.line.id];
+  assert(RP.resolveConstraintType('distance') === 'angle',
+    'two lines should become an angle');
+});
+
+check('a merged head actually applies the dispatched constraint', () => {
+  const RP = fresh();
+  const { a, b } = twoLines(RP);
+  RP.setTool('constrain');
+  // Point + line through the merged "distance" head -> point_line_distance,
+  // in mm (2 px/mm), so the stored value must be the px equivalent.
+  RP.sketchSelection = [a.line.p1, b.line.id];
+  const res = RP.applyConstraint('distance', 30);
+  assert(res.ok, 'apply failed: ' + JSON.stringify(res));
+  assert(res.constraint.type === 'point_line_distance',
+    'stored the merged head instead of the specific type: ' + res.constraint.type);
+  assertClose(Math.abs(res.constraint.value), 60, 1e-6, 'value should be 30 mm in px');
+});
+
+check('a merged head lights its button for any member selection', () => {
+  const RP = fresh();
+  const { a, b } = twoLines(RP);
+  RP.sketchSelection = [a.line.p1, b.line.id];
+  assert(RP.canApplyConstraint('coincident'), 'coincident should accept point+line');
+  assert(RP.canApplyConstraint('distance'), 'dimension should accept point+line');
+  RP.sketchSelection = [a.line.id];
+  assert(!RP.canApplyConstraint('coincident'), 'coincident should reject a lone line');
+});
+
+check('non-merged types resolve to themselves, so old callers are unaffected', () => {
+  const RP = fresh();
+  const { a, b } = twoLines(RP);
+  RP.sketchSelection = [a.line.id, b.line.id];
+  ['horizontal', 'equal', 'tangent', 'fix', 'angle', 'point_on_line']
+    .forEach(t => assert(RP.resolveConstraintType(t) === t, t + ' should resolve to itself'));
+});
+
 if (!report()) process.exitCode = 1;

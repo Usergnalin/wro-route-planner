@@ -47,93 +47,60 @@ RP.updateRobotUI = function() {
 // CODE CONFIG MIGRATION
 // ======================================================================
 RP.ensureCodeConfig = function() {
-  var d = RP.DEFAULT_CODE_CONFIG_VALUES || {};
   var cfg = RP.codeConfig;
   if (!cfg) { RP.codeConfig = RP.freshCodeConfig(); cfg = RP.codeConfig; }
-  if (!cfg.commentPrefix) cfg.commentPrefix = d.commentPrefix || '#';
-  if (!cfg.forwardTemplate) cfg.forwardTemplate = d.forwardTemplate || 'robot.move_distance({distance}, power={speed}{extra_args})';
-  if (!cfg.turnTemplate) cfg.turnTemplate = d.turnTemplate || 'robot.turn_in_place({angle}, power={speed}{extra_args})';
-  if (!cfg.turnArcTemplate) cfg.turnArcTemplate = d.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
-  if (!cfg.wallAlignTemplate) cfg.wallAlignTemplate = d.wallAlignTemplate || 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})';
-  // Migrate old split templates
-  if (!cfg.turnTemplate && (cfg.turnRightTemplate || cfg.turnLeftTemplate)) cfg.turnTemplate = 'robot.turn_in_place({angle}, power={speed}{extra_args})';
+
+  // Migrate an old save's split left/right turn templates onto the one
+  // unified turnTemplate field — unrelated to the table below, since
+  // those two fields no longer exist at all.
+  if (!cfg.turnTemplate && (cfg.turnRightTemplate || cfg.turnLeftTemplate)) {
+    cfg.turnTemplate = RP.DEFAULT_CODE_CONFIG_VALUES.turnTemplate;
+  }
   delete cfg.turnRightTemplate; delete cfg.turnLeftTemplate;
-  if (!cfg.lineTraceDistTemplate) cfg.lineTraceDistTemplate = d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed}{extra_args})';
-  if (!cfg.lineTraceJunctTemplate) cfg.lineTraceJunctTemplate = d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed}{extra_args})';
-  if (!cfg.checkpointTemplate) cfg.checkpointTemplate = d.checkpointTemplate || 'if callable({name}): {name}({extra_args})';
-  // Blank is a meaningful value here, so only backfill when absent.
-  if (cfg.turnPivotLeftTemplate === undefined) cfg.turnPivotLeftTemplate = d.turnPivotLeftTemplate || '';
-  if (cfg.turnPivotRightTemplate === undefined) cfg.turnPivotRightTemplate = d.turnPivotRightTemplate || '';
-  if (cfg.defaultSpeed === undefined || cfg.defaultSpeed === null) cfg.defaultSpeed = d.defaultSpeed || 200;
-  // null is meaningful here too — "no override, use defaultSpeed" — so
-  // only backfill when the key is missing entirely (an old save file).
-  if (cfg.defaultSpeedForward === undefined) cfg.defaultSpeedForward = d.defaultSpeedForward != null ? d.defaultSpeedForward : null;
-  if (cfg.defaultSpeedTurn === undefined) cfg.defaultSpeedTurn = d.defaultSpeedTurn != null ? d.defaultSpeedTurn : null;
-  if (cfg.defaultSpeedArc === undefined) cfg.defaultSpeedArc = d.defaultSpeedArc != null ? d.defaultSpeedArc : null;
-  if (cfg.defaultSpeedWallAlign === undefined) cfg.defaultSpeedWallAlign = d.defaultSpeedWallAlign != null ? d.defaultSpeedWallAlign : null;
-  if (cfg.defaultSpeedLineTraceDist === undefined) cfg.defaultSpeedLineTraceDist = d.defaultSpeedLineTraceDist != null ? d.defaultSpeedLineTraceDist : null;
-  if (cfg.defaultSpeedLineTraceJunct === undefined) cfg.defaultSpeedLineTraceJunct = d.defaultSpeedLineTraceJunct != null ? d.defaultSpeedLineTraceJunct : null;
-  if (!cfg.defaultUnit) cfg.defaultUnit = d.defaultUnit || 'mm';
+
+  // Backfill anything an old save file never had, one field at a time per
+  // RP.CODE_CONFIG_FIELDS. 'blank'/'posNumOrNull' fields treat their own
+  // blank/null as a real, meaningful value (not "missing"), so those only
+  // backfill when the key is absent entirely; the rest backfill whenever
+  // they're falsy, same as an empty template string would be.
+  RP.CODE_CONFIG_FIELDS.forEach(function(f) {
+    if (f.kind === 'blank' || f.kind === 'posNumOrNull') {
+      if (cfg[f.key] === undefined) cfg[f.key] = f.default;
+    } else if (!cfg[f.key]) {
+      cfg[f.key] = f.default;
+    }
+  });
 };
 
 // ======================================================================
 // CODE CONFIG UI
 // ======================================================================
+// Reads every field in RP.CODE_CONFIG_FIELDS from its <input> straight
+// into RP.codeConfig. A new field needs a row in that table (core.js)
+// and an <input id> in index.html — nothing here changes.
 RP.updateCodeConfigFromUI = function() {
-  var d = RP.DEFAULT_CODE_CONFIG_VALUES || {};
   function _el(id) { var e = document.getElementById(id); return e && e.value !== undefined ? e.value : ''; }
-  RP.codeConfig.commentPrefix = _strOr(_el('code-comment'), d.commentPrefix || '//');
-  RP.codeConfig.forwardTemplate = _strOr(_el('code-forward'), d.forwardTemplate || 'robot.move_distance({distance}, power={speed}{extra_args})');
-  RP.codeConfig.turnTemplate       = _strOr(_el('code-turn'),       d.turnTemplate       || 'robot.turn_in_place({angle}, power={speed}{extra_args})');
-  // Pivot templates are deliberately allowed to be blank — that is how a
-  // style says "same as a plain turn", so _strOr's default must not apply.
-  RP.codeConfig.turnPivotLeftTemplate  = _el('code-turn-pivot-l');
-  RP.codeConfig.turnPivotRightTemplate = _el('code-turn-pivot-r');
-  RP.codeConfig.turnArcTemplate    = _strOr(_el('code-turn-arc'),   d.turnArcTemplate    || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})');
-  RP.codeConfig.wallAlignTemplate  = _strOr(_el('code-wall-align'), d.wallAlignTemplate  || 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})');
-  RP.codeConfig.lineTraceDistTemplate = _strOr(_el('code-lt-dist'), d.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed}{extra_args})');
-  RP.codeConfig.lineTraceJunctTemplate = _strOr(_el('code-lt-junct'), d.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed}{extra_args})');
-  RP.codeConfig.checkpointTemplate = _strOr(_el('code-checkpoint'), d.checkpointTemplate || 'if callable({name}): {name}({extra_args})');
-  RP.codeConfig.defaultSpeed = _posNum(_el('code-speed'), d.defaultSpeed || 200);
-  // Blank is the norm here — most kinds are happy sharing defaultSpeed —
-  // so these use _posNumOrNull, not _strOr's "fall back to a default"
-  // shape.
-  RP.codeConfig.defaultSpeedForward = _posNumOrNull(_el('code-speed-forward'));
-  RP.codeConfig.defaultSpeedTurn = _posNumOrNull(_el('code-speed-turn'));
-  RP.codeConfig.defaultSpeedArc = _posNumOrNull(_el('code-speed-arc'));
-  RP.codeConfig.defaultSpeedWallAlign = _posNumOrNull(_el('code-speed-wall-align'));
-  RP.codeConfig.defaultSpeedLineTraceDist = _posNumOrNull(_el('code-speed-lt-dist'));
-  RP.codeConfig.defaultSpeedLineTraceJunct = _posNumOrNull(_el('code-speed-lt-junct'));
-  RP.codeConfig.defaultUnit = _strOr(_el('code-unit'), d.defaultUnit || 'mm');
+  RP.CODE_CONFIG_FIELDS.forEach(function(f) {
+    var raw = _el(f.id);
+    if (f.kind === 'text') RP.codeConfig[f.key] = _strOr(raw, f.default);
+    else if (f.kind === 'blank') RP.codeConfig[f.key] = raw;
+    else if (f.kind === 'posNum') RP.codeConfig[f.key] = _posNum(raw, f.default);
+    else RP.codeConfig[f.key] = _posNumOrNull(raw); // posNumOrNull
+  });
   if (RP.render) RP.render();
 };
 
+// The inverse: writes RP.codeConfig back into the panel's <input>s.
 RP.updateCodeConfigUI = function() {
-  document.getElementById('code-comment').value = RP.codeConfig.commentPrefix;
-  document.getElementById('code-forward').value = RP.codeConfig.forwardTemplate;
-  document.getElementById('code-turn').value       = RP.codeConfig.turnTemplate      || 'robot.turn_in_place({angle}, power={speed}{extra_args})';
-  var pvL = document.getElementById('code-turn-pivot-l');
-  if (pvL) pvL.value = RP.codeConfig.turnPivotLeftTemplate || '';
-  var pvR = document.getElementById('code-turn-pivot-r');
-  if (pvR) pvR.value = RP.codeConfig.turnPivotRightTemplate || '';
-  var arcTmplEl = document.getElementById('code-turn-arc');
-  if (arcTmplEl) arcTmplEl.value = RP.codeConfig.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
-  document.getElementById('code-wall-align').value = RP.codeConfig.wallAlignTemplate || 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})';
-  document.getElementById('code-lt-dist').value = RP.codeConfig.lineTraceDistTemplate || 'line_trace_distance({distance}, {speed}{extra_args})';
-  document.getElementById('code-lt-junct').value = RP.codeConfig.lineTraceJunctTemplate || 'line_trace_until_junctions({junctions}, {speed}{extra_args})';
-  var cpTmplEl = document.getElementById('code-checkpoint');
-  if (cpTmplEl) cpTmplEl.value = RP.codeConfig.checkpointTemplate || 'if callable({name}): {name}({extra_args})';
-  document.getElementById('code-speed').value = RP.codeConfig.defaultSpeed;
-  // null renders as an empty field, i.e. "no override" — never coerce to
-  // defaultSpeed here, or a blank field would look identical to one that
-  // was explicitly set to match it.
-  function _speedEl(id, val) { var e = document.getElementById(id); if (e) e.value = val != null ? val : ''; }
-  _speedEl('code-speed-forward', RP.codeConfig.defaultSpeedForward);
-  _speedEl('code-speed-turn', RP.codeConfig.defaultSpeedTurn);
-  _speedEl('code-speed-arc', RP.codeConfig.defaultSpeedArc);
-  _speedEl('code-speed-wall-align', RP.codeConfig.defaultSpeedWallAlign);
-  _speedEl('code-speed-lt-dist', RP.codeConfig.defaultSpeedLineTraceDist);
-  _speedEl('code-speed-lt-junct', RP.codeConfig.defaultSpeedLineTraceJunct);
-  document.getElementById('code-unit').value = RP.codeConfig.defaultUnit;
+  RP.CODE_CONFIG_FIELDS.forEach(function(f) {
+    var el = document.getElementById(f.id);
+    if (!el) return;
+    var v = RP.codeConfig[f.key];
+    // 'blank'/'posNumOrNull' show a genuinely blank field for null/''
+    // rather than falling back to `default` — a blank field and one
+    // explicitly set to match the default must not look identical.
+    if (f.kind === 'blank' || f.kind === 'posNumOrNull') el.value = (v != null) ? v : '';
+    else el.value = (v != null && v !== '') ? v : f.default;
+  });
 };
 

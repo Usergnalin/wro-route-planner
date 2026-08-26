@@ -1,3 +1,65 @@
+# Changes — 2026-08-25
+
+## Code-config fields collapsed into one table
+
+Adding a code-config field (like the per-move-kind speeds) used to mean
+hand-editing five separate places, each naming the field by itself: the
+`<input>` in `index.html`, a default in `RP.DEFAULT_CODE_CONFIG_VALUES`,
+a backfill line in `RP.ensureCodeConfig` (for old saves), a read line in
+`RP.updateCodeConfigFromUI`, a write line in `RP.updateCodeConfigUI`, and
+— easiest of all to forget, since nothing errors when you do — an entry
+in a hardcoded id array in `js/events.js` that wires up the field's DOM
+listeners. That last one is exactly what went missing when the per-kind
+speeds first shipped: the fields exist, read and wrote correctly by
+direct call, and simply didn't respond to being typed into, because
+nothing had bound a listener. A real bug, caught only by a browser pass,
+not by the unit suite.
+
+That's now one table: `RP.CODE_CONFIG_FIELDS` (`js/core.js`), a list of
+`{ key, id, kind, default, stepKind? }` — one row per field, saying its
+`<input id>`, how its raw string becomes a stored value (`text` falls
+back to `default` when blank, `blank` is stored verbatim including
+`''`, `posNum` is a positive number falling back to `default`,
+`posNumOrNull` is a positive number or `null`), its default, and — for
+the six per-move-kind speeds — which `RP.computeSteps()` step kind it
+overrides the speed for.
+
+Everything that used to name fields individually now walks this table:
+
+- `RP.DEFAULT_CODE_CONFIG_VALUES` and `RP.codeConfig` (`js/core.js`) are
+  both built from it, so `RP.codeConfig` is now fully populated at boot
+  — no field is `undefined` before the first `ensureCodeConfig()` call
+  anymore, only meaningfully blank/`null`.
+- `RP.ensureCodeConfig`, `RP.updateCodeConfigFromUI`, `RP.updateCodeConfigUI`
+  (`js/config.js`) all iterate the table instead of naming each field.
+- `RP.STEP_KIND_SPEED_KEYS` (`js/output.js`) is derived from the table's
+  `stepKind` entries rather than kept as a second, separately-maintained
+  map of the same six pairs.
+- The DOM-listener wiring in `js/events.js` iterates the table too — a
+  new field now wires itself up for free. This closes off the exact bug
+  class described above: there is no longer a second list to remember.
+
+Net effect for adding a field going forward: one row in
+`RP.CODE_CONFIG_FIELDS`, one `<input>` in `index.html`. Nothing else.
+
+Pure refactor — no behavior changed for any existing field, no save-file
+format change (`RP.DEFAULT_CODE_CONFIG_VALUES` has the same keys and
+values as before, just generated instead of typed out).
+
+### Verification
+
+All 11 suites pass unmodified, including golden codegen (byte-identical
+output — confirms no field's default or fallback behavior shifted).
+Verified in Chromium end-to-end, reproducing the exact failure mode this
+refactor closes off: opened the Robot & Code panel, typed `333` into
+"Forward" under per-move-kind speeds via a real DOM `fill` + `change`
+event (not a direct function call), and confirmed the generated code
+came out `power=333` on the forward move while an untouched turn stayed
+at the plain default `power=200` — the full path from keystroke to
+generated code, through the newly-generic listener wiring.
+
+---
+
 # Changes — 2026-08-24
 
 ## FreeCAD-style merged constraints; WASD/arrow keys reserved for panning

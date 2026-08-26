@@ -132,6 +132,7 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - **Single source of truth for instructions and code** — `RP.computeSteps(route)` produces an array of `{kind:'turn', deg, dirRight}` / `{kind:'forward', mm}` steps consumed by both the on-screen instructions and the code generator.
 - **All state in one namespace** — `RP.lines`, `RP.routes`, `RP.calibration`, `RP.robotConfig`, `RP.codeConfig`. Undo/redo snapshots and restores the whole thing.
 - **Canvas is DPR-aware** — renders at native device resolution for sharp lines on HiDPI screens.
+- **Code-config fields are table-driven** — `RP.CODE_CONFIG_FIELDS` (`js/core.js`) is the one place that lists every field in the Robot & Code panel's template/speed section: its `<input id>`, its value type, and its default. Defaults, old-save backfilling, panel read/write, per-kind speed lookup, and DOM listener wiring all walk this table instead of naming each field by hand in five separate places. Adding a field is one row here plus one `<input>` in `index.html` — nothing else to remember or keep in sync.
 
 ---
 
