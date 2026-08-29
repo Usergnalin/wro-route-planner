@@ -1,3 +1,37 @@
+# Changes — 2026-08-25 (2)
+
+## WASD panning dropped for arrow-keys-only; A and D now match FreeCAD
+
+Panning previously worked on both WASD and the arrow keys, which is why
+the Constrain tool's shortcuts couldn't use 'a' or 'd' — they were
+reserved everywhere. Panning is now arrow-keys-only, which frees 'a' and
+'d' to match FreeCAD's own layout:
+
+- `D` — the merged Dimension head (was `K`): line length, point-point
+  distance, point-to-line distance, radius, or angle between two lines,
+  same dispatch as before, just back on FreeCAD's own key.
+- `A` — a new merged head, `align`. Horizontal and Vertical take the
+  identical selection (one line), so unlike Coincident/Dimension this
+  can't dispatch on selection shape — instead it applies whichever the
+  selected line is already closer to. `H`/`V` still apply a specific one
+  directly and are unchanged.
+
+`RP.CONSTRAINT_MERGED.align` and the geometric dispatch live in
+`js/ui/sketch-ui.js`, alongside the two merged heads from the previous
+change. `js/events.js`'s pan switch dropped its `w`/`a`/`s`/`d` cases
+entirely, keeping only the four arrow keys.
+
+### Verification
+
+3 new constraint UI tests (align resolving by line orientation, applying
+the resolved type rather than the merged head, and rejecting a selection
+that fits neither) — 36/36 in that suite, all 11 suites pass. Verified
+in Chromium: WASD no longer moves the canvas at all in the Constrain
+tool, the arrow keys still do, `A` on a mostly-horizontal line applies
+`horizontal`, and `D` on a point+line applies `point_line_distance`.
+
+---
+
 # Changes — 2026-08-25
 
 ## Code-config fields collapsed into one table

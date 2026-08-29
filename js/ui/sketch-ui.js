@@ -208,9 +208,15 @@ RP.constraintRefsFor = function(type) {
 // both "distance" (its length) and "angle" (to horizontal); length is the
 // far commoner intent, so it wins here and "angle" keeps its own key for
 // the other one.
+// "align" is a third merged head (keyboard-only, matching FreeCAD's 'A'):
+// horizontal and vertical accept the identical selection (one line), so
+// selection shape can't disambiguate them the way it does for the other
+// two heads above — instead it picks whichever the line is already
+// closer to. Nobody selects a mostly-vertical line hoping to snap it flat.
 RP.CONSTRAINT_MERGED = {
   coincident: ['coincident', 'point_on_line', 'point_on_arc'],
-  distance:   ['distance', 'point_line_distance', 'radius', 'angle']
+  distance:   ['distance', 'point_line_distance', 'radius', 'angle'],
+  align:      ['horizontal', 'vertical']
 };
 
 // The concrete constraint a merged type means for the current selection.
@@ -219,6 +225,13 @@ RP.CONSTRAINT_MERGED = {
 RP.resolveConstraintType = function(type) {
   var group = RP.CONSTRAINT_MERGED[type];
   if (!group) return type;
+  if (type === 'align') {
+    var refs = RP.constraintRefsFor('horizontal'); // same shape as vertical
+    if (!refs) return type;
+    var sk = RP.sketch, line = sk.entities[refs[0]];
+    var a = sk.entities[line.p1], b = sk.entities[line.p2];
+    return Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) ? 'horizontal' : 'vertical';
+  }
   for (var i = 0; i < group.length; i++) {
     if (RP.constraintRefsFor(group[i])) return group[i];
   }

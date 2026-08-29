@@ -883,15 +883,16 @@ RP.initEvents = function() {
     // Constraint shortcuts, constrain tool only so they cannot collide with
     // anything else. Modifier combos (Ctrl+V etc.) are left alone.
     if (RP.activeTool === 'constrain' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      // W/A/S/D are reserved for panning in every tool, so nothing here may
-      // use them — that rules out the old 'd' (distance) and 'a' (angle).
-      // 'c' and 'k' are the merged FreeCAD-style heads: 'c' covers
-      // point-point / point-line / point-arc coincidence, 'k' covers every
-      // dimension (length, gap to a line, radius, angle between two lines).
-      // See RP.CONSTRAINT_MERGED. 'n' keeps the line-to-horizontal angle
-      // reachable, which the merged dimension can't express on its own.
+      // Panning moved to the arrow keys only, freeing WASD entirely — 'a'
+      // and 'd' now match FreeCAD: 'a' is the merged horizontal/vertical
+      // head (see RP.CONSTRAINT_MERGED.align — it picks whichever the
+      // selected line is already closer to), 'd' is the merged dimension
+      // head (length, gap to a line, radius, or angle between two lines).
+      // 'c' is the merged coincident head (point-point / point-line /
+      // point-arc). 'n' keeps the line-to-horizontal angle reachable on
+      // its own, since the merged dimension can't express it.
       var CONSTRAINT_KEYS = {
-        c: 'coincident', k: 'distance', h: 'horizontal',
+        c: 'coincident', d: 'distance', a: 'align', h: 'horizontal',
         v: 'vertical', n: 'angle', l: 'fix',
         t: 'tangent', e: 'equal'
       };
@@ -929,7 +930,7 @@ RP.initEvents = function() {
     }
 
     // Mode switching. Digits pick a mode directly, Tab flips between them
-    // — none of these collide with WASD panning or the constraint letters.
+    // — none of these collide with arrow-key panning or the constraint letters.
     if (!e.ctrlKey && !e.metaKey && !e.altKey) {
       if (e.key === '1') { e.preventDefault(); RP.setEditMode('sketch'); return; }
       if (e.key === '2') { e.preventDefault(); RP.setEditMode('route'); return; }
@@ -949,13 +950,14 @@ RP.initEvents = function() {
 
     if (!e.ctrlKey && !e.metaKey) {
       var panStep = 30 / RP.scale;
-      // Arrows do the same job as WASD — the hand stays wherever it already
-      // is. Both sets are unconditional: no tool may claim them.
+      // Arrow keys only — WASD was freed up so 'a' and 'd' could become
+      // constraint hotkeys (see CONSTRAINT_KEYS above) without colliding
+      // with panning. Unconditional: no tool may claim the arrow keys.
       switch (e.key.toLowerCase()) {
-        case 'w': case 'arrowup':    RP.offsetY += panStep; RP.render(); e.preventDefault(); return;
-        case 's': case 'arrowdown':  RP.offsetY -= panStep; RP.render(); e.preventDefault(); return;
-        case 'a': case 'arrowleft':  RP.offsetX += panStep; RP.render(); e.preventDefault(); return;
-        case 'd': case 'arrowright': RP.offsetX -= panStep; RP.render(); e.preventDefault(); return;
+        case 'arrowup':    RP.offsetY += panStep; RP.render(); e.preventDefault(); return;
+        case 'arrowdown':  RP.offsetY -= panStep; RP.render(); e.preventDefault(); return;
+        case 'arrowleft':  RP.offsetX += panStep; RP.render(); e.preventDefault(); return;
+        case 'arrowright': RP.offsetX -= panStep; RP.render(); e.preventDefault(); return;
       }
     }
   });

@@ -536,4 +536,36 @@ check('non-merged types resolve to themselves, so old callers are unaffected', (
     .forEach(t => assert(RP.resolveConstraintType(t) === t, t + ' should resolve to itself'));
 });
 
+check('align (the "A" hotkey) picks horizontal or vertical by which the line is closer to', () => {
+  const RP = fresh();
+  const flat = RP.addConstructionLine(0, 0, 200, 20);   // mostly horizontal
+  const tall = RP.addConstructionLine(400, 0, 420, 200); // mostly vertical
+
+  RP.sketchSelection = [flat.line.id];
+  assert(RP.resolveConstraintType('align') === 'horizontal',
+    'a mostly-horizontal line should resolve to horizontal');
+
+  RP.sketchSelection = [tall.line.id];
+  assert(RP.resolveConstraintType('align') === 'vertical',
+    'a mostly-vertical line should resolve to vertical');
+});
+
+check('align applies the resolved constraint, not the merged head', () => {
+  const RP = fresh();
+  const flat = RP.addConstructionLine(0, 0, 200, 20);
+  RP.setTool('constrain');
+  RP.sketchSelection = [flat.line.id];
+  const res = RP.applyConstraint('align');
+  assert(res.ok, 'apply failed: ' + JSON.stringify(res));
+  assert(res.constraint.type === 'horizontal',
+    'stored the merged head instead of the resolved type: ' + res.constraint.type);
+});
+
+check('align rejects a selection that fits neither horizontal nor vertical', () => {
+  const RP = fresh();
+  const { a, b } = twoLines(RP);
+  RP.sketchSelection = [a.line.id, b.line.id];
+  assert(!RP.canApplyConstraint('align'), 'two lines should not fit align');
+});
+
 if (!report()) process.exitCode = 1;
