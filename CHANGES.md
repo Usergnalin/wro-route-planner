@@ -1,3 +1,72 @@
+# Changes — 2026-08-29 (4)
+
+## Robot frame follow-ups: derived clearances and a reversible drive axis
+
+Three gaps in phase 1, all raised as questions and all real.
+
+### Front/rear clearance is now measured, not typed
+
+Front and rear clearance ARE the body's overhang from the turning centre
+— how far it sticks out ahead of and behind the point it pivots about.
+With a body drawn, there was nothing left for a human to type, and two
+hand-maintained numbers that could silently disagree with the drawing
+they describe.
+
+`RP.robotExtentsMm()` derives front, rear, left, right, length and width
+from `RP.robotFootprint()`, in mm via the shared calibration.
+`RP.wallClearanceMm()` — the single seam every wall_align already went
+through — uses it whenever a body exists and falls back to the typed
+fields when one does not. The Robot & Code panel shows the measured
+values and disables the two inputs, rather than leaving editable numbers
+that quietly feed nothing.
+
+Extents are clamped at zero: a drive axis drawn ahead of the whole
+chassis would otherwise report a negative overhang, which is not a
+clearance.
+
+Leaving the robot document re-runs `syncAllWallAligns()`, since editing
+the body changes what every wall_align stands off by.
+
+### The drive axis can be reversed in place
+
+Previously the only way to change which end was the nose was to delete
+the line and draw it the other way round.
+
+`RP.flipDriveAxis()` toggles a `flipped` flag in the line's METADATA,
+and `RP.robotFrame()` swaps the ends when reading it. Deliberately not
+swapping `p1`/`p2` on the sketch entity: point order is what
+direction-sensitive constraints measure against, so reordering it would
+silently negate any angle constraint on that line. Which end is the nose
+is a property of the role, not of the geometry.
+
+Surfaced as **⇄ Reverse forward direction** in a new panel that appears
+when the drive axis is selected, alongside the turning centre, reach
+ahead/behind and body size — the answer to "how does it know the centre
+of rotation?" now being visible rather than a convention to remember.
+
+### Verification
+
+12 suites, `documents.js` 19 → 26. New tests cover extents in mm,
+clearance derived from the body with the typed fields deliberately set
+wrong, fallback with no body, the flip changing direction and
+re-measuring both overhangs, the flip NOT touching the entity's point
+order, flipping twice being a no-op, and the flip surviving a save/load.
+
+One of those tests initially failed, and the test was wrong rather than
+the code: the shared fixture's drive axis sits symmetrically within the
+body, so flipping it genuinely gives the same overhang either way and
+the assertion could not tell a real flip from a no-op. Rewritten with a
+deliberately asymmetric axis (40→120 within a 0..200 body), which
+distinguishes them: 80/20 mm before, 60/40 mm after.
+
+Verified in Chromium: extents read 80/20 mm, the real **⇄ Reverse
+forward direction** button flips them to 60/40 with the frame reporting
+`cos:-1` and the same entity id, the on-canvas arrow points the other
+way, and the Robot & Code panel then reads "60.0 mm ahead of the turning
+centre, 40.0 mm behind" with both inputs disabled.
+
+---
+
 # Changes — 2026-08-29 (3)
 
 ## Simulation phase 1: a robot document and obstacle geometry

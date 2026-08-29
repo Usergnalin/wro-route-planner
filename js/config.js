@@ -37,6 +37,30 @@ RP.updateRobotConfigFromUI = function() {
 RP.updateRobotUI = function() {
   document.getElementById('robot-fc').value = RP.robotConfig.frontClearance || 50;
   document.getElementById('robot-rc').value = RP.robotConfig.rearClearance  || 50;
+
+  // With a body drawn, the clearances are measured from it and the manual
+  // fields no longer feed anything — so say so rather than leaving two
+  // editable numbers that silently do nothing.
+  var ext = RP.robotExtentsMm ? RP.robotExtentsMm() : null;
+  var derived = document.getElementById('robot-derived');
+  var fc = document.getElementById('robot-fc');
+  var rc = document.getElementById('robot-rc');
+  var hint = document.getElementById('robot-clearance-hint');
+  if (derived) {
+    derived.style.display = ext ? '' : 'none';
+    if (ext) {
+      derived.innerHTML = 'Measured from the robot body: <b>' + ext.front.toFixed(1) +
+        ' mm</b> ahead of the turning centre, <b>' + ext.rear.toFixed(1) +
+        ' mm</b> behind. Body ' + ext.length.toFixed(1) + ' × ' + ext.width.toFixed(1) + ' mm.';
+    }
+  }
+  if (fc) fc.disabled = !!ext;
+  if (rc) rc.disabled = !!ext;
+  if (hint) {
+    hint.textContent = ext
+      ? 'Taken from the drawn body, so they cannot disagree with it. Delete the robot\'s drive axis to type them by hand again.'
+      : 'How far the robot stands off a wall when it aligns. Draw a robot body (Sketch \u2192 Robot) and these are measured from it instead.';
+  }
   document.getElementById('robot-start-label').textContent = RP.robotConfig.startPos
     ? '(' + RP.robotConfig.startPos.x.toFixed(1) + ', ' + RP.robotConfig.startPos.y.toFixed(1) + ')'
     : 'not set';

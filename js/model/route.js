@@ -363,7 +363,16 @@ RP.rebuildRouteViews = function() {
 // Replaces the deleted applyWallAlignSnap, which wrote node.x/y directly.
 // The stopping point is now CONSTRAINED to stand `clearance` away from a
 // real wall, and the solver puts it there.
+// How far the robot's body stands off a wall when it aligns against it.
+//
+// Derived from the drawn body when there is one: this distance IS the
+// overhang from the turning centre to whichever end leads, so with a
+// robot document open there is nothing for a human to type, and the two
+// numbers can no longer disagree with the drawing they describe. The
+// manual fields stay as the fallback for projects with no robot drawn.
 RP.wallClearanceMm = function(el) {
+  var ext = RP.robotExtentsMm ? RP.robotExtentsMm() : null;
+  if (ext) return el.reverse ? ext.rear : ext.front;
   return el.reverse ? (RP.robotConfig.rearClearance || 50)
                     : (RP.robotConfig.frontClearance || 50);
 };

@@ -255,6 +255,96 @@ check('robotFrame reads the robot document even while the mat is active', () => 
   assertClose(f.ox, 50, 1e-9, 'still the robot document origin');
 });
 
+// ---- derived clearances and the flip --------------------------------
+check('robotExtentsMm measures reach from the turning centre, in mm', () => {
+  const RP = fresh();               // 2 px per mm
+  robotWithDrive(RP);               // body 0..200 x, centre at x=50
+  const ext = RP.robotExtentsMm();
+  assert(ext, 'a drawn body should give extents');
+  assertClose(ext.front, 75, 1e-9, '150px ahead / 2 = 75mm');
+  assertClose(ext.rear, 25, 1e-9, '50px behind / 2 = 25mm');
+  assertClose(ext.length, 100, 1e-9, '200px / 2');
+  assertClose(ext.width, 90, 1e-9, '180px / 2');
+});
+
+check('wall clearance is measured from the body instead of the typed numbers', () => {
+  const RP = fresh();
+  RP.robotConfig.frontClearance = 999;   // deliberately wrong
+  RP.robotConfig.rearClearance = 888;
+  robotWithDrive(RP);
+  RP.setActiveDoc(RP.DOC_MAT);
+  assertClose(RP.wallClearanceMm({ reverse: false }), 75, 1e-9, 'front comes from the body');
+  assertClose(RP.wallClearanceMm({ reverse: true }), 25, 1e-9, 'rear comes from the body');
+});
+
+check('with no body drawn the typed clearances still apply', () => {
+  const RP = fresh();
+  RP.robotConfig.frontClearance = 60;
+  RP.robotConfig.rearClearance = 40;
+  assertClose(RP.wallClearanceMm({ reverse: false }), 60, 1e-9, 'falls back to the field');
+  assertClose(RP.wallClearanceMm({ reverse: true }), 40, 1e-9, 'falls back to the field');
+});
+
+check('flipping the drive axis reverses forward without redrawing it', () => {
+  const RP = fresh();
+  RP.setActiveDoc(RP.DOC_ROBOT);
+  // Body 0..200 in x. The drive axis is deliberately ASYMMETRIC within it
+  // (40 -> 120, not 50 -> 150): a symmetric axis gives the same overhang
+  // whichever end is the nose, so it could not tell a real flip from a
+  // no-op.
+  RP.addConstructionLine(0, 0, 200, 0);
+  RP.addConstructionLine(200, 0, 200, 180);
+  RP.addConstructionLine(200, 180, 0, 180);
+  RP.addConstructionLine(0, 180, 0, 0);
+  const d = RP.addConstructionLine(40, 90, 120, 90);
+  RP.setGeometryRole(d.line.id, RP.DRIVE_ROLE);
+
+  const before = RP.robotFrame();
+  assertClose(before.cos, 1, 1e-9, 'forward starts as +x');
+  const extBefore = RP.robotExtentsMm();
+  assertClose(extBefore.front, 80, 1e-9, 'pivot at x=40, body to x=200 -> 160px');
+  assertClose(extBefore.rear, 20, 1e-9, 'and 40px behind');
+
+  assert(RP.flipDriveAxis(), 'flip should succeed');
+  const after = RP.robotFrame();
+  assertClose(after.cos, -1, 1e-9, 'forward is now -x');
+  assert(after.id === before.id, 'it is still the same line, not a new one');
+  // The turning centre moves to the other end of the axis, so both the
+  // pivot AND the facing change — the overhangs are re-measured, not
+  // merely swapped.
+  const ext = RP.robotExtentsMm();
+  assertClose(ext.front, 60, 1e-9, 'pivot now x=120, facing -x, body to x=0 -> 120px');
+  assertClose(ext.rear, 40, 1e-9, 'and 80px behind it');
+});
+
+check('flipping does not touch the sketch entity, so constraints still hold', () => {
+  const RP = fresh();
+  const d = robotWithDrive(RP);
+  const ent = RP.sketch.entities[d.line.id];
+  const p1Before = ent.p1, p2Before = ent.p2;
+  RP.flipDriveAxis();
+  assert(ent.p1 === p1Before && ent.p2 === p2Before,
+    'point order must be untouched — swapping it would negate any angle constraint');
+});
+
+check('flipping twice returns to where it started', () => {
+  const RP = fresh();
+  robotWithDrive(RP);
+  RP.flipDriveAxis();
+  RP.flipDriveAxis();
+  assertClose(RP.robotFrame().cos, 1, 1e-9, 'back to +x');
+});
+
+check('flip survives a save/load round trip', () => {
+  const RP = fresh();
+  robotWithDrive(RP);
+  RP.flipDriveAxis();
+  const payload = { sketch: null, construction: {}, robotDoc: RP.serializeRobotDoc() };
+  const RP2 = fresh();
+  RP2.loadSketchFrom(payload);
+  assertClose(RP2.robotFrame().cos, -1, 1e-9, 'the flip is part of the document');
+});
+
 // ---- interaction with Route mode ------------------------------------
 check('entering Route mode forces the mat, since routes reference mat ids', () => {
   const RP = fresh();

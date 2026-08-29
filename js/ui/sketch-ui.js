@@ -681,6 +681,34 @@ RP.updateGeometryDetail = function() {
 
   var sk = RP.sketch;
   var sel = (sk && RP.sketchSelection.length === 1) ? sk.entities[RP.sketchSelection[0]] : null;
+
+  // The drive axis gets its own panel: which end is the nose is the one
+  // thing about it that is not visible from its geometry, and redrawing
+  // the line to swap them would be an absurd way to say "the other way".
+  var selMeta = sel ? RP.constructionMeta[sel.id] : null;
+  if (RP.editMode !== 'route' && selMeta && selMeta.role === RP.DRIVE_ROLE) {
+    section.style.display = '';
+    var ext = RP.robotExtentsMm ? RP.robotExtentsMm() : null;
+    host.innerHTML =
+      '<div class="ap-row"><span>Turning centre</span><span>' +
+        (selMeta.flipped ? 'line end' : 'line start') + '</span></div>' +
+      (ext
+        ? '<div class="ap-row"><span>Reach ahead</span><span>' + ext.front.toFixed(1) + ' mm</span></div>' +
+          '<div class="ap-row"><span>Reach behind</span><span>' + ext.rear.toFixed(1) + ' mm</span></div>' +
+          '<div class="ap-row"><span>Body</span><span>' + ext.length.toFixed(1) + ' × ' + ext.width.toFixed(1) + ' mm</span></div>'
+        : '') +
+      '<button id="geo-flip-drive" class="sidebar-small-btn" style="margin-top:6px">⇄ Reverse forward direction</button>' +
+      '<div class="sidebar-hint">The robot pivots about this line\'s start and drives towards its end. ' +
+      'Reach ahead/behind are measured from that pivot and are what wall align stands off by.</div>';
+    var fb = document.getElementById('geo-flip-drive');
+    if (fb) fb.addEventListener('click', function() {
+      RP.pushHistory('Flip drive axis');
+      RP.flipDriveAxis();
+      RP.refreshSketchUI();
+    });
+    return;
+  }
+
   var show = (RP.editMode !== 'route') && sel && sel.type === 'arc';
   section.style.display = show ? '' : 'none';
   if (!show) { host.innerHTML = ''; return; }

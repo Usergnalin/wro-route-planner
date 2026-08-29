@@ -61,6 +61,10 @@ RP.switchDoc = function(id) {
   if (v) { RP.scale = v.scale; RP.offsetX = v.offsetX; RP.offsetY = v.offsetY; }
   else if (RP.resetView) RP.resetView();
 
+  // Leaving the robot means its extents may have changed, and wall_align
+  // stands off by exactly those — so the mat's constraints have to catch up.
+  if (id === RP.DOC_MAT && RP.syncAllWallAligns) RP.syncAllWallAligns();
+
   RP.updateDocUI();
   RP.updateModeUI();
   if (RP.updateLayerList) RP.updateLayerList();

@@ -364,6 +364,54 @@ RP.seedTangentLine = function(sk, lineId, arcId, atPoint) {
   return true;
 };
 
+// Swap which end of the drive axis is the nose, without redrawing it.
+// Toggling metadata rather than the entity's point order keeps every
+// constraint on that line measuring the same thing it did before.
+RP.flipDriveAxis = function() {
+  var frame = RP.robotFrame();
+  if (!frame.ok) return false;
+  var doc = RP.getDoc(RP.DOC_ROBOT);
+  var m = doc.constructionMeta[frame.id];
+  if (!m) return false;
+  m.flipped = !m.flipped;
+  RP.rebuildLines();
+  return true;
+};
+
+// The robot's reach from its turning centre, in mm. This is what front
+// and rear clearance actually ARE — how far the body sticks out ahead of
+// and behind the point it pivots about — so once a body is drawn there is
+// nothing left for a human to type, and two numbers that could disagree
+// with the drawing become one that cannot.
+//
+// Returns null when there is no body or no calibration to convert with,
+// which is what keeps the manual fields meaningful as a fallback.
+RP.robotExtentsMm = function() {
+  if (!RP.calibration || !RP.calibration.pixelsPerMm) return null;
+  var fp = RP.robotFootprint();
+  if (!fp.ok || !fp.points.length) return null;
+  var ppm = RP.calibration.pixelsPerMm;
+  var maxX = -Infinity, minX = Infinity, maxY = -Infinity, minY = Infinity;
+  for (var i = 0; i < fp.points.length; i++) {
+    var q = fp.points[i];
+    if (q.x > maxX) maxX = q.x;
+    if (q.x < minX) minX = q.x;
+    if (q.y > maxY) maxY = q.y;
+    if (q.y < minY) minY = q.y;
+  }
+  // Forward is +x in the robot frame. A centre that sits outside the body
+  // (a drive axis drawn ahead of the whole chassis) would give a negative
+  // extent, which is not a clearance — clamp so it reads as "no overhang".
+  return {
+    front: Math.max(0, maxX) / ppm,
+    rear:  Math.max(0, -minX) / ppm,
+    left:  Math.max(0, -minY) / ppm,
+    right: Math.max(0, maxY) / ppm,
+    length: (maxX - minX) / ppm,
+    width:  (maxY - minY) / ppm
+  };
+};
+
 RP.autoConstrainTangent = function(newEntity, pointId, snap) {
   if (!RP.autoConstrain || !snap || snap.kind !== 'endpoint' || snap.pointId == null) return null;
   if (!newEntity) return null;
@@ -661,10 +709,15 @@ RP.robotFrame = function() {
     if (!m || m.role !== RP.DRIVE_ROLE) continue;
     var a = sk.entities[e.p1], b = sk.entities[e.p2];
     if (!a || !b) continue;
+    // Which end is the nose is a property of the ROLE, not of the line's
+    // point order — so flipping it is a metadata toggle rather than
+    // surgery on the sketch. Swapping p1/p2 on the entity itself would
+    // silently negate any angle constraint measured against this line.
+    if (m.flipped) { var t = a; a = b; b = t; }
     var dx = b.x - a.x, dy = b.y - a.y;
     var L = Math.hypot(dx, dy);
     if (L < 1e-9) continue;
-    return { ok: true, id: e.id, ox: a.x, oy: a.y, cos: dx / L, sin: dy / L };
+    return { ok: true, id: e.id, flipped: !!m.flipped, ox: a.x, oy: a.y, cos: dx / L, sin: dy / L };
   }
   return { ok: false };
 };
