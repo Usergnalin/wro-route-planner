@@ -707,6 +707,9 @@ RP.render = function() {
     }
   }
 
+  // Collision markers sit above the route but below the sketch overlay.
+  if (RP.drawSimOverlay) RP.drawSimOverlay(ctx);
+
   // Constraint badges and point handles, drawn last so they sit on top.
   if (RP.drawSketchOverlay) RP.drawSketchOverlay(ctx);
 

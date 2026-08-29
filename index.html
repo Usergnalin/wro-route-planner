@@ -144,6 +144,14 @@
       </div>
     </div>
 
+    <!-- Collision simulation (route mode) -->
+    <div class="sidebar-section" id="sim-section" style="display:none">
+      <div class="sidebar-title">Simulation</div>
+      <div id="sim-status" class="constraint-dof">—</div>
+      <div id="sim-hits"></div>
+      <div class="sidebar-hint" id="sim-hint"></div>
+    </div>
+
     <!-- Selected route element (route mode) -->
     <div class="sidebar-section" id="action-params-section" style="display:none">
       <div class="sidebar-title" id="action-params-title">Selected Action</div>
@@ -273,10 +281,14 @@
 <script src="js/model/action.js"></script>
 <script src="js/model/resolver.js"></script>
 <script src="js/output.js"></script>
+<!-- Simulation layer: pure geometry over the route + robot + obstacles -->
+<script src="js/sim/pose.js"></script>
+<script src="js/sim/collision.js"></script>
 <script src="js/persist.js"></script>
 <script src="js/config.js"></script>
 <script src="js/ui/sketch-ui.js"></script>
 <script src="js/ui/route-ui.js"></script>
+<script src="js/ui/sim-ui.js"></script>
 <script src="js/events.js"></script>
 <script src="js/main.js"></script>
 </body>

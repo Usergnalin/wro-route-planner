@@ -1,3 +1,94 @@
+# Changes — 2026-08-29 (5)
+
+## Simulation phase 2: the collision sweep
+
+The robot body is now swept along the whole route and every contact with
+an obstacle is reported as a warning. Nothing is blocked — this tells you
+where a problem is, it does not stop you drawing one.
+
+### Poses come from the timeline, not from computeSteps()
+
+The obvious source is `RP.computeSteps()`, since that is what the robot
+actually executes, and it is what I argued for when we scoped this. It
+cannot be used: a `linetrace_junct` step carries only a junction COUNT,
+with no distance. Nothing downstream can know how far the robot travelled,
+so dead reckoning loses the robot at the first junction trace and every
+pose after it is fiction.
+
+`RP.resolveTimeline()` has real coordinates for every move, including that
+one, because the sketch knows where the geometry is. So `RP.simPoseTrack()`
+walks the timeline and is exact by construction. Nothing is lost by the
+change: phase 3's uncertainty is an explicit growth model, not a
+dead-reckoning divergence, so no consumer needed the divergence signal.
+
+### Turns in place are swept
+
+A long robot pivoting in a tight corner is a real way to hit something the
+path itself never touches, so rotations are sampled (`RP.SIM_TURN_DEG`,
+4°) exactly as straights are (`RP.SIM_STEP_MM`, 5mm). There is a test for
+precisely this: an obstacle placed diagonally off a corner, outside the
+body's footprint on both legs, reachable only at the intermediate angles
+the robot passes through while turning.
+
+### The footprint is a convex hull
+
+A body drawn as loose lines is a point cloud with no reliable ordering,
+and there is no sound way to recover the intended outline. The convex hull
+is the smallest polygon containing everything drawn, which is conservative
+in the right direction: it can flag a collision that a concave body would
+have squeezed past, but it can never miss one.
+
+### Contact episodes, not contact samples
+
+Brushing along a wall for 600mm is one problem to look at, not forty
+identical warnings, so hits are grouped into episodes. A short break in
+contact (≤25 samples) does not end one either: a body pivoting against an
+obstacle can clip it, rotate just clear and clip again within a few
+degrees, which is one problem in one place. Without that tolerance the
+real project produced two warnings at an identical "5137 mm in", which is
+exactly the sort of output that trains people to ignore warnings.
+
+### Files
+
+- `js/sim/pose.js` — `RP.simPoseTrack()`. Pure.
+- `js/sim/collision.js` — `RP.convexHull`, `RP.pointInPoly`,
+  `RP.polyHitsSegment`, `RP.footprintAt`, `RP.simCollisions`. Pure.
+- `js/ui/sim-ui.js` — the only part that touches the DOM. Panel, canvas
+  overlay, and the `RP.simResult` cache.
+
+The sweep is recomputed in `refreshRouteUI` (on edits) and NEVER in
+`render()`, which runs on every hover and pan.
+
+### Verification
+
+13 suites, new `sim.js` (16 tests). Both halves were mutation-tested
+rather than trusted for passing first time: forcing turns to emit a single
+pose, and forcing the footprint never to rotate, each break tests that
+should catch them. The first pass revealed a test that was NOT
+discriminating — its "swept turn" obstacle was also reachable by the
+straight leg, so it passed even with turn sampling disabled. Moved to a
+position outside the footprint on both legs; it now fails under that
+mutation.
+
+Measured in Chromium on the real 102-action project with a 220×180mm
+robot: pose track under 1ms (2,905 poses), sweep 1ms, full
+`refreshRouteUI` 14–15ms steady state. The first call after adding
+geometry costs ~640ms, but that is the solver, not the sweep, and predates
+this work.
+
+End-to-end through the real UI: with no robot the panel reads "Not run —
+no robot body" and says how to fix it; with a robot and no obstacles, "No
+collisions"; with an obstacle across the route, two episodes listed by
+distance and obstacle name, the focused one filled on the canvas and the
+others outlined.
+
+### Next
+
+Phase 3: uncertainty growth per distance travelled, reset per-axis at wall
+aligns and line traces.
+
+---
+
 # Changes — 2026-08-29 (4)
 
 ## Robot frame follow-ups: derived clearances and a reversible drive axis

@@ -130,6 +130,7 @@ RP.updateModeUI = function() {
   show('tool-section', sketchOn);
   show('field-section', sketchOn);
   show('snap-section', sketchOn);
+  show('sim-section', !sketchOn);                 // collision warnings, right
   show('route-mode-section', !sketchOn);          // action list, left
   show('action-params-section', !sketchOn);      // action detail, right
 
@@ -160,6 +161,9 @@ RP.updateModeUI = function() {
 RP.refreshRouteUI = function() {
   if (RP.rebuildRouteViews) RP.rebuildRouteViews();
   RP.updateRouteModePanel();
+  // The sweep is recomputed HERE, on edits, and never in render() — which
+  // runs on every hover and pan. ~20ms on a 100-action route.
+  if (RP.runSim) { RP.runSim(); RP.updateSimPanel(); }
   // The geometry list is visible in Route mode, so it has to be kept
   // current here as well — otherwise it shows whatever existed when the
   // mode was last entered.
