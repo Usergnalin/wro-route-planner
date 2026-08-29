@@ -380,6 +380,95 @@ function sCurve(RP, withDims) {
   return { l1, a1, a2, l2 };
 }
 
+// ---- the runaway/collapse that tangent_at's scale-invariance allowed ---
+// tangent_at's residual is (p−c)·û, which says nothing about how long the
+// line is. Reaching tangency by walking the far end sideways therefore
+// changes the length as a free side effect. RP.seedTangentLine swings the
+// line about the shared end first, so the length the user drew survives.
+function lineOffArc(RP, offsetDeg, len) {
+  const S = RP.Sketch;
+  // An arc whose ends are pinned, so only the new line can move.
+  const arc = RP.addConstructionArc(0, 0, 0, 200, { sagitta: 60 });
+  S.addConstraint(RP.sketch, 'fix', [arc.p1.id]);
+  S.addConstraint(RP.sketch, 'fix', [arc.p2.id]);
+  S.addConstraint(RP.sketch, 'fix', [arc.center.id]);
+  RP.solveSketch();
+
+  const end = RP.sketch.entities[arc.arc.p1];
+  const cen = RP.sketch.entities[arc.arc.center];
+  // 0° = straight out along the radius, i.e. as far from tangent as it gets.
+  const base = Math.atan2(end.y - cen.y, end.x - cen.x) + offsetDeg * Math.PI / 180;
+  const made = RP.addConstructionLine(
+    end.x, end.y, end.x + Math.cos(base) * len, end.y + Math.sin(base) * len,
+    { startSnap: { kind: 'endpoint', pointId: arc.arc.p1 } });
+  return { arc, made };
+}
+
+function lineLength(RP, made) {
+  const l = RP.sketch.entities[made.line.id];
+  const a = RP.sketch.entities[l.p1], b = RP.sketch.entities[l.p2];
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+check('a line drawn far from tangent keeps the length it was drawn at', () => {
+  const RP = fresh();
+  // Straight out along the radius: the worst case, 90° from tangent.
+  const { made } = lineOffArc(RP, 0, 200);
+  assert(made, 'line should have been created');
+  assertClose(lineLength(RP, made), 200, 1e-6,
+    'the drawn length must survive the tangent auto-constraint');
+});
+
+check('the length survives at every angle, not just the easy ones', () => {
+  for (const off of [0, 30, 60, 120, 150, 200, 260, 300]) {
+    const RP = fresh();
+    const { made } = lineOffArc(RP, off, 175);
+    if (!made) continue;
+    assertClose(lineLength(RP, made), 175, 1e-6,
+      'length changed when drawn ' + off + '° from the radius');
+  }
+});
+
+check('a line drawn far from tangent still ends up genuinely tangent', () => {
+  const RP = fresh();
+  const { arc, made } = lineOffArc(RP, 0, 200);
+  const end = RP.sketch.entities[arc.arc.p1];
+  const cen = RP.sketch.entities[arc.arc.center];
+  const l = RP.sketch.entities[made.line.id];
+  const a = RP.sketch.entities[l.p1], b = RP.sketch.entities[l.p2];
+  // The radius vector at the shared end must be perpendicular to the line.
+  const wx = end.x - cen.x, wy = end.y - cen.y;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const cosang = (wx * dx + wy * dy) / (Math.hypot(wx, wy) * Math.hypot(dx, dy));
+  assert(Math.abs(cosang) < 1e-9,
+    'radius and line should be perpendicular, got cos=' + cosang);
+});
+
+check('seeding never collapses a line to nothing', () => {
+  for (const off of [0, 45, 90, 180, 270]) {
+    const RP = fresh();
+    const { made } = lineOffArc(RP, off, 200);
+    if (!made) continue;
+    assert(lineLength(RP, made) > 1,
+      'line collapsed to ' + lineLength(RP, made) + 'px at ' + off + '°');
+  }
+});
+
+check('seedTangentLine declines the degenerate cases instead of dividing by zero', () => {
+  const RP = fresh();
+  const arc = RP.addConstructionArc(0, 0, 0, 200, { sagitta: 60 });
+  const made = RP.addConstructionLine(0, 0, 100, 0);
+  // A zero-length line has no direction to preserve, so there is nothing
+  // to rotate — it must decline rather than produce NaNs.
+  const l = RP.sketch.entities[made.line.id];
+  RP.sketch.entities[l.p2].x = RP.sketch.entities[l.p1].x;
+  RP.sketch.entities[l.p2].y = RP.sketch.entities[l.p1].y;
+  const ok = RP.seedTangentLine(RP.sketch, made.line.id, arc.arc.id, arc.arc.p1);
+  assert(ok === false, 'a zero-length line should be declined');
+  assert(isFinite(RP.sketch.entities[l.p2].x) && isFinite(RP.sketch.entities[l.p2].y),
+    'coordinates must not become NaN');
+});
+
 check('auto-tangency uses the endpoint form, which has no captured side', () => {
   const RP = fresh();
   sCurve(RP, false);

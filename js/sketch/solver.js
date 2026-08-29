@@ -13,6 +13,12 @@ var RP = window.RP || {};
 
 RP.Sketch = RP.Sketch || {};
 
+// How many damped retries one LM iteration may try before giving up on
+// finding a downhill step. Each retry costs a full O(n³) factorisation and
+// damping only shrinks the step, so a step the first few cannot find, more
+// of them cannot either. See the retry loop for the full reasoning.
+RP.Sketch.MAX_LM_RETRIES = 12;
+
 // Ordered list of equation blocks: every constraint, then every entity
 // that contributes its own equations (currently just arcs).
 RP.Sketch.buildPlan = function(sk) {
@@ -157,7 +163,19 @@ RP.Sketch.solve = function(sk, opts) {
   var f = RP.LinAlg.normSq(r, m);
   var lambda = 1e-6;
   var iter = 0;
-  var ok = RP.LinAlg.maxAbs(r, m) < tol;
+  var residPrev = RP.LinAlg.maxAbs(r, m);
+  var ok = residPrev < tol;
+
+  // Below this, a step is indistinguishable from float noise at the
+  // geometry's own magnitude, so it cannot move the sketch. Derived from
+  // the actual coordinates rather than charLength, which is a fixed 100
+  // and says nothing about a sketch laid out over a competition mat.
+  var coordScale = 1;
+  for (i = 0; i < n; i++) {
+    var av = Math.abs(params[i]);
+    if (av > coordScale) coordScale = av;
+  }
+  var stepFloor = coordScale * 1e-13;
 
   var trial = new Array(n);
   var rTrial = new Array(m);
@@ -186,13 +204,34 @@ RP.Sketch.solve = function(sk, opts) {
     for (i = 0; i < n; i++) if (diag[i] > maxDiag) maxDiag = diag[i];
     var dampScale = maxDiag > 1e-12 ? maxDiag : 1;
 
+    // Each retry is a fresh O(n³) factorisation, so the cost of looking for
+    // a step that helps is what dominates a big sketch. Two guards keep
+    // that bounded without changing which answer we land on:
+    //
+    //   - a hard retry cap. Damping only ever SHRINKS the step, so once
+    //     lambda is large the trial point sits essentially on top of the
+    //     current one and f_trial can no longer drop below f. Grinding
+    //     lambda all the way to 1e12 (≈30 factorisations) never rescues a
+    //     step that the first dozen could not.
+    //   - a step-size floor. If the damped step is already negligible
+    //     against the geometry's own scale, no larger lambda will make it
+    //     meaningful, so stop immediately rather than confirming it 20
+    //     more times.
+    //
+    // Both matter because `tol` is ABSOLUTE while coordinates are not: a
+    // mat-sized sketch runs to six figures of pixels, where 1e-9 is below
+    // what doubles can represent. Such a sketch is solved as well as it
+    // ever will be, yet still entered this loop on every solve and paid
+    // full price to rediscover that. It now finds that out in a few
+    // factorisations instead of thirty-odd.
     var accepted = false;
-    for (var retry = 0; retry < 40; retry++) {
+    for (var retry = 0; retry < RP.Sketch.MAX_LM_RETRIES; retry++) {
       for (i = 0; i < n; i++) {
         A[i][i] = diag[i] + lambda * dampScale;
       }
       var dx = RP.LinAlg.luSolve(A, neg, n);
       if (dx) {
+        var stepMax = RP.LinAlg.maxAbs(dx, n);
         for (i = 0; i < n; i++) trial[i] = params[i] + dx[i];
         assemble(plan, gTrial, rTrial, null, n, wAngle, false);
         var fT = RP.LinAlg.normSq(rTrial, m);
@@ -202,6 +241,7 @@ RP.Sketch.solve = function(sk, opts) {
           accepted = true;
           break;
         }
+        if (stepMax < stepFloor) break;   // damped into the noise; give up
       }
       lambda *= 4;
       if (lambda > 1e12) break;
@@ -210,7 +250,27 @@ RP.Sketch.solve = function(sk, opts) {
     if (!accepted) break;
 
     assemble(plan, g, r, J, n, wAngle, true);
-    ok = RP.LinAlg.maxAbs(r, m) < tol;
+    var resid = RP.LinAlg.maxAbs(r, m);
+    ok = resid < tol;
+
+    // Diminishing-returns exit.
+    //
+    // `tol` is an ABSOLUTE residual, but coordinates are not: a sketch
+    // laid out over a competition mat runs to six figures of pixels,
+    // where 1e-9 is finer than a double can represent. `ok` therefore
+    // never trips and the loop spent its whole iteration budget on every
+    // solve. The cost was not subtle — a drag converged to 1.9e-7 in five
+    // iterations and then spent twenty-five more taking it to 1.7e-7, for
+    // five times the time and no visible difference.
+    //
+    // So: once the residual is under conflictTol the sketch is solved for
+    // every practical purpose (a millionth of a pixel), and we only keep
+    // iterating while iterations still earn their keep. Real convergence
+    // moves in orders of magnitude per step — 1e-2, 1e-3, 1e-5, 1e-7 —
+    // so a step that cannot manage 10% has clearly hit the floor of what
+    // this system's conditioning allows, and stopping loses nothing.
+    if (!ok && resid < conflictTol && resid > residPrev * 0.9) { iter++; break; }
+    residPrev = resid;
     lambda = Math.max(lambda / 3, 1e-12);
   }
 

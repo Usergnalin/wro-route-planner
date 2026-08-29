@@ -245,6 +245,60 @@ RP.entitiesEndingAt = function(sk, pointId, type) {
 // Only applied when exactly one candidate ends at the point: at a corner
 // where two lines already meet, a second tangent would over-constrain and
 // there is no way to guess which line was meant.
+// Rotate a freshly-drawn line about the arc end it joins, so it starts out
+// exactly tangent, WITHOUT changing the length the user drew.
+//
+// tangent_at's residual is (p − c)·û, the radius vector dotted with the
+// line's unit direction. That is scale-invariant in the line's length: the
+// constraint says nothing whatsoever about how long the line is, and its
+// Jacobian is correspondingly flat along that direction. So when the line
+// is drawn far from tangent, the only way the solver has to fix the angle
+// is to walk the far end sideways — and swinging a line by translating one
+// end changes its length as a side effect, with nothing pushing back. On a
+// mat-sized sketch that regularly turned a 200px line into several
+// thousand, or (with the length driven the other way) collapsed it toward
+// zero, where the residual and Jacobian are both hard-zeroed for a
+// degenerate direction: vacuously satisfied, no gradient out, and every
+// other constraint touching that line now unsatisfiable — the "conflicting
+// constraints" that only a manual length constraint could rescue.
+//
+// Rotating about the shared end instead sets the angle exactly and leaves
+// the length alone, so the solver starts on the answer rather than walking
+// to it. Purely a starting guess: the constraint still goes on afterwards
+// and the solver still has the last word.
+RP.seedTangentLine = function(sk, lineId, arcId, atPoint) {
+  var line = sk.entities[lineId], arc = sk.entities[arcId];
+  var p = sk.entities[atPoint];
+  if (!line || !arc || !p) return false;
+  var cen = sk.entities[arc.center];
+  if (!cen) return false;
+
+  // The line's own far end — its near end is a separate point coincident
+  // with the arc's, so compare through the coincidence clusters.
+  var find = RP.Sketch.coincidenceClusters(sk);
+  var key = find(atPoint);
+  var farId = (find(line.p1) === key) ? line.p2 : (find(line.p2) === key ? line.p1 : null);
+  if (farId == null) return false;
+  var q = sk.entities[farId];
+  if (!q) return false;
+
+  var wx = p.x - cen.x, wy = p.y - cen.y;
+  var wl = Math.hypot(wx, wy);
+  if (wl < 1e-9) return false;               // degenerate arc, nothing to be tangent to
+  var tx = -wy / wl, ty = wx / wl;           // unit tangent at p
+
+  var vx = q.x - p.x, vy = q.y - p.y;
+  var L = Math.hypot(vx, vy);
+  if (L < 1e-9) return false;                // already collapsed; no direction to preserve
+
+  // Keep the far end on the side the user drew it, so the line swings the
+  // short way round rather than flipping end-for-end.
+  var s = (vx * tx + vy * ty) < 0 ? -1 : 1;
+  q.x = p.x + s * L * tx;
+  q.y = p.y + s * L * ty;
+  return true;
+};
+
 RP.autoConstrainTangent = function(newEntity, pointId, snap) {
   if (!RP.autoConstrain || !snap || snap.kind !== 'endpoint' || snap.pointId == null) return null;
   if (!newEntity) return null;
@@ -279,6 +333,12 @@ RP.autoConstrainTangent = function(newEntity, pointId, snap) {
 
   try {
     var before = RP.Sketch.solve(sk);
+    // Swing the new line onto the tangent BEFORE constraining it, keeping
+    // the length the user drew. See RP.seedTangentLine — without this the
+    // solver reaches tangency by walking the far end sideways, which
+    // changes the line's length as a side effect and can run it to
+    // thousands of pixels or collapse it to nothing.
+    if (newEntity.type === 'line') RP.seedTangentLine(sk, lineId, arcId, atPoint);
     var c = RP.Sketch.addConstraint(sk, 'tangent_at', [lineId, arcId, atPoint]);
 
     // Solve once with the pre-existing geometry pinned. Without this the
@@ -365,7 +425,11 @@ RP.addConstructionLine = function(x1, y1, x2, y2, opts) {
   if (lt1) lineTangents.push(lt1);
   var lt2 = RP.autoConstrainTangent(line, b.id, opts.endSnap);
   if (lt2) lineTangents.push(lt2);
-  RP.solveSketch();
+  // Only re-solve if a tangent was actually added — autoConstrainTangent
+  // already solves internally when it adds one, and when it adds none the
+  // sketch is untouched since the solve above. On a mat-sized sketch that
+  // redundant solve was most of the cost of drawing a plain line.
+  if (lineTangents.length) RP.solveSketch();
 
   return { line: line, p1: a, p2: b, constraints: added, tangents: lineTangents };
 };

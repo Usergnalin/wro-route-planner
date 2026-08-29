@@ -1,3 +1,115 @@
+# Changes — 2026-08-29
+
+## Solver: lines no longer run away or collapse on auto-tangency, and the sketcher is ~10–50× faster
+
+Both reported problems turned out to live in the solver, and both were
+diagnosed against a real 289-entity / 272-constraint competition sketch
+rather than a synthetic one.
+
+### 1. Auto-tangency destroyed the line's length
+
+Drawing a line off an arc end auto-adds a `tangent_at` constraint, whose
+residual is `(p − c)·û` — the radius vector dotted with the line's UNIT
+direction. That expression is scale-invariant in the line's length: the
+constraint says nothing whatsoever about how long the line is, and its
+Jacobian is correspondingly flat along that direction.
+
+So when the line was drawn far from tangent, the only correction the
+solver had was to walk the far end sideways — and swinging a line by
+translating one end changes its length as a side effect, with nothing
+pushing back. Measured on the real sketch: drawing a **200px** line
+radially off an arc end (the worst case, 90° from tangent) produced
+lines of **2900, 3178, 6306, 10722 and 3688 px**. Driven the other way
+the same null direction collapses the line toward zero, and at `L < EPS`
+`tangent_at` hard-zeroes both its residual and its Jacobian — vacuously
+satisfied, no gradient back out, and every other constraint touching
+that line now unsatisfiable. That is the "conflicting constraints" that
+only a manually-added length constraint could rescue, and it explains
+why a line drawn already-close-to-tangent was fine: it started in the
+right basin and never had to make the trip.
+
+`RP.seedTangentLine` (`js/model/construction.js`) now rotates the new
+line about the shared end BEFORE the constraint goes on, setting the
+angle exactly while leaving the length untouched. Purely a starting
+guess — same trick `rescueFlatArcs` already uses for runaway arc centres
+— so the constraint is still added and the solver still has the last
+word. All five real-sketch cases above now come out at exactly
+**200.000**, tangent to machine precision (radius·direction cosine
+≤ 2.3e-15).
+
+### 2. The sketcher was spending almost all its time achieving nothing
+
+`tol` is an ABSOLUTE residual of 1e-9. The real sketch's coordinates run
+to 126,102 px, where 1e-9 is finer than a double can represent — so the
+convergence test could never trip, no matter how well solved the sketch
+was. Two consequences, both pure waste:
+
+- **The damped-retry search ran to exhaustion.** λ starts at 1e-6 and
+  ×4s until it passes 1e12 — about 30 iterations, each a full O(n³)
+  factorisation on a 390-parameter system. A sketch that was *already
+  converged* burned **34 factorisations** to rediscover that it could
+  not improve. Since damping only ever shrinks the step, a step the
+  first few retries cannot find, more of them cannot either.
+- **The main loop ran its full iteration budget.** A drag reached a
+  residual of 1.9e-7 in five iterations, then spent twenty-five more
+  taking it to 1.7e-7 — five times the time for no visible difference.
+
+Fixed with three bounded exits that do not change what "solved" means:
+
+- `RP.Sketch.MAX_LM_RETRIES` (12) caps the retry search.
+- A step-size floor, derived from the actual coordinate magnitudes
+  rather than `charLength` (a fixed 100 that says nothing about a
+  mat-sized sketch), abandons a retry once the damped step is
+  indistinguishable from float noise.
+- A diminishing-returns exit: once the residual is already under
+  `conflictTol` — a millionth of a pixel — stop when an iteration cannot
+  improve it by 10%. Real convergence moves in orders of magnitude per
+  step (1e-2, 1e-3, 1e-5, 1e-7), so this only ever fires on the polish
+  phase. It deliberately does NOT apply above `conflictTol`, so a
+  genuine contradiction is still driven to a conflict verdict.
+
+Separately, `RP.addConstructionLine` called `RP.solveSketch()` twice
+unconditionally; the second is a no-op unless a tangent was actually
+added, and it is now skipped otherwise. On a mat-sized sketch that alone
+was half the cost of drawing a plain line.
+
+### Measured (Chromium, the real project file loaded through the app)
+
+Drawing a 200px line radially off an arc end:
+
+| arc | before | after | speedup | length before | length after |
+|-----|--------|-------|---------|---------------|--------------|
+| 201 | 752ms  | 74ms  | 10×     | 2900.7        | 200 |
+| 244 | 702ms  | 31ms  | 23×     | 3177.9        | 200 |
+| 251 | 1231ms | 24ms  | 51×     | 6306.3        | 200 |
+| 267 | 875ms  | 24ms  | 36×     | 10722.1       | 200 |
+| 307 | 875ms  | 25ms  | 35×     | 3688.0        | 200 |
+
+In the Node harness on the same file: drawing a plain line 749ms → 41ms
+(18×); a converged re-solve 440ms → 54ms; dragging a point 1013ms →
+374ms (2.7×).
+
+Dragging is the weakest of these and is honestly reported as such: its
+remaining cost is a pinned solve that genuinely fails to converge (8
+iterations to establish that the pin is unsatisfiable) before falling
+back to the free solve. Shortening that is not safe to do blindly, and
+the dense O(n³) factorisation at n=390 is the real floor underneath it —
+exploiting the Jacobian's sparsity is the next real win, and deserves
+its own pass.
+
+### Verification
+
+11 suites pass, 9 new tests (arcs 29→34, sketch solver 25→29).
+
+The tangency tests were confirmed to genuinely catch the bug: with
+`seedTangentLine` disabled they fail with the drawn 200px line coming
+out at 2315px. The solver tests cover a mat-scale sketch still
+satisfying its constraints, a converged sketch exiting in ≤3 iterations,
+the retry cap still reaching a solution from a deliberately inside-out
+start, and a real contradiction still being reported as conflicting.
+
+---
+
 # Changes — 2026-08-25 (2)
 
 ## WASD panning dropped for arrow-keys-only; A and D now match FreeCAD

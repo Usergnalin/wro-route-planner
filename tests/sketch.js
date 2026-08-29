@@ -368,4 +368,86 @@ check('a chain of equals is reported as redundant, not conflicting', () => {
     'expected redundant, got ' + res.status);
 });
 
+// ---- iteration budget ------------------------------------------------
+// `tol` is an absolute residual while coordinates are not, so on a
+// large-coordinate sketch it is unreachable and the loop used to run its
+// full budget on every solve — the single biggest cost in the app. These
+// pin the exits that stop that, without weakening what "solved" means.
+
+// A rectangle far from the origin, at the scale a competition mat uses.
+function buildFarRect() {
+  const sk = S.create();
+  const O = 120000;
+  const p0 = S.addPoint(sk, O, O);
+  const p1 = S.addPoint(sk, O + 100, O + 10);
+  const p2 = S.addPoint(sk, O + 110, O + 60);
+  const p3 = S.addPoint(sk, O + 5, O + 55);
+  const top    = S.addLine(sk, p0.id, p1.id);
+  const right  = S.addLine(sk, p1.id, p2.id);
+  const bottom = S.addLine(sk, p2.id, p3.id);
+  const left   = S.addLine(sk, p3.id, p0.id);
+  S.addConstraint(sk, 'horizontal', [top.id]);
+  S.addConstraint(sk, 'horizontal', [bottom.id]);
+  S.addConstraint(sk, 'vertical', [left.id]);
+  S.addConstraint(sk, 'vertical', [right.id]);
+  S.addConstraint(sk, 'distance', [top.id], 100);
+  S.addConstraint(sk, 'distance', [left.id], 50);
+  S.addConstraint(sk, 'fix', [p0.id]);
+  return { sk, p0, p1, p3 };
+}
+
+check('a solve at mat scale still satisfies its constraints', () => {
+  const { sk, p0, p1, p3 } = buildFarRect();
+  const res = S.solve(sk);
+  assert(res.ok, 'should solve: ' + JSON.stringify(res));
+  assertClose(dist(sk.entities[p0.id], sk.entities[p1.id]), 100, 1e-6, 'width');
+  assertClose(dist(sk.entities[p0.id], sk.entities[p3.id]), 50, 1e-6, 'height');
+});
+
+check('re-solving an already-solved sketch does not burn the iteration budget', () => {
+  const { sk } = buildFarRect();
+  S.solve(sk);
+  const again = S.solve(sk, { maxIter: 60 });
+  assert(again.ok, 'still solved: ' + JSON.stringify(again));
+  assert(again.iterations <= 3,
+    'a converged sketch should exit almost immediately, took ' + again.iterations);
+});
+
+check('the retry cap does not stop the solver reaching a real solution', () => {
+  // Deliberately awful starting point: the rectangle is inside out.
+  const sk = S.create();
+  const p0 = S.addPoint(sk, 0, 0);
+  const p1 = S.addPoint(sk, -80, 140);
+  const p2 = S.addPoint(sk, 30, -90);
+  const p3 = S.addPoint(sk, 190, 25);
+  const top    = S.addLine(sk, p0.id, p1.id);
+  const right  = S.addLine(sk, p1.id, p2.id);
+  const bottom = S.addLine(sk, p2.id, p3.id);
+  const left   = S.addLine(sk, p3.id, p0.id);
+  S.addConstraint(sk, 'horizontal', [top.id]);
+  S.addConstraint(sk, 'vertical', [right.id]);
+  S.addConstraint(sk, 'horizontal', [bottom.id]);
+  S.addConstraint(sk, 'vertical', [left.id]);
+  S.addConstraint(sk, 'distance', [top.id], 100);
+  S.addConstraint(sk, 'distance', [right.id], 50);
+  S.addConstraint(sk, 'fix', [p0.id]);
+  const res = S.solve(sk);
+  assert(res.ok, 'should still converge from a bad start: ' + JSON.stringify(res));
+  assertClose(dist(sk.entities[p0.id], sk.entities[p1.id]), 100, 1e-6, 'width');
+  assertClose(dist(sk.entities[p1.id], sk.entities[p2.id]), 50, 1e-6, 'height');
+});
+
+check('a genuinely contradictory sketch is still reported as conflicting', () => {
+  // The diminishing-returns exit only applies below conflictTol, so a real
+  // contradiction must not be able to sneak out through it.
+  const sk = S.create();
+  const a = S.addPoint(sk, 0, 0), b = S.addPoint(sk, 100, 0);
+  const line = S.addLine(sk, a.id, b.id);
+  S.addConstraint(sk, 'distance', [line.id], 100);
+  S.addConstraint(sk, 'distance', [line.id], 250);   // cannot be both
+  const res = S.solve(sk);
+  assert(!res.ok, 'contradiction must not be reported as solved');
+  assert(res.status === 'conflict', 'expected conflict, got ' + res.status);
+});
+
 if (!report()) process.exitCode = 1;
