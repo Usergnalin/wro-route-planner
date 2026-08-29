@@ -220,7 +220,9 @@ RP.updateLayerList = function() {
   // ---- Routes (listed above construction lines) ----
   // Visibility only. Per-action editing is Route mode's action list; the
   // segment sub-rows that used to live here edited a derived view.
-  if (RP.routes.length > 0) {
+  // Routes reference MAT geometry, so they are not part of the robot
+  // document and listing them there would offer edits that cannot apply.
+  if (RP.routes.length > 0 && RP.activeDocId !== RP.DOC_ROBOT) {
     var rh = document.createElement('div');
     rh.className = 'layer-group-title';
     rh.textContent = 'Routes';

@@ -25,14 +25,79 @@ RP.sketch = null;
 RP.constructionMeta = {};     // line entity id -> { label, visible }
 RP.autoConstrain = true;      // snap-derived constraints on draw
 
+// ---- documents -------------------------------------------------------
+// There are two sketch documents, in two different coordinate spaces:
+//
+//   mat    the competition field. Everything that already existed — route
+//          geometry, field walls, obstacles — lives here, in mat pixels.
+//   robot  the robot's own body, in ROBOT-LOCAL mm-ish pixels. Its origin
+//          and facing come from the drive axis (see RP.robotFrame), not
+//          from where the geometry happens to sit.
+//
+// They are deliberately separate sketches rather than one sketch with a
+// role tag: the solver treats a sketch as one system, so a robot drawn
+// into the mat would join the mat's DOF count, could be constrained to
+// mat geometry, and would be dragged around by mat edits. A body and the
+// field it drives over have nothing to solve together.
+//
+// RP.sketch / RP.constructionMeta always point at the ACTIVE document;
+// the other one is parked in RP.documents. That keeps every existing
+// reader (43 of them) working unchanged — they simply see whichever
+// document is being edited.
+RP.DOC_MAT = 'mat';
+RP.DOC_ROBOT = 'robot';
+RP.activeDocId = RP.DOC_MAT;
+RP.documents = {};
+
+function _freshDoc() {
+  return { sketch: RP.Sketch.create({ charLength: 100 }), constructionMeta: {} };
+}
+
 RP.ensureSketch = function() {
   if (!RP.sketch) RP.sketch = RP.Sketch.create({ charLength: 100 });
   return RP.sketch;
 };
 
+// Park the live document back into the map. Call before reading or
+// replacing RP.documents wholesale, so the active one is never stale.
+RP.parkActiveDoc = function() {
+  RP.documents[RP.activeDocId] = {
+    sketch: RP.ensureSketch(),
+    constructionMeta: RP.constructionMeta
+  };
+  return RP.documents;
+};
+
+RP.getDoc = function(id) {
+  if (id === RP.activeDocId) {
+    return { sketch: RP.ensureSketch(), constructionMeta: RP.constructionMeta };
+  }
+  if (!RP.documents[id]) RP.documents[id] = _freshDoc();
+  return RP.documents[id];
+};
+
+RP.setActiveDoc = function(id) {
+  if (id !== RP.DOC_ROBOT) id = RP.DOC_MAT;
+  if (id === RP.activeDocId && RP.sketch) return false;
+  RP.parkActiveDoc();
+  var doc = RP.documents[id] || (RP.documents[id] = _freshDoc());
+  RP.sketch = doc.sketch;
+  RP.constructionMeta = doc.constructionMeta;
+  RP.activeDocId = id;
+  // Selections are per-document ids; carrying them across would highlight
+  // an unrelated entity that happens to share a number.
+  RP.selectedLineId = null;
+  if (RP.clearSketchSelection) RP.clearSketchSelection();
+  RP.hoverGeoId = null;
+  RP.rebuildLines();
+  return true;
+};
+
 RP.resetSketch = function() {
   RP.sketch = RP.Sketch.create({ charLength: 100 });
   RP.constructionMeta = {};
+  RP.activeDocId = RP.DOC_MAT;
+  RP.documents = {};
   RP.lines = [];
   RP.arcs = [];
   RP.points = [];
@@ -497,12 +562,149 @@ RP.setConstructionVisible = function(lineId, visible) {
   RP.rebuildLines();
 };
 
+// Retag geometry. This is how a plain construction line becomes an
+// obstacle, or how a line in the robot document becomes the drive axis.
+// Field walls are deliberately excluded: they are generated as a fixed,
+// named set and retagging one would leave wall_align pointing at
+// something that is no longer a wall.
+//
+// The drive axis is unique per document — tagging a second line moves the
+// role rather than leaving two frames to pick between.
+RP.setGeometryRole = function(entityId, role) {
+  var meta = RP.constructionMeta[entityId];
+  if (!meta) return false;
+  if (meta.role === RP.FIELD_ROLE || meta.role === RP.POINT_ROLE) return false;
+  if (role === RP.DRIVE_ROLE) {
+    var ids = RP.Sketch.entityIds(RP.ensureSketch());
+    for (var i = 0; i < ids.length; i++) {
+      var m = RP.constructionMeta[ids[i]];
+      if (m && m.role === RP.DRIVE_ROLE) m.role = 'construction';
+    }
+  }
+  meta.role = role || 'construction';
+  RP.rebuildLines();
+  return true;
+};
+
+// Every obstacle edge in the mat document, as plain segments the collision
+// test can consume. Arcs are flattened here rather than at test time so a
+// sweep does not re-flatten the same curve for every sampled pose.
+RP.obstacleSegments = function() {
+  var doc = RP.getDoc(RP.DOC_MAT);
+  var sk = doc.sketch, meta = doc.constructionMeta;
+  var segs = [];
+  if (!sk) return segs;
+  var ids = RP.Sketch.entityIds(sk);
+  for (var i = 0; i < ids.length; i++) {
+    var e = sk.entities[ids[i]];
+    if (!e) continue;
+    var m = meta[e.id];
+    if (!m || m.role !== RP.OBSTACLE_ROLE || m.visible === false) continue;
+    if (e.type === 'line') {
+      var a = sk.entities[e.p1], b = sk.entities[e.p2];
+      if (a && b) segs.push({ id: e.id, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+    } else if (e.type === 'arc') {
+      var ap = RP.Sketch.arcPoints(sk, e, 32);
+      for (var j = 0; j < ap.length - 1; j++) {
+        segs.push({ id: e.id, x1: ap[j].x, y1: ap[j].y, x2: ap[j + 1].x, y2: ap[j + 1].y });
+      }
+    }
+  }
+  return segs;
+};
+
 // ---- field boundary --------------------------------------------------
 // The walls the robot can physically hit, as REAL fixed sketch geometry.
 // Once they exist, drawing a line to a wall snaps against it like anything
 // else, and wall_align becomes a distance constraint rather than magic.
 RP.FIELD_ROLE = 'field';
 RP.FIELD_WALL_NAMES = ['top wall', 'right wall', 'bottom wall', 'left wall'];
+
+// Geometry the robot must not drive through. Just a role on ordinary
+// construction geometry, exactly like FIELD_ROLE — so obstacles are
+// drawn, constrained and solved with the tools that already exist, and
+// they move with the sketch instead of being a parallel world.
+//
+// An obstacle is a BARRIER, not a filled region: collision asks whether
+// the robot's footprint crosses these edges. A solid block is its
+// outline, which behaves correctly as long as the robot does not start
+// inside it — see RP.simCollisions when that lands.
+RP.OBSTACLE_ROLE = 'obstacle';
+
+// The robot document's frame. One line, tagged 'drive', fixes both the
+// origin and the facing: p1 is the point the robot rotates about (the
+// drive-wheel axle midpoint) and p1->p2 is forward. One entity rather
+// than two because an axle alone leaves "which way is forward?"
+// ambiguous, and the answer cannot be guessed from a body outline.
+RP.DRIVE_ROLE = 'drive';
+
+// Roles that are structural rather than something the user drew freehand,
+// so the UI can offer/deny the obstacle toggle sensibly.
+RP.isTaggableRole = function(role) {
+  return role !== RP.FIELD_ROLE && role !== RP.DRIVE_ROLE && role !== RP.POINT_ROLE;
+};
+
+// The robot's local frame, read out of the robot document.
+// Returns { ox, oy, cos, sin, ok } — the rotation centre and the unit
+// forward vector, in robot-document coordinates. Without a drive axis
+// there is no way to know how the body is oriented, so this reports
+// ok:false rather than guessing.
+RP.robotFrame = function() {
+  var doc = RP.getDoc(RP.DOC_ROBOT);
+  var sk = doc.sketch, meta = doc.constructionMeta;
+  if (!sk) return { ok: false };
+  var ids = RP.Sketch.entityIds(sk);
+  for (var i = 0; i < ids.length; i++) {
+    var e = sk.entities[ids[i]];
+    if (!e || e.type !== 'line') continue;
+    var m = meta[e.id];
+    if (!m || m.role !== RP.DRIVE_ROLE) continue;
+    var a = sk.entities[e.p1], b = sk.entities[e.p2];
+    if (!a || !b) continue;
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var L = Math.hypot(dx, dy);
+    if (L < 1e-9) continue;
+    return { ok: true, id: e.id, ox: a.x, oy: a.y, cos: dx / L, sin: dy / L };
+  }
+  return { ok: false };
+};
+
+// The robot's outline as points in its own frame: origin at the rotation
+// centre, +x forward. This is what the simulator sweeps along the route,
+// so it is expressed once here and never recomputed per pose.
+//
+// Every visible line and arc in the robot document contributes, EXCEPT
+// the drive axis itself — that is an annotation of the frame, not part of
+// the body, and including it would put a phantom edge down the robot's
+// centreline.
+RP.robotFootprint = function() {
+  var frame = RP.robotFrame();
+  if (!frame.ok) return { ok: false, points: [] };
+  var doc = RP.getDoc(RP.DOC_ROBOT);
+  var sk = doc.sketch, meta = doc.constructionMeta;
+  var pts = [];
+  function push(x, y) {
+    // Into the robot frame: translate to the rotation centre, then rotate
+    // so forward is +x.
+    var vx = x - frame.ox, vy = y - frame.oy;
+    pts.push({ x: vx * frame.cos + vy * frame.sin, y: -vx * frame.sin + vy * frame.cos });
+  }
+  var ids = RP.Sketch.entityIds(sk);
+  for (var i = 0; i < ids.length; i++) {
+    var e = sk.entities[ids[i]];
+    if (!e) continue;
+    var m = meta[e.id];
+    if (!m || m.visible === false || m.role === RP.DRIVE_ROLE) continue;
+    if (e.type === 'line') {
+      var a = sk.entities[e.p1], b = sk.entities[e.p2];
+      if (a && b) { push(a.x, a.y); push(b.x, b.y); }
+    } else if (e.type === 'arc') {
+      var ap = RP.Sketch.arcPoints(sk, e, 24);
+      for (var j = 0; j < ap.length; j++) push(ap[j].x, ap[j].y);
+    }
+  }
+  return { ok: pts.length > 0, points: pts };
+};
 
 RP.fieldLineIds = function() {
   var out = [];
@@ -603,6 +805,82 @@ RP.serializeSketch = function() {
   };
 };
 
+// Document-aware serialization. RP.serializeSketch() reads whichever
+// document is ACTIVE, which is exactly wrong for saving: with the robot
+// open, the robot's geometry would be written into the mat's slot. These
+// name the document explicitly instead.
+RP._serializeDoc = function(doc) {
+  var sk = doc.sketch;
+  return {
+    sketch: {
+      entities: JSON.parse(JSON.stringify(sk.entities)),
+      constraints: JSON.parse(JSON.stringify(sk.constraints)),
+      nextEntityId: sk.nextEntityId,
+      nextConstraintId: sk.nextConstraintId,
+      charLength: sk.charLength
+    },
+    construction: JSON.parse(JSON.stringify(doc.constructionMeta || {}))
+  };
+};
+
+RP._docFromData = function(data) {
+  var sk = RP.Sketch.create({ charLength: (data && data.sketch && data.sketch.charLength) || 100 });
+  if (data && data.sketch) {
+    sk.entities = JSON.parse(JSON.stringify(data.sketch.entities || {}));
+    sk.constraints = JSON.parse(JSON.stringify(data.sketch.constraints || {}));
+    sk.nextEntityId = data.sketch.nextEntityId || 1;
+    sk.nextConstraintId = data.sketch.nextConstraintId || 1;
+  }
+  return { sketch: sk, constructionMeta: JSON.parse(JSON.stringify((data && data.construction) || {})) };
+};
+
+// The robot document, as it goes into a save file or an undo snapshot.
+RP.serializeRobotDoc = function() {
+  RP.parkActiveDoc();
+  return RP._serializeDoc(RP.getDoc(RP.DOC_ROBOT));
+};
+
+// Restore the robot document without disturbing which one is active. A
+// save file that predates the robot document simply has none, and gets a
+// fresh empty one — the mat is unaffected either way.
+RP.deserializeRobotDoc = function(data) {
+  RP.parkActiveDoc();
+  var doc = data ? RP._docFromData(data) : _freshDoc();
+  if (RP.activeDocId === RP.DOC_ROBOT) {
+    RP.sketch = doc.sketch;
+    RP.constructionMeta = doc.constructionMeta;
+    RP.documents[RP.DOC_ROBOT] = doc;
+    RP.rebuildLines();
+  } else {
+    RP.documents[RP.DOC_ROBOT] = doc;
+  }
+  return doc;
+};
+
+// Both documents at once, for undo snapshots. These are in-memory only,
+// so unlike the save file there is no older shape to stay compatible
+// with — which one was active is part of the state, since undoing a robot
+// edit while looking at the mat would be baffling.
+RP.serializeAllDocs = function() {
+  RP.parkActiveDoc();
+  return {
+    mat: RP._serializeDoc(RP.getDoc(RP.DOC_MAT)),
+    robot: RP._serializeDoc(RP.getDoc(RP.DOC_ROBOT)),
+    activeDocId: RP.activeDocId
+  };
+};
+
+RP.restoreAllDocs = function(docs) {
+  RP.documents = {};
+  RP.documents[RP.DOC_MAT] = RP._docFromData(docs && docs.mat);
+  RP.documents[RP.DOC_ROBOT] = RP._docFromData(docs && docs.robot);
+  RP.activeDocId = (docs && docs.activeDocId === RP.DOC_ROBOT) ? RP.DOC_ROBOT : RP.DOC_MAT;
+  var doc = RP.documents[RP.activeDocId];
+  RP.sketch = doc.sketch;
+  RP.constructionMeta = doc.constructionMeta;
+  RP.rebuildLines();
+};
+
 RP.deserializeSketch = function(data) {
   var sk = RP.Sketch.create({ charLength: (data && data.charLength) || 100 });
   if (data) {
@@ -618,6 +896,11 @@ RP.deserializeSketch = function(data) {
 // Restore from a save payload of any vintage: v3 carries a real sketch,
 // anything older only has flat lines and gets migrated.
 RP.loadSketchFrom = function(data) {
+  // Opening a project always lands you on the mat, whichever document the
+  // file was saved from. Reset first so no document survives from the
+  // project that was open a moment ago.
+  RP.documents = {};
+  RP.activeDocId = RP.DOC_MAT;
   if (data && data.sketch) {
     RP.deserializeSketch(data.sketch);
     RP.constructionMeta = JSON.parse(JSON.stringify(data.construction || {}));
@@ -625,6 +908,9 @@ RP.loadSketchFrom = function(data) {
   } else {
     RP.sketchFromLegacyLines((data && data.lines) || []);
   }
+  // Absent in any file older than v6, which correctly yields an empty
+  // robot rather than a missing one.
+  RP.deserializeRobotDoc(data && data.robotDoc);
 };
 
 // ---- migration from pre-sketch saves ---------------------------------

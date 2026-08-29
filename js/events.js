@@ -490,6 +490,24 @@ RP.initEvents = function() {
     // construction line is kept, same as everywhere else in Route mode.
     // Wording it as Delete would read as "delete the line".
     if (ctxDelBtn) ctxDelBtn.textContent = target.kind === 'move' ? '🗑 Remove from Route' : '🗑 Delete';
+
+    // Obstacles are a mat idea, the drive axis a robot one, so each entry
+    // only appears in the document where it means something. Field walls
+    // are generated geometry and cannot be retagged at all.
+    var oBtn = document.getElementById('ctx-menu-obstacle');
+    var dBtn = document.getElementById('ctx-menu-drive');
+    var role = (target.kind === 'line') ? ctxRoleOf(target.lineId) : null;
+    var taggable = target.kind === 'line' && RP.isTaggableRole(role);
+    if (oBtn) {
+      oBtn.style.display = (taggable && RP.activeDocId === RP.DOC_MAT) ? '' : 'none';
+      oBtn.textContent = role === RP.OBSTACLE_ROLE ? '🚧 Clear obstacle' : '🚧 Mark as obstacle';
+    }
+    if (dBtn) {
+      var driveOk = target.kind === 'line' && RP.activeDocId === RP.DOC_ROBOT &&
+                    (role === RP.DRIVE_ROLE || RP.isTaggableRole(role));
+      dBtn.style.display = driveOk ? '' : 'none';
+      dBtn.textContent = role === RP.DRIVE_ROLE ? '🧭 Clear drive axis' : '🧭 Set as drive axis';
+    }
     ctxMenu.style.left = (x + 4) + 'px';
     ctxMenu.style.top  = (y + 4) + 'px';
     ctxMenu.style.display = 'block';
@@ -514,6 +532,42 @@ RP.initEvents = function() {
         RP.pushHistory('Hide geometry');
         RP.setConstructionVisible(ctxTarget.lineId, false);
         if (RP.selectedLineId === ctxTarget.lineId) RP.selectedLineId = null;
+        if (RP.updateLayerList) RP.updateLayerList();
+        RP.render();
+      }
+      hideCtxMenu();
+    });
+  }
+
+  // Retagging geometry. Both entries toggle rather than only set, so the
+  // same menu item that made something an obstacle takes it back.
+  var ctxObstacleBtn = document.getElementById('ctx-menu-obstacle');
+  var ctxDriveBtn    = document.getElementById('ctx-menu-drive');
+
+  function ctxRoleOf(id) {
+    var m = RP.constructionMeta[id];
+    return (m && m.role) || 'construction';
+  }
+
+  if (ctxObstacleBtn) {
+    ctxObstacleBtn.addEventListener('click', function() {
+      if (ctxTarget && ctxTarget.kind === 'line') {
+        var isObstacle = ctxRoleOf(ctxTarget.lineId) === RP.OBSTACLE_ROLE;
+        RP.pushHistory(isObstacle ? 'Clear obstacle' : 'Mark obstacle');
+        RP.setGeometryRole(ctxTarget.lineId, isObstacle ? 'construction' : RP.OBSTACLE_ROLE);
+        if (RP.updateLayerList) RP.updateLayerList();
+        RP.render();
+      }
+      hideCtxMenu();
+    });
+  }
+
+  if (ctxDriveBtn) {
+    ctxDriveBtn.addEventListener('click', function() {
+      if (ctxTarget && ctxTarget.kind === 'line') {
+        var isDrive = ctxRoleOf(ctxTarget.lineId) === RP.DRIVE_ROLE;
+        RP.pushHistory(isDrive ? 'Clear drive axis' : 'Set drive axis');
+        RP.setGeometryRole(ctxTarget.lineId, isDrive ? 'construction' : RP.DRIVE_ROLE);
         if (RP.updateLayerList) RP.updateLayerList();
         RP.render();
       }
@@ -701,6 +755,15 @@ RP.initEvents = function() {
     (function(btn) {
       btn.addEventListener('click', function() { RP.setTool(btn.dataset.tool); });
     })(toolBtns[tb]);
+  }
+
+  // Same attribute-driven binding as the tool buttons above, for the same
+  // reason: a button that highlights and does nothing is the failure mode.
+  var docBtns = document.querySelectorAll('[data-doc]');
+  for (var db = 0; db < docBtns.length; db++) {
+    (function(btn) {
+      btn.addEventListener('click', function() { RP.switchDoc(btn.dataset.doc); });
+    })(docBtns[db]);
   }
 
   if (RP.wireConstraintPanel) RP.wireConstraintPanel();

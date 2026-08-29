@@ -12,13 +12,20 @@ RP.render = function() {
   ctx.fillStyle = '#111';
   ctx.fillRect(0, 0, w, h);
 
-  if (!RP.img) return;
+  // The robot document is drawn in its own coordinate space, so the mat
+  // photo means nothing there — and unlike the mat, it must still render
+  // with no image loaded at all, or you could not draw a robot before
+  // opening a project.
+  var onRobotDoc = RP.activeDocId === RP.DOC_ROBOT;
+  if (!RP.img && !onRobotDoc) return;
 
-  ctx.save();
-  ctx.translate(RP.offsetX, RP.offsetY);
-  ctx.scale(RP.scale, RP.scale);
-  ctx.drawImage(RP.img, 0, 0);
-  ctx.restore();
+  if (RP.img && !onRobotDoc) {
+    ctx.save();
+    ctx.translate(RP.offsetX, RP.offsetY);
+    ctx.scale(RP.scale, RP.scale);
+    ctx.drawImage(RP.img, 0, 0);
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.translate(RP.offsetX, RP.offsetY);
@@ -54,6 +61,12 @@ RP.render = function() {
     // Field walls are fixed reference geometry, not something you drew.
     var isField = l.role === 'field';
     if (isField && !isSel && !isHover) color = inRouteMode ? 'rgba(200,200,210,0.30)' : 'rgba(190,190,205,0.75)';
+    // Obstacles and the drive axis are read at a glance rather than
+    // looked up, so they keep their own colour whatever the solver
+    // status is: red for "do not drive through this", cyan for the
+    // robot's own frame.
+    if (l.role === RP.OBSTACLE_ROLE && !isSel && !isHover) color = inRouteMode ? 'rgba(255,90,90,0.55)' : '#ff5a5a';
+    if (l.role === RP.DRIVE_ROLE && !isSel && !isHover) color = '#33e0ff';
     // Hover is drawn thicker than selection for the same reason the route
     // halo is: the cursor is over the list, not the geometry.
     var width = (isHover ? 4.5 : (isSel ? 3 : 2)) / RP.scale;
@@ -82,6 +95,9 @@ RP.render = function() {
                           : (arcHover ? RP.HOVER_GEO_COLOR
                           : (inRouteMode ? 'rgba(90,150,90,0.45)'
                                          : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44')));
+    if (arc.role === RP.OBSTACLE_ROLE && !arcSel && !arcHover) {
+      arcColor = inRouteMode ? 'rgba(255,90,90,0.55)' : '#ff5a5a';
+    }
     var apts = RP.Sketch.arcPoints(RP.sketch, RP.sketch.entities[arc.id], 48);
     if (apts.length < 2) continue;
     ctx.strokeStyle = arcColor;
@@ -138,7 +154,7 @@ RP.render = function() {
   }
 
   // --- Field boundary (shown when any wall_align segment exists) ---
-  if (RP.imgNaturalW && RP.imgNaturalH && RP.calibration) {
+  if (RP.imgNaturalW && RP.imgNaturalH && RP.calibration && !onRobotDoc) {
     var hasWallAlign = false;
     for (var wri = 0; wri < RP.routes.length && !hasWallAlign; wri++) {
       var wr = RP.routes[wri];
@@ -161,7 +177,10 @@ RP.render = function() {
   // Routes recede in Sketch mode so construction geometry reads clearly.
   ctx.save();
   if (!inRouteMode) ctx.globalAlpha = 0.35;
-  for (var ri = 0; ri < RP.routes.length; ri++) {
+  // Routes reference MAT geometry, so their coordinates are meaningless
+  // over the robot document — drawing them there would scatter the route
+  // across the robot's body at robot scale.
+  for (var ri = 0; ri < RP.routes.length && !onRobotDoc; ri++) {
     var r = RP.routes[ri];
     if (!r.visible || !r.nodes || r.nodes.length === 0) continue;
     if (!r.segments || r.segments.length === 0) {
@@ -647,6 +666,46 @@ RP.render = function() {
   }
 
   ctx.restore();   // route dimming
+
+  // --- Drive axis marker (robot document) ---
+  // The line alone cannot show which END is the turning centre or which
+  // way is forwards, and both are exactly what the axis exists to say.
+  // So: a ring at the rotation centre and an arrowhead at the nose.
+  if (onRobotDoc) {
+    var rf = RP.robotFrame();
+    if (rf.ok) {
+      var ax = rf.ox, ay = rf.oy;
+      var len = 26 / RP.scale;
+      var hx = ax + rf.cos * len, hy = ay + rf.sin * len;
+      ctx.strokeStyle = '#33e0ff';
+      ctx.fillStyle = '#33e0ff';
+      ctx.lineWidth = 2 / RP.scale;
+      // Turning centre.
+      ctx.beginPath();
+      ctx.arc(ax, ay, 5 / RP.scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(ax, ay, 1.6 / RP.scale, 0, Math.PI * 2);
+      ctx.fill();
+      // Forward arrowhead.
+      var ah = 7 / RP.scale;
+      ctx.beginPath();
+      ctx.moveTo(hx, hy);
+      ctx.lineTo(hx - rf.cos * ah - rf.sin * ah * 0.55, hy - rf.sin * ah + rf.cos * ah * 0.55);
+      ctx.lineTo(hx - rf.cos * ah + rf.sin * ah * 0.55, hy - rf.sin * ah - rf.cos * ah * 0.55);
+      ctx.closePath();
+      ctx.fill();
+      if (RP.scale > 0.05) {
+        ctx.font = 'bold ' + (10 / RP.scale) + 'px -apple-system, sans-serif';
+        ctx.textBaseline = 'bottom';
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.lineWidth = 3 / RP.scale;
+        ctx.strokeText('forward', hx + 5 / RP.scale, hy - 3 / RP.scale);
+        ctx.fillStyle = '#33e0ff';
+        ctx.fillText('forward', hx + 5 / RP.scale, hy - 3 / RP.scale);
+      }
+    }
+  }
 
   // Constraint badges and point handles, drawn last so they sit on top.
   if (RP.drawSketchOverlay) RP.drawSketchOverlay(ctx);

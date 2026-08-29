@@ -35,9 +35,63 @@ RP.getSelectedAction = function() {
 };
 
 // ---- mode switching --------------------------------------------------
+// Switch which sketch document is being drawn on. The UI-level wrapper
+// around RP.setActiveDoc: it also drops any in-flight drawing (a line
+// half-drawn on the mat must not finish itself on the robot) and resets
+// the view, since the two documents are in unrelated coordinate spaces
+// and the mat's pan/zoom means nothing over a 200px robot.
+RP.switchDoc = function(id) {
+  if (id !== RP.DOC_ROBOT) id = RP.DOC_MAT;
+  if (id === RP.activeDocId) return false;
+
+  // Routes reference mat entity ids, so Route mode is only coherent over
+  // the mat. Editing the robot is a Sketch-mode activity.
+  if (id === RP.DOC_ROBOT && RP.editMode === 'route') RP.setEditMode('sketch');
+
+  RP.lineDrawing = false;
+  RP.lineDrawStart = null;
+  RP.sketchDrag = null;
+  RP.elementDrag = null;
+  RP.hoverSnapPoint = null;
+
+  RP._docViews = RP._docViews || {};
+  RP._docViews[RP.activeDocId] = { scale: RP.scale, offsetX: RP.offsetX, offsetY: RP.offsetY };
+  RP.setActiveDoc(id);
+  var v = RP._docViews[id];
+  if (v) { RP.scale = v.scale; RP.offsetX = v.offsetX; RP.offsetY = v.offsetY; }
+  else if (RP.resetView) RP.resetView();
+
+  RP.updateDocUI();
+  RP.updateModeUI();
+  if (RP.updateLayerList) RP.updateLayerList();
+  if (RP.refreshSketchUI) RP.refreshSketchUI();
+  if (RP.updateInfoPanel) RP.updateInfoPanel();
+  if (RP.render) RP.render();
+  return true;
+};
+
+RP.updateDocUI = function() {
+  var btns = document.querySelectorAll('[data-doc]');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('active', btns[i].dataset.doc === RP.activeDocId);
+  }
+  var hint = document.getElementById('doc-hint');
+  if (hint) {
+    hint.textContent = RP.activeDocId === RP.DOC_ROBOT
+      ? 'Robot body. Right-click a line to set the drive axis (its start is the turning centre, and it points forwards).'
+      : 'Field geometry, routes and obstacles';
+  }
+  // Route mode is meaningless over the robot document — see switchDoc.
+  var br = document.getElementById('btn-mode-route');
+  if (br) br.disabled = (RP.activeDocId === RP.DOC_ROBOT);
+};
+
 RP.setEditMode = function(mode) {
   if (mode !== 'route') mode = 'sketch';
   if (RP.editMode === mode) return;
+  // Route mode only makes sense over the mat, which owns the geometry
+  // routes point at.
+  if (mode === 'route' && RP.activeDocId !== RP.DOC_MAT) RP.switchDoc(RP.DOC_MAT);
 
   if (mode === 'route') {
     RP._lastSketchTool = RP.activeTool || 'construction';
@@ -68,6 +122,7 @@ RP.updateModeUI = function() {
     var el = document.getElementById(id);
     if (el) el.style.display = on ? '' : 'none';
   };
+  show('doc-section', sketchOn);
   show('tool-section', sketchOn);
   show('field-section', sketchOn);
   show('snap-section', sketchOn);

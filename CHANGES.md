@@ -1,3 +1,107 @@
+# Changes — 2026-08-29 (3)
+
+## Simulation phase 1: a robot document and obstacle geometry
+
+Groundwork for collision simulation. Nothing simulates yet — this is the
+model the simulator will read: what the robot's body is, where its
+turning centre is and which way it faces, and which mat geometry it must
+not drive through.
+
+### Two sketch documents
+
+The robot's body is now its own sketch, edited with the same tools as the
+mat, switched from a new **Mat / Robot** control in Sketch mode.
+
+Deliberately a second `RP.Sketch` instance rather than a role tag inside
+the mat sketch. The solver treats a sketch as ONE system: a robot drawn
+into the mat would join the mat's DOF count, could be constrained to mat
+geometry, and would be dragged around by unrelated mat edits. A body and
+the field it drives over have nothing to solve together, and the 390
+parameters the mat already carries are not somewhere to add more.
+
+`RP.sketch` / `RP.constructionMeta` keep pointing at whichever document
+is ACTIVE, with the other parked in `RP.documents`. That was the whole
+reason this stayed a small change: all 43 existing readers of `RP.sketch`
+work unchanged, because they simply see whatever is being edited.
+
+- `RP.setActiveDoc` / `RP.parkActiveDoc` / `RP.getDoc` (`construction.js`)
+  are the model-level switch; `RP.switchDoc` (`route-ui.js`) is the UI one
+  and additionally abandons in-flight drawing and swaps the pan/zoom, since
+  the mat's view means nothing over a 200px robot.
+- Route mode is forced back to the mat both ways round: routes reference
+  mat entity ids, so Route mode over the robot would point at ids that are
+  not there. The Route button is disabled while the robot is open.
+- Both documents share one `RP.calibration`. That is not an oversight —
+  it is what makes the robot's footprint directly comparable to mat
+  coordinates when the sweep lands.
+
+### The robot's frame
+
+One line in the robot document, tagged `role:'drive'`, fixes both the
+origin and the facing: its **start point is the turning centre** (the
+drive-wheel axle midpoint) and it **points forwards**. One entity rather
+than two, because an axle alone cannot say which way is forward and that
+cannot be guessed from a body outline. It is drawn in cyan with a ring at
+the turning centre and an arrowhead labelled "forward", because a bare
+line cannot show either of the two things it exists to say.
+
+- `RP.robotFrame()` → `{ ox, oy, cos, sin, ok }`, or `ok:false` rather
+  than a guess when no drive axis has been set.
+- `RP.robotFootprint()` → the body's points in ROBOT-LOCAL coordinates
+  (origin at the turning centre, +x forward), computed once so a sweep
+  never re-derives it per pose. The drive axis is excluded — it annotates
+  the frame, and including it would put a phantom edge down the robot's
+  centreline.
+
+### Obstacles
+
+`role:'obstacle'` on ordinary mat geometry, toggled from the right-click
+menu, drawn red. Reuses the mechanism field walls already use, so
+obstacles are drawn, constrained and solved with the tools that exist and
+move with the sketch. `RP.obstacleSegments()` collects them as flat
+segments with arcs pre-flattened, so the collision sweep does not
+re-flatten the same curve for every sampled pose.
+
+An obstacle is a BARRIER, not a filled region — the agreed scope. A solid
+block is its outline, which behaves correctly unless the robot starts
+inside one.
+
+### Save files and undo
+
+Save files go to v6. `sketch`/`construction` still hold the MAT, so a v5
+reader still opens them, with the robot alongside in `robotDoc`. Both are
+serialized BY NAME rather than from whatever is active — saving with the
+robot open must not write the robot into the mat's slot, which is a test.
+Undo snapshots carry both documents plus which was active, since undoing
+a robot edit while looking at the mat would be baffling.
+
+### Verification
+
+12 suites (new `documents.js`, 19 tests) — 316 tests total, all passing.
+Covers: geometry not leaking between documents, independent solver state
+and DOF, save/undo round trips, saving from the robot still writing the
+mat correctly, pre-v6 files getting an empty robot rather than a missing
+one, a previous project's robot not surviving a load, the frame and
+footprint including the rotated case and the drive-axis exclusion, and
+Route mode forcing the mat both ways.
+
+Verified in Chromium against the real 289-entity project: the Mat/Robot
+buttons switch documents (85 mat lines ↔ 5 robot lines), the Route button
+disables on the robot, the frame and footprint read correctly through the
+real UI, tagging an obstacle produces segments, and a save/load round trip
+restores both documents. Two bugs the screenshot pass caught: the mat's
+field-boundary rectangle was being drawn over the robot document, and the
+route was still listed in the geometry list there. Both fixed.
+
+### Next
+
+Phase 2 is the sweep itself — integrate `RP.computeSteps()` into a pose
+track, put the footprint at each pose, test against `obstacleSegments()`,
+and report collisions as warnings. Phase 3 is uncertainty growth with
+per-axis resets at wall aligns and line traces.
+
+---
+
 # Changes — 2026-08-29 (2)
 
 ## QoL: "Straight" moves, direction-coloured arcs, hover-to-preview in both lists

@@ -56,6 +56,14 @@
 <div id="main-area">
   <!-- Left sidebar: Tools + Layers -->
   <div id="left-sidebar">
+    <div class="sidebar-section" id="doc-section">
+      <div class="sidebar-title">Drawing</div>
+      <div class="tool-group">
+        <button id="btn-doc-mat" class="tool-btn sidebar-tool-btn active" data-doc="mat">🗺️ Mat</button>
+        <button id="btn-doc-robot" class="tool-btn sidebar-tool-btn" data-doc="robot">🤖 Robot</button>
+      </div>
+      <div class="sidebar-hint" id="doc-hint">Field geometry, routes and obstacles</div>
+    </div>
     <div class="sidebar-section" id="tool-section">
       <div class="sidebar-title">Tool</div>
       <div class="tool-group">
@@ -245,6 +253,8 @@
 <div id="ctx-menu" style="display:none">
   <div id="ctx-menu-title"></div>
   <button id="ctx-menu-hide">🙈 Hide</button>
+  <button id="ctx-menu-obstacle">🚧 Mark as obstacle</button>
+  <button id="ctx-menu-drive">🧭 Set as drive axis</button>
   <button id="ctx-menu-delete">🗑 Delete</button>
 </div>
 

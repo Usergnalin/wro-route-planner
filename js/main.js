@@ -25,6 +25,7 @@ var RP = window.RP || {};
   RP.updateRobotUI();
   RP.updateCodeConfigUI();
   RP.setTool('construction');
+  RP.updateDocUI();
   RP.updateInfoPanel();
   RP.dom.sidePanels.style.display = '';
 

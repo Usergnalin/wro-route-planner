@@ -485,8 +485,8 @@ RP.ROUTE_CONTINUE_SCREEN_RADIUS = 20;
 // ======================================================================
 RP.snapshotState = function() {
   return {
-    sketch: RP.serializeSketch(),
-    construction: JSON.parse(JSON.stringify(RP.constructionMeta)),
+    // Both sketch documents, plus which was active — see RP.serializeAllDocs.
+    docs: RP.serializeAllDocs(),
     routes: RP.serializeRoutes ? RP.serializeRoutes() : JSON.parse(JSON.stringify(RP.routes)),
     activeRouteId: RP.activeRouteId,
     nextActionId: RP.nextActionId,
@@ -506,9 +506,14 @@ RP.restoreState = function(s) {
   // Restored positions are already consistent, so the sketch is NOT
   // re-solved here — that would be free to pick a different valid
   // configuration and quietly move geometry on undo.
-  RP.deserializeSketch(s.sketch);
-  RP.constructionMeta = JSON.parse(JSON.stringify(s.construction || {}));
-  RP.rebuildLines();
+  if (s.docs) {
+    RP.restoreAllDocs(s.docs);
+  } else {
+    // Snapshot from before the robot document existed: mat only.
+    RP.deserializeSketch(s.sketch);
+    RP.constructionMeta = JSON.parse(JSON.stringify(s.construction || {}));
+    RP.rebuildLines();
+  }
   RP.routes = JSON.parse(JSON.stringify(s.routes));
   RP.activeRouteId = s.activeRouteId;
   RP.nextActionId = s.nextActionId || RP.nextActionId || 1;

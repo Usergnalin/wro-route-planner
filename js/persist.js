@@ -21,12 +21,16 @@ RP.saveProject = function() {
   if (!name) { alert('Name cannot be empty.'); return; }
   RP.updateCodeConfigFromUI();
   var data = {
-    version: '5.0',
+    version: '6.0',
     name: name,
     imageData: RP.imgDataUrl,
     calibration: RP.calibration ? JSON.parse(JSON.stringify(RP.calibration)) : null,
-    sketch: RP.serializeSketch(),
-    construction: JSON.parse(JSON.stringify(RP.constructionMeta)),
+    // `sketch`/`construction` remain the MAT document, so a v5 reader still
+    // opens this file. Serialized by name, not from whatever is active —
+    // saving with the robot open must not write the robot in here.
+    sketch: RP._serializeDoc(RP.getDoc(RP.DOC_MAT)).sketch,
+    construction: RP._serializeDoc(RP.getDoc(RP.DOC_MAT)).construction,
+    robotDoc: RP.serializeRobotDoc(),
     routes: RP.serializeRoutes(),
     robotConfig: JSON.parse(JSON.stringify(RP.robotConfig)),
     codeConfig: JSON.parse(JSON.stringify(RP.codeConfig)),
