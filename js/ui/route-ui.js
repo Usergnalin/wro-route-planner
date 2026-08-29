@@ -412,6 +412,9 @@ RP.TURN_GLYPH = function(deg) {
 RP.updateActionList = function() {
   var list = document.getElementById('action-list');
   if (!list) return;
+  // Rebuilding drops the row the cursor was over without firing its
+  // mouseleave, so the preview has to be dropped with it or it sticks.
+  RP.hoverActionId = null;
   list.innerHTML = '';
   var route = RP.getActiveRoute();
   var acts = (route && route.actions) || [];
@@ -490,6 +493,12 @@ RP.updateActionList = function() {
       lbl.onclick = function() {
         RP.selectedActionId = act.id;
         RP.refreshRouteUI();
+      };
+      // Hover previews what a click would pick. Canvas only — re-rendering
+      // the list here would destroy the row the cursor is on.
+      row.onmouseenter = function() { RP.hoverActionId = act.id; RP.render(); };
+      row.onmouseleave = function() {
+        if (RP.hoverActionId === act.id) { RP.hoverActionId = null; RP.render(); }
       };
 
       row.appendChild(glyph);

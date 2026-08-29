@@ -219,6 +219,23 @@ RP.resizeTimer = null;
 // Selected line (from layer list, for resolving overlapping line picks)
 RP.selectedLineId = null;
 
+// Which list row the cursor is over. Purely a preview of what clicking
+// would select, so it is deliberately transient: never saved, never
+// pushed to undo, and cleared whenever the cursor leaves the row. Rows
+// set these on mouseenter/mouseleave and re-render the CANVAS only —
+// rebuilding the list's DOM on hover would destroy the very row the
+// cursor is on.
+RP.hoverGeoId = null;      // geometry list (lines, arcs, points)
+RP.hoverActionId = null;   // route action list (moves, turns, checkpoints)
+
+// Hover reads as a slightly softened version of the selection colour it
+// previews, so it is obviously "about to be selected" rather than a third
+// state. It has to survive being drawn over a bright photo of a
+// competition mat, so it stays close to opaque — much below this and the
+// preview simply is not visible on a light background.
+RP.HOVER_GEO_COLOR   = 'rgba(255,238,68,0.85)';   // vs selected #ffee44
+RP.HOVER_ROUTE_COLOR = 'rgba(255,217,102,0.85)';  // vs selected #ffd966
+
 // Last mouse position
 RP.lastMouseImg = { x: 0, y: 0 };
 

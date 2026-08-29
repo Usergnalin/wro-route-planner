@@ -631,4 +631,21 @@ check('per-kind speeds default to null once ensured, so old save files are unaff
   for (const k of keys) assert(RP.codeConfig[k] === null, k + ' should default to null, got ' + RP.codeConfig[k]);
 });
 
+check('a straight move is LABELLED "Straight" but still STORED as "forward"', () => {
+  const RP = fresh();
+  // The label is display-only. The key is what save files, generated code
+  // and RP.STEP_KIND_SPEED_KEYS all key off, so renaming the label must
+  // not have touched it.
+  assert(RP.MOVE_LABELS.forward === 'Straight',
+    'expected the display label "Straight", got ' + RP.MOVE_LABELS.forward);
+  const { route, e1 } = lRoute(RP);
+  const move = RP.findMove(route, e1.id);
+  assert(move.move === 'forward',
+    'the stored move type must stay "forward", got ' + move.move);
+  assert(RP.STEP_KIND_SPEED_KEYS.forward === 'defaultSpeedForward',
+    'the per-kind speed lookup still keys off the stored type');
+  assert(RP.generateCode(route).indexOf('move_distance') >= 0,
+    'codegen still resolves the forward template');
+});
+
 if (!report()) process.exitCode = 1;

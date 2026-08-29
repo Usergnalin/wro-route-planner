@@ -1,3 +1,84 @@
+# Changes — 2026-08-29 (2)
+
+## QoL: "Straight" moves, direction-coloured arcs, hover-to-preview in both lists
+
+### "Forward" moves are now labelled "Straight"
+
+A move along a straight line is driven forwards *or* backwards — the Drive
+toggle says which — so calling the move itself "Forward" was saying the
+wrong thing twice. Only the display label changed: `RP.MOVE_LABELS.forward`
+is now `'Straight'`, while the KEY stays `forward`, which is what save
+files, generated code and `RP.STEP_KIND_SPEED_KEYS` all key off. An
+existing project loads and generates identical code.
+
+### Arcs take the same blue/orange as straights
+
+Route move colour now means one thing: which way the robot drives.
+
+| | before | after |
+|---|---|---|
+| straight, forwards | blue | blue |
+| straight, backwards | orange | orange |
+| arc, forwards | yellow | **blue** |
+| arc, backwards | yellow | **orange** |
+
+The old dedicated arc colour meant a reversing arc looked exactly like a
+forward one — the direction, the thing most worth seeing at a glance, was
+the one thing the colour did not tell you. Line trace, wall align and
+teleport keep their own colours: those say what the move *does*, which is
+a different question from which way it goes.
+
+### Hover to preview, click to select
+
+Both the geometry list (Sketch) and the action list (Route) previously
+only highlighted on click, so finding the row for a particular line meant
+clicking through candidates and actually changing the selection each time.
+Hovering a row now highlights what it points at on the canvas, and only a
+click selects.
+
+- `RP.hoverGeoId` / `RP.hoverActionId` (`js/core.js`) hold the previewed
+  row. Deliberately transient: never saved, never pushed to undo.
+- Rows set them on `mouseenter`/`mouseleave` and re-render the CANVAS
+  only. Rebuilding the list on hover would destroy the very row the cursor
+  is on and the preview would flicker off.
+- Both are cleared when their list is rebuilt: the hovered row is removed
+  without ever firing its `mouseleave`, so the preview would otherwise
+  stick to geometry the cursor had long left.
+- Covers lines, arcs, points, route moves, turns and checkpoints — every
+  row type in both lists previews the same marker its selection uses.
+
+The hover highlight is drawn WIDER than the selection highlight (11px vs
+6px for a route segment; 4.5px vs 3px for construction geometry) and at
+0.85 alpha. That looks backwards written down, and the first attempt did
+it the intuitive way round — a thin, half-transparent hint. On a bright
+photo of a competition mat it was invisible in a screenshot comparison.
+Selection can afford to be subtle because the eye is already on the thing
+that was just clicked; a hover preview is read while the cursor is over
+the sidebar, metres away on screen, so it has to carry further.
+
+### Also
+
+`index.html`'s footer hint still read "WASD to pan" after panning moved to
+the arrow keys. Now says "Arrow keys to pan".
+
+### Verification
+
+11 suites pass, 1 new test (action model 44→45) pinning the label/key
+split: the label reads "Straight" while the stored move type, the
+per-kind speed lookup and codegen all still key off `forward`.
+
+Verified in Chromium against the real mat image with a four-move route
+(straight forwards, straight backwards, arc forwards, arc backwards):
+action rows read `Straight`, `Straight · rev`, `Arc`, `Arc · rev`, and
+the canvas draws solid blue / dashed orange / solid blue / dashed orange
+— the forward arc blue where it used to be yellow. Hover was checked by
+before/after screenshot on both lists: hovering sets the hover id and
+draws the halo without touching `selectedLineId` / `selectedActionId`,
+moving the cursor away clears both the id and the halo, and clicking then
+sets the selection as before.
+
+---
+
 # Changes — 2026-08-29
 
 ## Solver: lines no longer run away or collapse on auto-tangency, and the sketcher is ~10–50× faster

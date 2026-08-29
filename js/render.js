@@ -46,13 +46,17 @@ RP.render = function() {
     // Route mode dims geometry to a guide — but a line picked in the
     // geometry list still has to stand out, or the list cannot be used to
     // find anything.
+    var isHover = RP.hoverGeoId === l.id;
     var color = isSel ? '#ffee44'
+                      : (isHover ? RP.HOVER_GEO_COLOR
                       : (inRouteMode ? 'rgba(90,150,90,0.45)'
-                                     : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44'));
+                                     : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44')));
     // Field walls are fixed reference geometry, not something you drew.
     var isField = l.role === 'field';
-    if (isField && !isSel) color = inRouteMode ? 'rgba(200,200,210,0.30)' : 'rgba(190,190,205,0.75)';
-    var width = (isSel ? 3 : 2) / RP.scale;
+    if (isField && !isSel && !isHover) color = inRouteMode ? 'rgba(200,200,210,0.30)' : 'rgba(190,190,205,0.75)';
+    // Hover is drawn thicker than selection for the same reason the route
+    // halo is: the cursor is over the list, not the geometry.
+    var width = (isHover ? 4.5 : (isSel ? 3 : 2)) / RP.scale;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = width;
@@ -73,13 +77,15 @@ RP.render = function() {
     if (inRouteMode && routeRefs[arc.id]) continue;
     var arcSel = RP.selectedLineId === arc.id ||
                  (RP.isSketchSelected ? RP.isSketchSelected(arc.id) : false);
+    var arcHover = RP.hoverGeoId === arc.id;
     var arcColor = arcSel ? '#ffee44'
+                          : (arcHover ? RP.HOVER_GEO_COLOR
                           : (inRouteMode ? 'rgba(90,150,90,0.45)'
-                                         : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44'));
+                                         : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44')));
     var apts = RP.Sketch.arcPoints(RP.sketch, RP.sketch.entities[arc.id], 48);
     if (apts.length < 2) continue;
     ctx.strokeStyle = arcColor;
-    ctx.lineWidth = (arcSel ? 3 : 2) / RP.scale;
+    ctx.lineWidth = (arcHover ? 4.5 : (arcSel ? 3 : 2)) / RP.scale;
     ctx.setLineDash([6 / RP.scale, 4 / RP.scale]);
     ctx.beginPath();
     ctx.moveTo(apts[0].x, apts[0].y);
@@ -106,12 +112,14 @@ RP.render = function() {
     if (sp.visible === false) continue;
     var spSel = RP.selectedLineId === sp.id ||
                 (RP.isSketchSelected ? RP.isSketchSelected(sp.id) : false);
+    var spHover = RP.hoverGeoId === sp.id;
     var spColor = spSel ? '#ffee44'
+                        : (spHover ? RP.HOVER_GEO_COLOR
                         : (inRouteMode ? 'rgba(150,190,150,0.5)'
-                                       : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44'));
-    var spR = (spSel ? 6 : 4.5) / RP.scale;
+                                       : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44')));
+    var spR = (spSel || spHover ? 6 : 4.5) / RP.scale;
     ctx.strokeStyle = spColor;
-    ctx.lineWidth = (spSel ? 2.5 : 1.8) / RP.scale;
+    ctx.lineWidth = (spSel || spHover ? 2.5 : 1.8) / RP.scale;
     ctx.beginPath();
     ctx.arc(sp.x, sp.y, spR, 0, Math.PI * 2);
     ctx.stroke();
@@ -172,7 +180,6 @@ RP.render = function() {
     var teleColor  = '#ffaa00';
     var ltColor    = isActive ? '#44ff88' : '#33cc66';
     var waColor    = '#e0e0e0';
-    var arcColor   = isActive ? '#ffcc44' : '#cc9a33';
     var selColor   = '#ffd966';
     var dimColor   = isActive ? 'rgba(68,170,255,0.28)' : 'rgba(68,136,204,0.22)';
 
@@ -211,7 +218,11 @@ RP.render = function() {
                      RP.selectedMoveId === seg.id;
       var onPath = pathSegIds[seg.id];
       var segColor = (hasLongestPath && !onPath) ? dimColor
-        : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isWallAlign ? waColor : (isArc ? arcColor : (isBack ? revColor : baseColor)))));
+        // Arcs take the same blue/orange as straights: what the colour says
+        // is which WAY the robot drives, and an arc is driven forwards or
+        // backwards exactly like a straight is. A separate arc colour meant
+        // a reversing arc looked identical to a forward one.
+        : (isTeleport ? teleColor : (isLineTrace ? ltColor : (isWallAlign ? waColor : (isBack ? revColor : baseColor))));
 
       // Arc render polyline (matches the generated turn_arc geometry)
       var arcRenderPts = null;
@@ -237,9 +248,17 @@ RP.render = function() {
         ctx.stroke();
       };
 
-      if (isSegSel) {
-        ctx.strokeStyle = selColor;
-        ctx.lineWidth = (isActive ? 6 : 5) / RP.scale;
+      // Same outline the selection uses, one shade down: hovering a row in
+      // the action list previews exactly what clicking it would pick.
+      var isSegHover = inRouteMode && r.id === RP.activeRouteId &&
+                       RP.hoverActionId === seg.id && !isSegSel;
+      if (isSegSel || isSegHover) {
+        ctx.strokeStyle = isSegSel ? selColor : RP.HOVER_ROUTE_COLOR;
+        // The hover halo is wider than the selection's. It has to be: it is
+        // read against a bright mat photo while the cursor is elsewhere
+        // (over the list), so it cannot rely on the eye already being on
+        // the line the way a just-clicked selection can.
+        ctx.lineWidth = (isSegSel ? (isActive ? 6 : 5) : 11) / RP.scale;
         _segPath();
       }
 
@@ -671,12 +690,14 @@ RP.drawActionMarkers = function(ctx, route, fs) {
     var pt = act.pointId != null ? sk.entities[act.pointId] : null;
     if (!pt) continue;
     var selected = RP.selectedActionId === act.id;
+    var hovered = !selected && RP.hoverActionId === act.id;
 
     if (it.kind === 'checkpoint') {
       // The diamond itself is already drawn off the node view; this is the
-      // selection ring and the click target.
-      if (selected) {
-        ctx.strokeStyle = '#ffffff';
+      // selection ring and the click target. Hover gets the same ring a
+      // shade down, so a list row previews what it would select.
+      if (selected || hovered) {
+        ctx.strokeStyle = selected ? '#ffffff' : RP.HOVER_ROUTE_COLOR;
         ctx.lineWidth = 2 / RP.scale;
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, mR + 3 / RP.scale, 0, Math.PI * 2);
@@ -698,7 +719,7 @@ RP.drawActionMarkers = function(ctx, route, fs) {
       var endRad = it.nextMove.entryHeading * Math.PI / 180;
       var startRad = endRad - deg * Math.PI / 180;
       ctx.strokeStyle = colour;
-      ctx.lineWidth = (selected ? 2.5 : 1.5) / RP.scale;
+      ctx.lineWidth = (selected || hovered ? 2.5 : 1.5) / RP.scale;
       ctx.beginPath();
       ctx.arc(pt.x, pt.y, mR + 5 / RP.scale, startRad, endRad, deg < 0);
       ctx.stroke();
@@ -708,8 +729,8 @@ RP.drawActionMarkers = function(ctx, route, fs) {
     ctx.arc(pt.x, pt.y, mR, 0, Math.PI * 2);
     ctx.fillStyle = deg === null ? 'rgba(30,30,34,0.8)' : 'rgba(20,20,24,0.85)';
     ctx.fill();
-    ctx.strokeStyle = selected ? '#ffffff' : colour;
-    ctx.lineWidth = (selected ? 2.5 : 1.5) / RP.scale;
+    ctx.strokeStyle = selected ? '#ffffff' : (hovered ? RP.HOVER_ROUTE_COLOR : colour);
+    ctx.lineWidth = (selected || hovered ? 2.5 : 1.5) / RP.scale;
     ctx.stroke();
 
     ctx.fillStyle = selected ? '#ffffff' : colour;

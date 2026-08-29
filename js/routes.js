@@ -212,6 +212,9 @@ RP.focusGeometryInList = function(id) {
 RP.updateLayerList = function() {
   var el = document.getElementById('layer-list');
   if (!el) return;
+  // Rebuilding drops the row the cursor was over without firing its
+  // mouseleave, so the preview has to be dropped with it or it sticks.
+  RP.hoverGeoId = null;
   el.innerHTML = '';
 
   // ---- Routes (listed above construction lines) ----
@@ -302,6 +305,13 @@ RP.updateLayerList = function() {
         lbl.onclick = function() {
           RP.selectedLineId = (RP.selectedLineId === line.id) ? null : line.id;
           RP.updateLayerList(); RP.render();
+        };
+        // Hover previews what a click would pick. Only the canvas is
+        // re-rendered — rebuilding the list here would destroy the row the
+        // cursor is currently on and the hover would flicker off.
+        div.onmouseenter = function() { RP.hoverGeoId = line.id; RP.render(); };
+        div.onmouseleave = function() {
+          if (RP.hoverGeoId === line.id) { RP.hoverGeoId = null; RP.render(); }
         };
 
         var del = document.createElement('button');

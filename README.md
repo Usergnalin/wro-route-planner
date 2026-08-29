@@ -164,6 +164,15 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
       row highlights that geometry on the canvas, and clicking geometry on
       the canvas (in Select, Constrain or Route mode) selects and scrolls
       to its row in return — the list and the canvas always agree
+- [x] Hover to preview, click to select — in both the geometry list and the
+      route action list, hovering a row highlights what that row points at
+      on the canvas, so you can see what you are about to select and
+      operate on before committing to it. Hover state is purely transient:
+      never saved, never in undo history
+- [x] Route move colour says which WAY the robot drives, not what kind of
+      move it is: **blue forwards, orange backwards**, for straights and
+      arcs alike (line trace, wall align and teleport keep their own
+      colours, since those are about what the move *does*)
 - [x] Robot start position marker with heading arrow
 - [x] Snap system: endpoints, intersections, 90° angle, along-line projection
 - [x] Ctrl to temporarily disable snap

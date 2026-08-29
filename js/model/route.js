@@ -30,8 +30,13 @@ RP.MOVE_LINETRACE_JUNCT = 'linetrace_junct';
 RP.MOVE_WALL_ALIGN      = 'wall_align';
 RP.MOVE_TELEPORT        = 'teleport';
 
+// Display names only. The KEYS are the stored move types and appear in
+// save files, generated code and RP.STEP_KIND_SPEED_KEYS, so `forward`
+// stays `forward` on disk however it is labelled here — a straight is
+// driven in either direction, so "Straight" is what it is, and "Forwards
+// / Backwards" is the separate Drive toggle's job to say.
 RP.MOVE_LABELS = {
-  forward: 'Forward', arc: 'Arc',
+  forward: 'Straight', arc: 'Arc',
   linetrace_dist: 'Line trace (dist)',
   linetrace_junct: 'Line trace (junct)',
   wall_align: 'Wall align', teleport: 'Teleport'
