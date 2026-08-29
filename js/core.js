@@ -130,6 +130,11 @@ RP.redoStack = [];
 RP.DEFAULT_ROBOT_CONFIG = {
   frontClearance: 50,
   rearClearance: 50,
+  // mm of positional uncertainty gained per mm driven. 0 = model off,
+  // which is the default on purpose: this number is a property of one
+  // robot on one surface, and only its driver can measure it. Inventing a
+  // plausible default would silently inflate every collision warning.
+  driftPerMm: 0,
   startPos: null,
   startHeading: 0
 };
@@ -198,6 +203,7 @@ RP.codeConfig = RP.freshCodeConfig();
 RP.robotConfig = {
   frontClearance: 50,
   rearClearance: 50,
+  driftPerMm: 0,
   startPos: null,
   startHeading: 0
 };

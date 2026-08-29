@@ -898,7 +898,7 @@ RP.initEvents = function() {
     });
   }
 
-  ['robot-fc', 'robot-rc'].forEach(function(id) {
+  ['robot-fc', 'robot-rc', 'robot-drift'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateRobotConfigFromUI);

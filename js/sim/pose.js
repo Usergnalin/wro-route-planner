@@ -31,6 +31,41 @@ var RP = window.RP || {};
 RP.SIM_STEP_MM = 5;
 RP.SIM_TURN_DEG = 4;
 
+// ---- positional uncertainty -----------------------------------------
+// A dead-reckoning robot drifts. This models that as an axis-aligned box
+// of uncertainty, in MAT axes, that grows with distance driven and is cut
+// back when the robot re-references something it can actually see.
+//
+// Mat axes rather than robot-local ones because that is the frame the
+// corrections live in: a wall align fixes the axis NORMAL TO THAT WALL,
+// whichever way the robot happened to approach it.
+//
+// Deliberately a crude model, and deliberately OFF by default
+// (driftPerMm = 0). The growth rate is a property of a particular robot
+// on a particular surface and nobody can supply it but the person driving
+// it; inventing a plausible-looking number would silently inflate every
+// collision warning on a guess.
+RP.simDriftPerMm = function() {
+  var v = RP.robotConfig && RP.robotConfig.driftPerMm;
+  return (typeof v === 'number' && isFinite(v) && v > 0) ? v : 0;
+};
+
+// Collapse the uncertainty box onto the direction that was NOT corrected.
+// `tx,ty` is that surviving (tangent) direction; the component normal to
+// it has just been measured away.
+//
+// The box is projected onto the tangent conservatively (|ux·tx| + |uy·ty|
+// rather than a Euclidean norm) so an axis-aligned correction is exact and
+// a diagonal one never under-reports.
+RP.simCorrectAlong = function(u, tx, ty) {
+  var L = Math.hypot(tx, ty);
+  if (L < 1e-9) { u.ux = 0; u.uy = 0; return; }
+  tx /= L; ty /= L;
+  var along = Math.abs(u.ux * tx) + Math.abs(u.uy * ty);
+  u.ux = along * Math.abs(tx);
+  u.uy = along * Math.abs(ty);
+};
+
 // A turn in place still sweeps the body through space, and a long robot
 // pivoting in a tight corner is a real way to hit something — so turns
 // are sampled, not skipped.
@@ -47,12 +82,16 @@ RP.simPoseTrack = function(route, opts) {
   if (!tl.items.length) return { ok: true, poses: [], reason: null };
 
   var ppm = RP.calibration.pixelsPerMm;
+  var sk = RP.ensureSketch();
   var poses = [];
   var distMm = 0;
   var cur = null;   // { x, y, deg }
+  var drift = RP.simDriftPerMm();
+  var u = { ux: 0, uy: 0 };   // uncertainty half-extents, mm, mat axes
 
   function emit(x, y, deg, actionId, kind) {
-    poses.push({ x: x, y: y, deg: deg, actionId: actionId, kind: kind, distMm: distMm });
+    poses.push({ x: x, y: y, deg: deg, actionId: actionId, kind: kind,
+                 distMm: distMm, ux: u.ux, uy: u.uy });
   }
 
   // Rotate in place from `fromDeg` to `toDeg` the short way, sampling as
@@ -98,9 +137,15 @@ RP.simPoseTrack = function(route, opts) {
     var mm = px / ppm;
     var n = Math.max(1, Math.ceil(mm / stepMm));
     var x0 = cur.x, y0 = cur.y, d0 = distMm;
+    var u0x = u.ux, u0y = u.uy;
     for (var i = 1; i <= n; i++) {
       var t = i / n;
       distMm = d0 + mm * t;
+      // Grows with distance driven, equally in both axes — the model the
+      // user asked for, and the one a wheel-odometry robot roughly obeys
+      // before you start modelling heading error separately.
+      u.ux = u0x + drift * mm * t;
+      u.uy = u0y + drift * mm * t;
       emit(x0 + dx * t, y0 + dy * t, cur.deg, actionId, kind);
     }
     cur.x = tx; cur.y = ty;
@@ -154,6 +199,8 @@ RP.simPoseTrack = function(route, opts) {
       for (var q = 1; q < pts.length; q++) {
         var seg = Math.hypot(pts[q].x - prev.x, pts[q].y - prev.y) / ppm;
         distMm += seg;
+        u.ux += drift * seg;
+        u.uy += drift * seg;
         // Heading along the curve, flipped when the robot drives it
         // backwards — the chassis faces away from where it is going.
         var hd = RP.toDeg(RP.angleRad(prev.x, prev.y, pts[q].x, pts[q].y));
@@ -168,6 +215,49 @@ RP.simPoseTrack = function(route, opts) {
 
     driveTo(it.b.x, it.b.y, el.id, 'move');
     if (it.exitHeading !== null) cur.deg = it.exitHeading;
+
+    // ---- corrections -------------------------------------------------
+    // A move that re-references something the robot can physically sense
+    // cuts the uncertainty back, but only in the axis it actually
+    // measures. Applied at the END of the move, which is when the robot
+    // has done the sensing.
+    if (drift > 0) {
+      if (mode === RP.MOVE_WALL_ALIGN) {
+        // Squaring against a wall fixes the distance to that wall, i.e.
+        // the axis NORMAL to it. Position ALONG the wall is untouched —
+        // a robot can drive into a wall perfectly and still be a hand's
+        // width off sideways. The wall is whichever line the move's own
+        // point_line_distance constraint names.
+        var ends = RP.moveEndpoints(sk, el);
+        var wc = ends && RP.wallConstraintFor(sk, ends.exit);
+        var wall = wc && sk.entities[wc.refs[1]];
+        var wa = wall && sk.entities[wall.p1], wb = wall && sk.entities[wall.p2];
+        if (wa && wb) {
+          RP.simCorrectAlong(u, wb.x - wa.x, wb.y - wa.y);
+        } else {
+          // No wall to read a direction from: correct along the leg, which
+          // is the direction the robot drove into whatever it hit.
+          RP.simCorrectAlong(u, -(it.b.y - it.a.y), it.b.x - it.a.x);
+        }
+      } else if (mode === RP.MOVE_LINETRACE_DIST) {
+        // Following a line fixes you laterally, not longitudinally: the
+        // sensor says which side of the line you are on and nothing about
+        // how far along. Uncertainty survives ALONG the line.
+        RP.simCorrectAlong(u, it.b.x - it.a.x, it.b.y - it.a.y);
+      } else if (mode === RP.MOVE_LINETRACE_JUNCT) {
+        // Counting junctions fixes both: lateral from the line itself,
+        // longitudinal from having crossed a known feature.
+        u.ux = 0; u.uy = 0;
+      }
+      // The correction happens AT the end of the move, so it belongs to
+      // the pose already emitted there rather than to some later one —
+      // otherwise the leg that did the correcting is drawn (and swept)
+      // carrying uncertainty it has just measured away.
+      if (poses.length) {
+        poses[poses.length - 1].ux = u.ux;
+        poses[poses.length - 1].uy = u.uy;
+      }
+    }
   }
 
   return { ok: true, poses: poses, reason: null };

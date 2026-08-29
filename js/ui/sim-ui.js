@@ -50,11 +50,28 @@ RP.updateSimPanel = function() {
   }
 
   var n = res.hits.length;
-  statusEl.textContent = n === 0 ? 'No collisions' : (n + (n === 1 ? ' collision' : ' collisions'));
-  statusEl.style.color = n === 0 ? '#44ff44' : '#ff4444';
+  var certain = 0;
+  for (var c = 0; c < n; c++) if (res.hits[c].certain) certain++;
+  var drift = RP.simDriftPerMm();
+
+  // "Will hit" and "might hit once drift is allowed for" are different
+  // enough to be counted separately — collapsing them would make a real
+  // collision hide among speculative ones.
+  if (n === 0) {
+    statusEl.textContent = 'No collisions';
+    statusEl.style.color = '#44ff44';
+  } else if (certain === n) {
+    statusEl.textContent = n + (n === 1 ? ' collision' : ' collisions');
+    statusEl.style.color = '#ff4444';
+  } else {
+    statusEl.textContent = certain + ' certain, ' + (n - certain) + ' possible';
+    statusEl.style.color = certain ? '#ff4444' : '#ffaa44';
+  }
   if (hintEl) {
     hintEl.textContent = n === 0
-      ? 'Robot body swept along the whole route, including turns in place.'
+      ? (drift > 0
+          ? 'Body swept along the route, turns included, grown by drift as it goes.'
+          : 'Body swept along the route, turns included. Drift is off — set it in Robot & Code to allow for dead-reckoning error.')
       : 'Click one to jump to it. Warnings only — nothing is blocked.';
   }
   if (n === 0) return;
@@ -67,8 +84,8 @@ RP.updateSimPanel = function() {
 
       var glyph = document.createElement('span');
       glyph.className = 'constraint-glyph';
-      glyph.textContent = '⚠';
-      glyph.style.color = '#ff4444';
+      glyph.textContent = hit.certain ? '⚠' : '?';
+      glyph.style.color = hit.certain ? '#ff4444' : '#ffaa44';
 
       var lbl = document.createElement('span');
       lbl.className = 'layer-item-label';
@@ -78,8 +95,14 @@ RP.updateSimPanel = function() {
         var m = RP.constructionMeta[id];
         return (m && m.label) || ('#' + id);
       }).join(', ');
-      lbl.textContent = Math.round(hit.distMm) + ' mm in · ' + names;
-      lbl.title = lbl.textContent + ' (' + hit.poses + ' samples in contact)';
+      lbl.textContent = Math.round(hit.distMm) + ' mm in · ' + names +
+                        (hit.certain ? '' : ' (possible)');
+      if (!hit.certain) lbl.style.color = '#c9a24a';
+      lbl.title = lbl.textContent + ' — ' + hit.poses + ' samples in contact' +
+        (hit.certain
+          ? '. The body hits this at its true size.'
+          : '. Only reachable once ±' + hit.ux.toFixed(0) + '/' + hit.uy.toFixed(0) +
+            ' mm of drift is allowed for.');
 
       row.appendChild(glyph);
       row.appendChild(lbl);
@@ -117,10 +140,31 @@ RP.drawSimOverlay = function(ctx) {
     // Only the focused hit is filled. A robot body is a big shape at mat
     // scale, and several translucent fills at once read as a smear rather
     // than as distinct places to look at.
-    if (focused) { ctx.fillStyle = 'rgba(255,60,60,0.3)'; ctx.fill(); }
-    ctx.strokeStyle = focused ? '#ff4444' : 'rgba(255,68,68,0.75)';
+    if (focused) {
+      ctx.fillStyle = hit.certain ? 'rgba(255,60,60,0.3)' : 'rgba(255,170,68,0.22)';
+      ctx.fill();
+    }
+    ctx.strokeStyle = hit.certain
+      ? (focused ? '#ff4444' : 'rgba(255,68,68,0.75)')
+      : (focused ? '#ffaa44' : 'rgba(255,170,68,0.7)');
     ctx.lineWidth = (focused ? 3 : 1.5) / RP.scale;
     ctx.stroke();
+
+    // The drifted envelope, dashed, outside the body it grew from — so a
+    // "possible" hit visibly shows how much slack it needed.
+    var ppm = (RP.calibration && RP.calibration.pixelsPerMm) || 1;
+    if ((hit.ux > 0 || hit.uy > 0) && RP.inflateHull) {
+      var grown = RP.inflateHull(poly, hit.ux * ppm, hit.uy * ppm);
+      ctx.beginPath();
+      ctx.moveTo(grown[0].x, grown[0].y);
+      for (var g = 1; g < grown.length; g++) ctx.lineTo(grown[g].x, grown[g].y);
+      ctx.closePath();
+      ctx.setLineDash([6 / RP.scale, 5 / RP.scale]);
+      ctx.strokeStyle = focused ? 'rgba(255,190,90,0.9)' : 'rgba(255,190,90,0.45)';
+      ctx.lineWidth = 1.5 / RP.scale;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     // A ring at the turning centre, so the marker is findable when the
     // body outline is off-screen or tiny.

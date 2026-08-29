@@ -91,6 +91,25 @@ RP.footprintAt = function(hull, pose) {
   return out;
 };
 
+// Grow a convex polygon by an axis-aligned uncertainty box (±ux, ±uy).
+//
+// This is the Minkowski sum of the polygon with the box, which for a
+// convex polygon is exactly the hull of the polygon translated to each of
+// the box's four corners. Doing it properly matters: naively scaling the
+// polygon would grow it about its own centre, which is not what "the
+// robot might be up to ux to the left" means.
+RP.inflateHull = function(poly, ux, uy) {
+  if (!(ux > 0) && !(uy > 0)) return poly;
+  var pts = [];
+  var corners = [[-ux, -uy], [ux, -uy], [ux, uy], [-ux, uy]];
+  for (var c = 0; c < 4; c++) {
+    for (var i = 0; i < poly.length; i++) {
+      pts.push({ x: poly[i].x + corners[c][0], y: poly[i].y + corners[c][1] });
+    }
+  }
+  return RP.convexHull(pts);
+};
+
 // Run the whole thing.
 //
 //   { ok, reason, hits: [{ x, y, deg, actionId, obstacleId, distMm }], poses, hull }
@@ -119,6 +138,16 @@ RP.simCollisions = function(route, opts) {
   });
   var reach = 0;
   for (var h = 0; h < hull.length; h++) reach = Math.max(reach, Math.hypot(hull[h].x, hull[h].y));
+  // The cheap reject has to allow for the largest the body can be
+  // inflated to, or a drifted body would be rejected before it was tested.
+  var ppm = (RP.calibration && RP.calibration.pixelsPerMm) || 1;
+  var maxU = 0;
+  for (var mu = 0; mu < track.poses.length; mu++) {
+    var pu = track.poses[mu];
+    if (pu.ux > maxU) maxU = pu.ux;
+    if (pu.uy > maxU) maxU = pu.uy;
+  }
+  reach += maxU * ppm;
 
   var hits = [];
   var openEpisode = null;
@@ -135,17 +164,27 @@ RP.simCollisions = function(route, opts) {
   for (var i = 0; i < poses.length; i++) {
     var pose = poses[i];
     var touching = null;
-    var poly = null;
+    var poly = null, nominal = null, certain = false;
 
     for (var j = 0; j < segs.length; j++) {
       var bx = boxes[j];
       // Cheap circle-vs-box reject before building the polygon at all.
       if (pose.x + reach < bx.minX || pose.x - reach > bx.maxX ||
           pose.y + reach < bx.minY || pose.y - reach > bx.maxY) continue;
-      if (!poly) poly = RP.footprintAt(hull, pose);
+      if (!poly) {
+        nominal = RP.footprintAt(hull, pose);
+        // The body as drawn, grown by however far the robot might have
+        // drifted by this point. With drift off the two are identical and
+        // this costs nothing.
+        poly = RP.inflateHull(nominal, (pose.ux || 0) * ppm, (pose.uy || 0) * ppm);
+      }
       if (RP.polyHitsSegment(poly, segs[j])) {
         if (!touching) touching = {};
         touching[segs[j].id] = true;
+        // Certain if it also hits at the body's true size — that is the
+        // difference between "this WILL hit" and "this MIGHT hit if the
+        // robot has drifted", which are very different things to be told.
+        if (!certain && RP.polyHitsSegment(nominal, segs[j])) certain = true;
       }
     }
 
@@ -157,11 +196,15 @@ RP.simCollisions = function(route, opts) {
         openEpisode = {
           key: key, x: pose.x, y: pose.y, deg: pose.deg,
           actionId: pose.actionId, obstacleIds: Object.keys(touching).map(Number),
-          distMm: pose.distMm, poseIndex: i, poses: 1
+          distMm: pose.distMm, poseIndex: i, poses: 1,
+          certain: certain, ux: pose.ux || 0, uy: pose.uy || 0
         };
         hits.push(openEpisode);
       } else {
         openEpisode.poses++;
+        // One certain sample anywhere in the episode makes the whole
+        // episode certain — it is the same contact either way.
+        if (certain) openEpisode.certain = true;
       }
       lastEpisode = openEpisode;
       clearRun = 0;

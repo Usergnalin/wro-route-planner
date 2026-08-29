@@ -281,4 +281,209 @@ check('an obstacle arc is flattened and still collides', () => {
   assert(res.hits.length >= 1, 'a curved obstacle across the path should be hit');
 });
 
+// ---- uncertainty -----------------------------------------------------
+// Drift is OFF by default; every test above therefore ran at the body's
+// true size, and these are the only ones that turn it on.
+
+check('with drift off the uncertainty stays zero', () => {
+  const RP = fresh();
+  drawRobot(RP);
+  const { route } = straightRoute(RP);
+  const track = RP.simPoseTrack(route);
+  const last = track.poses[track.poses.length - 1];
+  assertClose(last.ux, 0, 1e-12, 'no drift configured');
+  assertClose(last.uy, 0, 1e-12, 'no drift configured');
+});
+
+check('uncertainty grows with distance driven', () => {
+  const RP = fresh();
+  drawRobot(RP);
+  RP.robotConfig.driftPerMm = 0.01;         // 1% of distance
+  const { route } = straightRoute(RP);       // 1000mm leg
+  const track = RP.simPoseTrack(route);
+  const last = track.poses[track.poses.length - 1];
+  assertClose(last.ux, 10, 1e-6, '1% of 1000mm');
+  assertClose(last.uy, 10, 1e-6, 'equally in both axes');
+  // And it grows monotonically, not all at the end.
+  const mid = track.poses[Math.floor(track.poses.length / 2)];
+  assert(mid.ux > 0 && mid.ux < last.ux, 'should accumulate along the way');
+});
+
+check('a wall align clears the axis normal to the wall and keeps the other', () => {
+  const RP = fresh();
+  drawRobot(RP);
+  RP.robotConfig.driftPerMm = 0.01;
+  // Drive east into a VERTICAL wall: that fixes x, and says nothing about y.
+  const wall = RP.addConstructionLine(1300, 0, 1300, 1000);
+  RP.setGeometryRole(wall.line.id, RP.FIELD_ROLE);
+  const l = RP.addConstructionLine(200, 500, 1200, 500);
+  const route = RP.routes[0];
+  RP.robotConfig.startPos = { x: 200, y: 500 };
+  RP.robotConfig.startHeading = 0;
+  const m = RP.addMove(route.id, l.line.id, { move: 'wall_align' });
+  RP.Sketch.addConstraint(RP.sketch, 'point_line_distance',
+    [l.line.p2, wall.line.id], 100);
+
+  const track = RP.simPoseTrack(route);
+  const last = track.poses[track.poses.length - 1];
+  assertClose(last.ux, 0, 1e-9, 'distance to a vertical wall is measured -> x is fixed');
+  assert(last.uy > 5, 'position ALONG the wall is not, got ' + last.uy);
+});
+
+check('a line trace clears lateral uncertainty and keeps along-track', () => {
+  const RP = fresh();
+  drawRobot(RP);
+  RP.robotConfig.driftPerMm = 0.01;
+  const l = RP.addConstructionLine(200, 500, 1200, 500);   // runs along x
+  const route = RP.routes[0];
+  RP.robotConfig.startPos = { x: 200, y: 500 };
+  RP.robotConfig.startHeading = 0;
+  RP.addMove(route.id, l.line.id, { move: 'linetrace_dist' });
+  const track = RP.simPoseTrack(route);
+  const last = track.poses[track.poses.length - 1];
+  assertClose(last.uy, 0, 1e-9, 'a follower knows which side of the line it is on');
+  assert(last.ux > 5, 'but not how far along, got ' + last.ux);
+});
+
+check('a junction line trace clears both axes', () => {
+  const RP = fresh();
+  drawRobot(RP);
+  RP.robotConfig.driftPerMm = 0.01;
+  const l = RP.addConstructionLine(200, 500, 1200, 500);
+  const route = RP.routes[0];
+  RP.robotConfig.startPos = { x: 200, y: 500 };
+  RP.robotConfig.startHeading = 0;
+  RP.addMove(route.id, l.line.id, { move: 'linetrace_junct' });
+  const track = RP.simPoseTrack(route);
+  const last = track.poses[track.poses.length - 1];
+  assertClose(last.ux, 0, 1e-9, 'crossing a counted junction is a longitudinal fix too');
+  assertClose(last.uy, 0, 1e-9, 'and the line itself fixes lateral');
+});
+
+check('uncertainty resumes growing after a correction', () => {
+  const RP = fresh();
+  drawRobot(RP);
+  RP.robotConfig.driftPerMm = 0.01;
+  const a = RP.addConstructionLine(200, 500, 1200, 500);
+  const b = RP.addConstructionLine(1200, 500, 1200, 900);
+  RP.Sketch.addConstraint(RP.sketch, 'coincident', [a.line.p2, b.line.p1]);
+  const route = RP.routes[0];
+  RP.robotConfig.startPos = { x: 200, y: 500 };
+  RP.robotConfig.startHeading = 0;
+  RP.addMove(route.id, a.line.id, { move: 'linetrace_junct' });   // zeroes both
+  RP.addMove(route.id, b.line.id, { move: 'forward' });           // 400mm more
+  const track = RP.simPoseTrack(route);
+  const last = track.poses[track.poses.length - 1];
+  assertClose(last.ux, 4, 1e-6, '1% of the 400mm driven since the reset');
+});
+
+check('the correction generalises to a wall that is not axis-aligned', () => {
+  const RP = fresh();
+  // A 45° tangent should leave equal x and y components, and the total
+  // along-wall uncertainty should be preserved rather than invented.
+  const u = { ux: 10, uy: 10 };
+  RP.simCorrectAlong(u, 1, 1);
+  assertClose(u.ux, u.uy, 1e-9, 'symmetric input, symmetric output');
+  assert(u.ux > 0 && u.ux < 10, 'partially corrected, got ' + u.ux);
+});
+
+check('correcting along an axis leaves that axis untouched and zeroes the other', () => {
+  const RP = fresh();
+  let u = { ux: 7, uy: 3 };
+  RP.simCorrectAlong(u, 0, 1);            // surviving direction is y
+  assertClose(u.ux, 0, 1e-12, 'x measured away');
+  assertClose(u.uy, 3, 1e-12, 'y untouched');
+
+  u = { ux: 7, uy: 3 };
+  RP.simCorrectAlong(u, 1, 0);            // surviving direction is x
+  assertClose(u.ux, 7, 1e-12, 'x untouched');
+  assertClose(u.uy, 0, 1e-12, 'y measured away');
+});
+
+// ---- uncertainty feeding collisions ----------------------------------
+check('inflateHull grows a polygon by the uncertainty box, not about its centre', () => {
+  const RP = fresh();
+  const square = [{x:-10,y:-10},{x:10,y:-10},{x:10,y:10},{x:-10,y:10}];
+  const big = RP.inflateHull(square, 5, 2);
+  const xs = big.map(p => p.x), ys = big.map(p => p.y);
+  assertClose(Math.min(...xs), -15, 1e-9, 'grown by ux each side');
+  assertClose(Math.max(...xs), 15, 1e-9, 'grown by ux each side');
+  assertClose(Math.min(...ys), -12, 1e-9, 'and by uy, independently');
+  assertClose(Math.max(...ys), 12, 1e-9, 'and by uy, independently');
+});
+
+check('drift turns a near miss into a possible collision, marked as not certain', () => {
+  // 40mm off the centreline clears a 30mm half-width by 10mm — the
+  // "just outside" case from the exact tests above.
+  const RP = fresh();
+  drawRobot(RP);
+  const { route } = straightRoute(RP);
+  obstacle(RP, 700, 540, 720, 540);
+  assert(RP.simCollisions(route).hits.length === 0, 'clear at true size');
+
+  const RP2 = fresh();
+  drawRobot(RP2);
+  RP2.robotConfig.driftPerMm = 0.05;      // 5%: ~25mm by the time it gets there
+  const r2 = straightRoute(RP2).route;
+  obstacle(RP2, 700, 540, 720, 540);
+  const res = RP2.simCollisions(r2);
+  assert(res.hits.length === 1, 'drift should bring it into reach, got ' + res.hits.length);
+  assert(res.hits[0].certain === false,
+    'and it must be reported as POSSIBLE, not certain — the body itself misses');
+});
+
+check('a collision that happens at true size is still marked certain under drift', () => {
+  const RP = fresh();
+  drawRobot(RP);
+  RP.robotConfig.driftPerMm = 0.05;
+  const { route } = straightRoute(RP);
+  obstacle(RP, 700, 400, 700, 600);       // straight across the path
+  const res = RP.simCollisions(route);
+  assert(res.hits.length >= 1, 'still hit');
+  assert(res.hits[0].certain === true,
+    'the body hits this one whether it drifted or not');
+});
+
+check('a correction shrinks the swept body again', () => {
+  const RP = fresh();
+  drawRobot(RP);
+  RP.robotConfig.driftPerMm = 0.05;
+  // Line-trace the first leg (zeroes lateral), then continue past the
+  // obstacle that only a drifted body would reach.
+  const a = RP.addConstructionLine(200, 500, 700, 500);
+  const b = RP.addConstructionLine(700, 500, 1200, 500);
+  RP.Sketch.addConstraint(RP.sketch, 'coincident', [a.line.p2, b.line.p1]);
+  const route = RP.routes[0];
+  RP.robotConfig.startPos = { x: 200, y: 500 };
+  RP.robotConfig.startHeading = 0;
+  RP.addMove(route.id, a.line.id, { move: 'linetrace_junct' });
+  RP.addMove(route.id, b.line.id, { move: 'forward' });
+  // Placed far enough past the reset that the PRE-reset body cannot reach
+  // it either. By the end of leg a the drifted body spans to x≈795 / y≈555,
+  // so an obstacle at x=900 is out of its reach; after the reset the robot
+  // has driven only 200mm by the time its nose gets there, so uy≈10mm and
+  // the body reaches y≈540 — under this obstacle at 545.
+  obstacle(RP, 900, 545, 920, 545);
+  const res = RP.simCollisions(route);
+  assert(res.ok, 'sim failed: ' + res.reason);
+  assert(res.hits.length === 0,
+    'the junction reset should have shrunk the body back under this, got ' + res.hits.length);
+
+  // And without the reset, the same obstacle IS reached — otherwise this
+  // test would pass for the wrong reason.
+  const RP3 = fresh();
+  drawRobot(RP3);
+  RP3.robotConfig.driftPerMm = 0.05;
+  const a3 = RP3.addConstructionLine(200, 500, 700, 500);
+  const b3 = RP3.addConstructionLine(700, 500, 1200, 500);
+  RP3.Sketch.addConstraint(RP3.sketch, 'coincident', [a3.line.p2, b3.line.p1]);
+  RP3.robotConfig.startPos = { x: 200, y: 500 };
+  RP3.robotConfig.startHeading = 0;
+  RP3.addMove(RP3.routes[0].id, a3.line.id, { move: 'forward' });   // no reset
+  RP3.addMove(RP3.routes[0].id, b3.line.id, { move: 'forward' });
+  obstacle(RP3, 900, 545, 920, 545);
+  assert(RP3.simCollisions(RP3.routes[0]).hits.length === 1,
+    'without the correction the accumulated drift should reach this');
+});
+
 if (!report()) process.exitCode = 1;

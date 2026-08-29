@@ -28,6 +28,10 @@ function _strOr(raw, fallback) {
 RP.updateRobotConfigFromUI = function() {
   RP.robotConfig.frontClearance = _posNum(document.getElementById('robot-fc').value, 50);
   RP.robotConfig.rearClearance  = _posNum(document.getElementById('robot-rc').value, 50);
+  // Zero is a meaningful value here (model off), so this cannot use
+  // _posNum's "fall back to a default" shape.
+  var dRaw = parseFloat(document.getElementById('robot-drift').value);
+  RP.robotConfig.driftPerMm = (isFinite(dRaw) && dRaw >= 0) ? dRaw : 0;
   // Clearance feeds the wall_align distance constraints; re-solving is
   // what actually moves the geometry.
   if (RP.syncAllWallAligns) RP.syncAllWallAligns();
@@ -35,6 +39,8 @@ RP.updateRobotConfigFromUI = function() {
 };
 
 RP.updateRobotUI = function() {
+  var dEl = document.getElementById('robot-drift');
+  if (dEl) dEl.value = RP.robotConfig.driftPerMm || 0;
   document.getElementById('robot-fc').value = RP.robotConfig.frontClearance || 50;
   document.getElementById('robot-rc').value = RP.robotConfig.rearClearance  || 50;
 

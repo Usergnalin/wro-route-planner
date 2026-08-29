@@ -1,3 +1,97 @@
+# Changes — 2026-08-29 (6)
+
+## Simulation phase 3: positional uncertainty
+
+The swept body now grows as the robot dead-reckons, and shrinks back
+whenever the route re-references something the robot can actually sense.
+
+### The model
+
+Uncertainty is an axis-aligned box `(ux, uy)` in **mat** axes, carried on
+every pose, growing by `driftPerMm × distance driven` equally in both
+axes — the model asked for, and roughly what wheel odometry does before
+you start modelling heading error separately.
+
+Mat axes rather than robot-local ones because that is the frame the
+corrections live in: a wall align fixes the axis normal to **that wall**,
+whichever way the robot happened to approach it.
+
+Each correcting move collapses the box onto the direction it does NOT
+measure (`RP.simCorrectAlong`):
+
+| move | measures | uncertainty survives |
+|---|---|---|
+| wall align | distance to the wall | **along** the wall |
+| line trace (dist) | which side of the line it is on | **along** the line |
+| line trace (junctions) | both — the line laterally, the counted junction longitudinally | nothing |
+
+The wall's direction comes from the move's own `point_line_distance`
+constraint, so it is whatever wall that align actually targets rather
+than an assumption. The projection onto the surviving direction is
+conservative (`|ux·tx| + |uy·ty|`), which is exact for an axis-aligned
+wall and never under-reports for a diagonal one.
+
+### Off by default, on purpose
+
+`driftPerMm` defaults to **0**. The rate is a property of one robot on one
+surface and only its driver can measure it; shipping a plausible-looking
+default would silently inflate every collision warning in the app on a
+guess. The field says so, and the Simulation panel says so when drift is
+off.
+
+### Certain vs possible
+
+The sweep now tests the drift-inflated body, and separately records
+whether the contact also happens at the body's TRUE size. "This will hit"
+and "this might hit once drift is allowed for" are different enough that
+collapsing them would let a real collision hide among speculative ones,
+so they are counted separately, listed with different glyphs (⚠ vs ?) and
+colours, and drawn differently: the body solid, the drifted envelope
+dashed outside it.
+
+`RP.inflateHull` is a proper Minkowski sum of the hull with the
+uncertainty box (the hull of the polygon translated to each of the box's
+four corners). Scaling the polygon instead would have grown it about its
+own centre, which is not what "the robot might be 20mm to the left" means.
+
+### Verification
+
+13 suites, `sim.js` 16 → 28. New tests: growth proportional to distance
+and monotonic along the way; each of the three correction kinds clearing
+the right axis and keeping the other; growth resuming after a correction;
+`simCorrectAlong` on axis-aligned and diagonal inputs; `inflateHull`
+growing by the box rather than about the centre; a near miss becoming a
+POSSIBLE hit under drift and being flagged as not certain; a real hit
+staying certain under drift; and a correction shrinking the body back
+under an obstacle it would otherwise reach.
+
+That last one initially failed, and the test was wrong, not the code: the
+obstacle was within reach of the *drifted* body during the approach leg,
+before the reset ever happened. Moved far enough past the reset that the
+pre-reset body cannot reach it, and given a negative control — the same
+obstacle with the correcting move swapped for a plain one, which must
+hit — so it cannot pass for the wrong reason.
+
+A real bug the tests caught: corrections were applied after the move's
+final pose had already been emitted, so the pose at which the robot
+corrects still carried the uncertainty it had just measured away.
+
+Verified in Chromium. On the real 102-action project: drift set through
+the real config field, 95.5mm peak uncertainty, refresh 33ms. On a
+controlled route: an obstacle 20mm clear of the body reads "No
+collisions" with drift off and "0 certain, 1 possible" in amber with
+drift at 3%, the canvas showing the solid body clearing it and the dashed
+envelope reaching it.
+
+### Not done
+
+Turn-based error growth. Turning is in practice the dominant source of
+heading error, but the spec was distance-based growth and adding a second
+uncontrolled constant would be guessing on the user's behalf twice over.
+The mechanism is the same if it is wanted later.
+
+---
+
 # Changes — 2026-08-29 (5)
 
 ## Simulation phase 2: the collision sweep
