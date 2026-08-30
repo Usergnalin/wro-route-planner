@@ -23,6 +23,10 @@ dist/
 *.wro.json
 export/
 
+# Competition mat artwork. WRO's asset, not this project's, so it is not
+# redistributed here — load your own photo of the mat via Open Image.
+WRO-*GameMat*.png
+
 # Saved projects. These embed the mat PHOTO as base64, so they run to
 # megabytes each and are personal working files, not source. Ignored so a
 # stray `git add -A` can never commit one into the history permanently.
