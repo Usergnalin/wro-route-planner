@@ -28,6 +28,35 @@ RP.turnTemplateFor = function(style) {
   return (tmpl && String(tmpl).trim()) ? tmpl : null;
 };
 
+// Decimal places for every physical value written into generated code.
+//
+// 3 rather than 1 because the robot INTEGRATES these numbers: it carries
+// its own idea of the heading it should be at, and every degree thrown
+// away rounding a turn is a degree that idea is wrong by, permanently.
+// Ten 0.05° roundings is half a degree of accumulated lie, and nothing
+// downstream can recover it.
+RP.CODE_DECIMALS = 3;
+
+// The only turn worth suppressing is one that would print as zero anyway.
+// Half of the last displayed place, so a dropped turn can never differ
+// from the emitted text.
+//
+// This used to be 0.5°, which is where the real bug lived: type a turn of
+// 89.5 where the geometry wanted 90, and the 0.5° remainder the auto turn
+// should have emitted fell under the threshold and vanished — while the
+// planner still advanced its heading to 90. The generated code and the
+// planner disagreed by half a degree, silently, per corner.
+RP.turnEpsilonDeg = function() { return 0.5 * Math.pow(10, -RP.CODE_DECIMALS); };
+
+// Angles for HUMANS: full precision, but without trailing zeros, so a
+// residual reads as "0.469°" rather than the "0.0°" that started this.
+RP.formatDeg = function(deg) {
+  if (deg == null || !isFinite(deg)) return '—';
+  var s = Number(deg).toFixed(RP.CODE_DECIMALS);
+  if (s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, '');
+  return s;
+};
+
 // Which codeConfig field holds this step kind's own default speed —
 // derived from RP.CODE_CONFIG_FIELDS (core.js) so a new per-kind speed
 // field only has to be added in one place. Blank (null) is the common
@@ -81,7 +110,7 @@ RP.computeSteps = function(route) {
         ? RP.toDeg(RP.angleRad(firstMove.a.x, firstMove.a.y, sp.x, sp.y))
         : RP.toDeg(RP.angleRad(sp.x, sp.y, firstMove.a.x, firstMove.a.y));
       var turnInit = RP.turnAngle(RP.robotConfig.startHeading, legHeading);
-      if (Math.abs(turnInit) > 0.5) {
+      if (Math.abs(turnInit) > RP.turnEpsilonDeg()) {
         steps.push({ kind: 'turn', deg: turnInit, startLeg: true,
                      actionId: firstTurn ? firstTurn.id : null,
                      speed: firstTurn ? firstTurn.speed : null,
@@ -113,7 +142,7 @@ RP.computeSteps = function(route) {
       // wherever that angle puts it, which is the point of overriding.
       if (t.angle != null && isFinite(Number(t.angle))) {
         var typedDeg = Number(t.angle);
-        if (Math.abs(typedDeg) > 0.01) {
+        if (Math.abs(typedDeg) > RP.turnEpsilonDeg()) {
           steps.push({ kind: 'turn', deg: typedDeg, extra: t.angleMode === RP.TURN_FIXED,
                        actionId: t.id, speed: t.speed, style: t.style, extraArgs: t.extraArgs });
           if (prevHeading !== null) prevHeading = ((prevHeading + typedDeg) % 360 + 360) % 360;
@@ -127,7 +156,7 @@ RP.computeSteps = function(route) {
       var next = it.nextMove;
       if (prevHeading === null || !next || next.entryHeading === null) continue;
       var deg = RP.turnAngle(prevHeading, next.entryHeading);
-      if (Math.abs(deg) > 0.5) {
+      if (Math.abs(deg) > RP.turnEpsilonDeg()) {
         steps.push({ kind: 'turn', deg: deg, actionId: t.id, speed: t.speed, style: t.style, extraArgs: t.extraArgs });
       }
       prevHeading = next.entryHeading;
@@ -225,7 +254,7 @@ RP.generateCode = function(route) {
   for (var i = 0; i < steps.length; i++) {
     if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace' || steps[i].kind === 'arc') totalMm += steps[i].mm;
   }
-  lines_out.push(cp + ' Total distance: ' + (totalMm / uFactor).toFixed(1) + ' ' + unit);
+  lines_out.push(cp + ' Total distance: ' + (totalMm / uFactor).toFixed(RP.CODE_DECIMALS) + ' ' + unit);
 
   if (RP.robotConfig.startPos) {
     lines_out.push(cp + ' Start at (' + RP.robotConfig.startPos.x.toFixed(1) + ', ' +
@@ -243,7 +272,7 @@ RP.generateCode = function(route) {
       var styleTmpl = RP.turnTemplateFor ? RP.turnTemplateFor(st.style) : null;
       var turnTmpl = styleTmpl || RP.codeConfig.turnTemplate || 'turn({angle}, {speed})';
       lines_out.push(turnTmpl
-        .replace(/\{angle\}/g, st.deg.toFixed(1))
+        .replace(/\{angle\}/g, st.deg.toFixed(RP.CODE_DECIMALS))
         .replace(/\{speed\}/g, spd(st))
         .replace(/\{radius\}/g, '0')
         .replace(/\{distance\}/g, '0')
@@ -251,17 +280,17 @@ RP.generateCode = function(route) {
     } else if (st.kind === 'arc') {
       var arcTmpl = RP.codeConfig.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
       lines_out.push(arcTmpl
-        .replace(/\{angle\}/g, st.angle.toFixed(1))
-        .replace(/\{radius\}/g, (st.radiusMm / uFactor).toFixed(1))
+        .replace(/\{angle\}/g, st.angle.toFixed(RP.CODE_DECIMALS))
+        .replace(/\{radius\}/g, (st.radiusMm / uFactor).toFixed(RP.CODE_DECIMALS))
         .replace(/\{speed\}/g, spd(st))
-        .replace(/\{distance\}/g, ((st.mm) / uFactor).toFixed(1))
+        .replace(/\{distance\}/g, ((st.mm) / uFactor).toFixed(RP.CODE_DECIMALS))
         .replace(/\{extra_args\}/g, extra(st)));
     } else if (st.kind === 'teleport') {
       var dx2 = st.toX - st.fromX, dy2 = st.toY - st.fromY;
       var distMm2 = RP.calibration ? Math.hypot(dx2, dy2) / RP.calibration.pixelsPerMm : 0;
       lines_out.push('');
       lines_out.push(cp + ' TELEPORT: ' + st.name);
-      lines_out.push(cp + ' ' + (distMm2 / uFactor).toFixed(1) + ' ' + unit + ', heading ' + Math.round(st.heading || 0) + '°, from (' +
+      lines_out.push(cp + ' ' + (distMm2 / uFactor).toFixed(RP.CODE_DECIMALS) + ' ' + unit + ', heading ' + Math.round(st.heading || 0) + '°, from (' +
         st.fromX.toFixed(0) + ',' + st.fromY.toFixed(0) + ') to (' +
         st.toX.toFixed(0) + ',' + st.toY.toFixed(0) + ')');
       lines_out.push('');
@@ -274,11 +303,11 @@ RP.generateCode = function(route) {
       lines_out.push((RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed}, {expected_distance})')
         .replace(/\{reversed\}/g, st.reverse ? 'True' : 'False')
         .replace(/\{speed\}/g, spd(st))
-        .replace(/\{expected_distance\}/g, ((st.expectedDistanceMm || 0) / uFactor).toFixed(1))
+        .replace(/\{expected_distance\}/g, ((st.expectedDistanceMm || 0) / uFactor).toFixed(RP.CODE_DECIMALS))
         .replace(/\{extra_args\}/g, extra(st)));
     } else if (st.kind === 'linetrace') {
       lines_out.push(RP.codeConfig.lineTraceDistTemplate
-        .replace(/\{distance\}/g, ((st.mm + (st.offsetMm || 0)) / uFactor).toFixed(1))
+        .replace(/\{distance\}/g, ((st.mm + (st.offsetMm || 0)) / uFactor).toFixed(RP.CODE_DECIMALS))
         .replace(/\{speed\}/g, spd(st))
         .replace(/\{angle\}/g, '0')
         .replace(/\{extra_args\}/g, extra(st)));
@@ -290,7 +319,7 @@ RP.generateCode = function(route) {
     } else {
       // forward
       var mag = (st.mm + (st.offsetMm || 0)) / uFactor;
-      var distOut = (st.reverse ? -mag : mag).toFixed(1);
+      var distOut = (st.reverse ? -mag : mag).toFixed(RP.CODE_DECIMALS);
       lines_out.push(RP.codeConfig.forwardTemplate
         .replace(/\{distance\}/g, distOut)
         .replace(/\{speed\}/g, spd(st))

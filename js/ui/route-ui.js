@@ -541,7 +541,7 @@ RP.updateActionList = function() {
           lbl.textContent = 'no turn';
           lbl.style.color = '#666';
         } else {
-          var parts = [deg.toFixed(1) + '°'];
+          var parts = [RP.formatDeg(deg) + '°'];
           if (isTyped) parts.push('typed');
           if (act.speed != null) parts.push('spd ' + act.speed);
           if (act.style && act.style !== RP.DEFAULT_TURN_STYLE) parts.push(act.style.replace('_', ' '));
@@ -655,7 +655,7 @@ RP.renderTurnParams = function(host, act) {
       ? 'No turn here — the legs are in line, or the heading is unknown after a teleport.'
       : 'A turn of 0° emits nothing.';
   } else {
-    html += '<b>' + deg.toFixed(1) + '°</b> ' + (deg >= 0 ? 'clockwise' : 'anticlockwise');
+    html += '<b>' + RP.formatDeg(deg) + '°</b> ' + (deg >= 0 ? 'clockwise' : 'anticlockwise');
     html += '<br><span style="color:#888">' +
             (derived ? 'derived from the geometry either side' : 'typed, overriding the geometry') +
             '</span>';
@@ -703,7 +703,10 @@ RP.renderTurnParams = function(host, act) {
   elpOn('ap-t-fixed', 'click', function() {
     // Seed with what the geometry was already producing, so switching to
     // Typed does not jump the robot.
-    RP.updateSelectedAction({ angle: deg != null ? Number(deg.toFixed(1)) : 0 });
+    // Seeded at FULL precision. Rounding here to 1dp was the other half of
+    // the same bug: switching a 89.5312° junction to Typed stored 89.5 and
+    // threw the remainder away before the user had changed anything.
+    RP.updateSelectedAction({ angle: deg != null ? deg : 0 });
   });
   elpOn('ap-t-angle', 'change', function() {
     var v = parseFloat(this.value);

@@ -238,9 +238,11 @@ check('a blank pivot template falls back to the spin template', () => {
   RP.codeConfig.turnPivotLeftTemplate = 'robot.pivot_left({angle}, {speed})';
   const pivot = RP.generateCode(route);
 
-  assert(spin.indexOf('robot.turn_in_place(90.0') >= 0,
-    'blank pivot template emits the ordinary turn');
-  assert(pivot.indexOf('robot.pivot_left(90.0, 200)') >= 0,
+  // Matched without pinning the decimal places: this is a test about WHICH
+  // template was used, not about how many digits the number carries.
+  assert(/robot\.turn_in_place\(90(\.0+)?[,)]/.test(spin),
+    'blank pivot template emits the ordinary turn, got:\n' + spin);
+  assert(/robot\.pivot_left\(90(\.0+)?, 200\)/.test(pivot),
     'a filled-in pivot template is used instead, got:\n' + pivot);
 });
 
@@ -646,6 +648,99 @@ check('a straight move is LABELLED "Straight" but still STORED as "forward"', ()
     'the per-kind speed lookup still keys off the stored type');
   assert(RP.generateCode(route).indexOf('move_distance') >= 0,
     'codegen still resolves the forward template');
+});
+
+// ---- turn precision --------------------------------------------------
+// The robot integrates these angles into its own idea of its heading, so
+// a turn that is emitted-but-rounded, or dropped entirely, is a permanent
+// error in that idea. Nothing downstream can recover it.
+
+function cornerRoute(RP) {
+  // East 100mm, then south 80mm: a clean 90 degree corner.
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(100, 0, 100, 80);
+  RP.Sketch.addConstraint(RP.sketch, 'coincident', [a.line.p2, b.line.p1]);
+  const route = RP.routes[0];
+  const e1 = RP.addMove(route.id, a.line.id, { move: 'forward' });
+  const e2 = RP.addMove(route.id, b.line.id, { move: 'forward' });
+  return { route, e1, e2 };
+}
+
+function turnAngles(code) {
+  return (code.match(/turn_in_place\((-?[\d.]+)/g) || [])
+    .map(m => Number(m.replace('robot.turn_in_place(', '').replace('turn_in_place(', '')));
+}
+
+check('a typed turn close to the auto one leaves the remainder, it is not swallowed', () => {
+  const RP = fresh();
+  const { route, e2 } = cornerRoute(RP);
+  // 89.6 where the geometry wants 90: the 0.4 remainder used to fall under
+  // the old 0.5 degree threshold and vanish, while the planner still
+  // advanced its heading the full 90.
+  RP.insertFixedTurn(route.id, e2.id, { angle: 89.6 });
+  RP.rebuildRouteViews();
+  const angles = turnAngles(RP.generateCode(route));
+  assert(angles.length === 2, 'expected the typed turn AND its remainder, got ' + JSON.stringify(angles));
+  assertClose(angles[0], 89.6, 1e-9, 'the typed angle, verbatim');
+  assertClose(angles[1], 0.4, 1e-9, 'and the remainder the geometry still needs');
+  assertClose(angles[0] + angles[1], 90, 1e-9,
+    'the emitted turns must sum to the angle the corner actually is');
+});
+
+check('the remainder survives however small it is', () => {
+  for (const typed of [89.9, 89.99, 89.999]) {
+    const RP = fresh();
+    const { route, e2 } = cornerRoute(RP);
+    RP.insertFixedTurn(route.id, e2.id, { angle: typed });
+    RP.rebuildRouteViews();
+    const angles = turnAngles(RP.generateCode(route));
+    assertClose(angles.reduce((a, b) => a + b, 0), 90, 1e-6,
+      'typed ' + typed + ' should still sum to 90, got ' + JSON.stringify(angles));
+  }
+});
+
+check('a remainder too small to print is the only one dropped', () => {
+  const RP = fresh();
+  const { route, e2 } = cornerRoute(RP);
+  // Below half of the last emitted decimal place, so printing it would
+  // give exactly "0.000" — dropping it loses nothing that was ever said.
+  RP.insertFixedTurn(route.id, e2.id, { angle: 90 - RP.turnEpsilonDeg() / 2 });
+  RP.rebuildRouteViews();
+  const angles = turnAngles(RP.generateCode(route));
+  assert(angles.length === 1,
+    'a sub-printable remainder should not add a no-op turn, got ' + JSON.stringify(angles));
+});
+
+check('angles are emitted at CODE_DECIMALS places, not rounded to one', () => {
+  const RP = fresh();
+  const { route, e2 } = cornerRoute(RP);
+  RP.insertFixedTurn(route.id, e2.id, { angle: 12.3456 });
+  RP.rebuildRouteViews();
+  const code = RP.generateCode(route);
+  assert(RP.CODE_DECIMALS === 3, 'this test assumes 3dp');
+  assert(code.indexOf('turn_in_place(12.346') >= 0,
+    'the typed angle should survive to 3dp, got:\n' + code);
+});
+
+check('distances are emitted at CODE_DECIMALS places too', () => {
+  const RP = fresh();
+  // 100 x 80 px is a hypotenuse of 128.0624...px, and this fixture runs at
+  // 2 px/mm, so 64.031mm.
+  const l = RP.addConstructionLine(0, 0, 100, 80);
+  const route = RP.routes[0];
+  RP.addMove(route.id, l.line.id, { move: 'forward' });
+  const code = RP.generateCode(route);
+  assert(code.indexOf('move_distance(64.031') >= 0,
+    'distance should keep 3dp, got:\n' + code);
+});
+
+check('formatDeg shows a residual honestly instead of rounding it to zero', () => {
+  const RP = fresh();
+  assert(RP.formatDeg(0.4) === '0.4', 'got ' + RP.formatDeg(0.4));
+  assert(RP.formatDeg(0.469) === '0.469', 'got ' + RP.formatDeg(0.469));
+  // Trailing zeros trimmed, so the common case stays readable.
+  assert(RP.formatDeg(90) === '90', 'got ' + RP.formatDeg(90));
+  assert(RP.formatDeg(-45.5) === '-45.5', 'got ' + RP.formatDeg(-45.5));
 });
 
 if (!report()) process.exitCode = 1;

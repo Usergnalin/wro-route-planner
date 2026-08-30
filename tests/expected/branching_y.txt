@@ -1,6 +1,6 @@
 # Route: Branch
 # Path: 3 nodes, 2 segments
-# Total distance: 400.0 mm
+# Total distance: 400.000 mm
 # ─────────────────────────────────────
-robot.move_distance(150.0, power=200)
-robot.move_distance(250.0, power=200)
+robot.move_distance(150.000, power=200)
+robot.move_distance(250.000, power=200)

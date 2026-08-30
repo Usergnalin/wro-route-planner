@@ -800,7 +800,11 @@ RP.drawActionMarkers = function(ctx, route, fs) {
     ctx.fillText(deg === null ? '·' : (deg >= 0 ? '↻' : '↺'), pt.x, pt.y);
 
     if (deg !== null && RP.scale > 0.05) {
-      var label = Math.abs(deg).toFixed(0) + '°' + (typed ? '*' : '');
+      // Whole degrees are enough for a canvas badge EXCEPT for the small
+      // residual turns that typing an angle leaves behind — rounding one
+      // of those to "0°" is exactly the lie this precision work removed.
+      var mag = Math.abs(deg);
+      var label = (mag < 1 ? RP.formatDeg(mag) : mag.toFixed(0)) + '°' + (typed ? '*' : '');
       ctx.font = 'bold ' + (10 / RP.scale) + 'px -apple-system, sans-serif';
       ctx.strokeStyle = 'rgba(0,0,0,0.85)';
       ctx.lineWidth = 3 / RP.scale;

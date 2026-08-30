@@ -253,7 +253,8 @@ check('extraArgs is blank by default and does not touch the template', () => {
   RP.updateSelectedMove({ move: 'wall_align' });
   const code = RP.generateCode(route);
   assert(!/\{extra_args\}/.test(code), 'the placeholder itself must never leak into output');
-  assert(/wall_align\(reversed=False, power=200, expected_distance=450\.0\)/.test(code),
+  // Decimal places deliberately not pinned — see tests/action.js.
+  assert(/wall_align\(reversed=False, power=200, expected_distance=450(\.0+)?\)/.test(code),
     'blank extraArgs should vanish cleanly, got:\n' + code);
 });
 

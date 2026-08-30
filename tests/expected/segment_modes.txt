@@ -1,11 +1,11 @@
 # Route: Modes
 # Path: 5 nodes, 4 segments
-# Total distance: 150.0 mm
+# Total distance: 150.000 mm
 # ─────────────────────────────────────
-line_trace_distance(162.0, 200)
+line_trace_distance(162.000, 200)
 line_trace_until_junctions(3, 200)
 
 # TELEPORT: hop_to_zone_b
-# 150.0 mm, heading 90°, from (700,100) to (700,400)
+# 150.000 mm, heading 90°, from (700,100) to (700,400)
 
-robot.wall_align(reversed=False, power=200, expected_distance=150.0)
+robot.wall_align(reversed=False, power=200, expected_distance=150.000)

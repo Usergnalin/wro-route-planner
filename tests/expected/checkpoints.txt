@@ -1,11 +1,11 @@
 # Route: Checkpoint run
 # Path: 4 nodes, 3 segments
-# Total distance: 500.0 mm
+# Total distance: 500.000 mm
 # ─────────────────────────────────────
 if callable(start_cp): start_cp()
-robot.move_distance(150.0, power=200)
-robot.move_distance(150.0, power=200)
+robot.move_distance(150.000, power=200)
+robot.move_distance(150.000, power=200)
 if callable(grab_block): grab_block()
-robot.turn_in_place(90.0, power=200)
-robot.move_distance(200.0, power=200)
+robot.turn_in_place(90.000, power=200)
+robot.move_distance(200.000, power=200)
 if callable(finish): finish()

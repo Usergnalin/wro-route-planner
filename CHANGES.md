@@ -1,3 +1,88 @@
+# Changes — 2026-08-30
+
+## Turn angles are no longer rounded away; output goes to 3dp
+
+### The bug
+
+Adding a typed turn close to the auto turn at a corner made the auto
+turn disappear, taking the difference with it.
+
+`computeSteps` suppressed any turn under **0.5°**. So at a 90° corner
+with a typed 89.6° turn inserted in front of it, the auto turn's job was
+the 0.4° remainder — which fell under the threshold and was dropped. But
+the very next line still advanced the planner's heading the full 90°:
+
+```
+prevHeading = next.entryHeading;   // ran whether or not the turn emitted
+```
+
+So the generated code turned 89.6° while the planner believed the robot
+was at 90°. Half a degree of silent disagreement, per corner, and the
+robot integrates these into its own heading estimate — nothing
+downstream can recover it.
+
+A second, independent loss sat in the UI: switching a junction turn to
+Typed seeded the field with `Number(deg.toFixed(1))`, so an 89.5312°
+corner became 89.5 before the user had changed anything.
+
+### The fix
+
+- A turn is now suppressed only when it would **print as zero anyway** —
+  `RP.turnEpsilonDeg()`, half of the last emitted decimal place. Anything
+  a reader could see is emitted.
+- The same threshold replaces the old 0.01° one on typed turns and the
+  0.5° one on the initial turn off the start marker, which had the same
+  shape of bug.
+- Switching to Typed seeds the **exact** angle.
+
+The 0.5mm threshold on the virtual start leg is deliberately left alone:
+that one guards against a degenerate direction (a start marker sitting
+essentially on the first point has no meaningful heading), not against
+rounding.
+
+### 3 decimal places
+
+`RP.CODE_DECIMALS = 3`, applied to every physical value in generated
+code: distances, angles, arc radii, expected distances, total distance.
+Same reasoning — the robot integrates them.
+
+Display follows, but honestly rather than uniformly: `RP.formatDeg`
+shows up to 3dp with trailing zeros trimmed, so a corner still reads
+"90°" while a residual reads "0.696°" instead of the "0.0°" that hid this
+in the first place. The on-canvas turn badge keeps whole degrees except
+below 1°, where whole degrees would round a real residual to "0°".
+
+Teleport comment coordinates and the start-position comment are left at
+their old precision — they are pixel positions in a comment, not values
+the robot consumes.
+
+### Verification
+
+13 suites, action model 45 → 51.
+
+The regression test was confirmed to fail against the old behaviour by
+restoring the 0.5° threshold: the 0.4° remainder vanishes, exactly as
+reported. Tests cover the remainder surviving at 89.9 / 89.99 / 89.999,
+emitted turns summing to the corner's true angle, a sub-printable
+remainder still being dropped (so the epsilon does something), 3dp on
+angles and distances, and `formatDeg`'s trimming.
+
+Two existing tests hard-coded the old 1dp format while actually testing
+template substitution; rewritten to match the number without pinning the
+decimal places, rather than re-pinning them to 3dp.
+
+Golden fixtures regenerated. Every diff is precision-only — no step
+added, removed or reordered — and `arc_segment` shows precision that had
+been getting thrown away: `87.2 → 87.206`, `88.6 → 88.603`,
+`212.1 → 212.132`.
+
+Verified in Chromium through the real UI on a deliberately awkward
+corner (40.696°): pressing **Typed** seeds `40.69553103949204`, and
+inserting a typed 40.0° turn emits `40.000` followed by `0.696` — summing
+to 40.696 — with the action list showing `0.696°` rather than `0.0°`.
+
+---
+
 # Changes — 2026-08-29 (6)
 
 ## Simulation phase 3: positional uncertainty
