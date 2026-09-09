@@ -315,6 +315,14 @@ RP.reverseRouteDirection = function(route) {
 // geometry. Strict continuity is the resolver's job.
 RP._suspendRouteViews = false;
 
+// Small helper so the view builder reads cleanly and a missing segment
+// (an action not in any, which should not happen) fails OPEN rather than
+// hiding work.
+RP.segmentVisibleFor = function(segIndex, actionId) {
+  var seg = segIndex && segIndex[actionId];
+  return !seg || seg.visible !== false;
+};
+
 RP.rebuildRouteViews = function() {
   if (RP._suspendRouteViews) return;
   var sk = RP.ensureSketch();
@@ -326,6 +334,7 @@ RP.rebuildRouteViews = function() {
     // re-established here rather than at every call site that can
     // disturb it. syncTurnActions is idempotent.
     if (RP.syncTurnActions) RP.syncTurnActions(route);
+    var segIndex = RP.segmentIndex ? RP.segmentIndex(route) : {};
     var moves = RP.moveActions(route);
     var nodes = [];
     var segments = [];
@@ -410,7 +419,13 @@ RP.rebuildRouteViews = function() {
         speed: el.speed, offset: el.offset,
         junctionCount: el.junctions,
         teleportName: el.teleportName,
-        visible: el.visible !== false
+        // Effective visibility: the move's own switch AND its segment's.
+        // Every consumer — render, hit testing, the referenced-entity set —
+        // reads this one field, so hiding a segment hides its moves
+        // everywhere without any of them knowing segments exist. The
+        // move's own flag is left untouched, so un-hiding the segment
+        // restores exactly what the user had.
+        visible: el.visible !== false && RP.segmentVisibleFor(segIndex, el.id)
       });
     }
 

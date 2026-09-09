@@ -184,11 +184,13 @@ RP.routeReferencedEntities = function() {
   var set = {};
   for (var i = 0; i < RP.routes.length; i++) {
     var moves = RP.moveActions(RP.routes[i]);
+    var segIdx2 = RP.segmentIndex(RP.routes[i]);
     for (var j = 0; j < moves.length; j++) {
       // A hidden move frees its entity to render as a construction-line
       // guide again — that is the whole point of hiding it: getting the
-      // thick route line out of the way of whatever is underneath.
-      if (moves[j].visible === false) continue;
+      // thick route line out of the way of whatever is underneath. A move
+      // in a hidden SEGMENT is hidden for the same reason.
+      if (!RP.moveVisible(RP.routes[i], moves[j], segIdx2)) continue;
       set[moves[j].entityId] = true;
     }
   }
@@ -240,8 +242,9 @@ RP.routeHitTest = function(ix, iy) {
     var moves = RP.moveActions(route);
     var near = [];
     var bestMoveSq = threshSq;
+    var segIdx = RP.segmentIndex(route);
     for (var i = 0; i < moves.length; i++) {
-      if (moves[i].visible === false) continue;
+      if (!RP.moveVisible(route, moves[i], segIdx)) continue;
       var mDSq = RP.entityDistSq(sk, moves[i].entityId, ix, iy);
       if (mDSq < threshSq) near.push({ move: moves[i], dSq: mDSq });
       if (mDSq < bestMoveSq) bestMoveSq = mDSq;
@@ -392,6 +395,19 @@ RP.addCheckpointHere = function() {
   return cp;
 };
 
+// Split the route at the selection: a new segment starts at the selected
+// action, so the previous one ends just before it. One decision, not two
+// that could contradict each other.
+RP.splitSegmentHere = function() {
+  var route = RP.getActiveRoute();
+  if (!route) return null;
+  RP.pushHistory('Split route');
+  var m = RP.insertSegmentMarker(route.id, RP.selectedActionId, null);
+  if (!m) { RP.undoStack.pop(); return null; }
+  RP.refreshRouteUI();
+  return m;
+};
+
 // What each action actually emitted, keyed by action id. computeSteps
 // tags every step it produces, so this is a lookup rather than a second,
 // drift-prone walk of the same logic.
@@ -481,6 +497,82 @@ RP.TURN_GLYPH = function(deg) {
 
 // One row per ACTION, in walk order. Turns and checkpoints are indented
 // under the move they lead into, so the list reads like the program.
+// One row for a segment boundary: name, an eye, and an "in the code"
+// checkbox. `marker` null means the leading span, whose switches live on
+// the route (see RP.leadSegmentProps).
+function renderSegmentRow(list, route, marker) {
+  var segs = RP.routeSegments(route);
+  var seg = null;
+  for (var i = 0; i < segs.length; i++) {
+    if (segs[i].id === (marker ? marker.id : null)) { seg = segs[i]; break; }
+  }
+  if (!seg) return;
+
+  var row = document.createElement('div');
+  row.className = 'layer-group-title seg-row';
+
+  var eye = document.createElement('button');
+  eye.className = 'layer-vis-btn';
+  eye.textContent = seg.visible ? '●' : '○';
+  eye.title = seg.visible ? 'Hide this segment on the canvas' : 'Show this segment';
+  eye.onclick = function(e) {
+    e.stopPropagation();
+    RP.pushHistory(seg.visible ? 'Hide segment' : 'Show segment');
+    RP.setSegmentProps(route.id, seg.id, { visible: !seg.visible });
+    RP.refreshRouteUI();
+  };
+
+  // Separate from the eye on purpose: wanting to SEE a section you are not
+  // currently running is completely ordinary.
+  var inc = document.createElement('button');
+  inc.className = 'layer-vis-btn';
+  inc.textContent = seg.included ? '☑' : '☐';
+  inc.style.color = seg.included ? '#7c7' : '#a66';
+  inc.title = seg.included
+    ? 'In the generated code — click to leave it out'
+    : 'Left out of the generated code — click to put it back';
+  inc.onclick = function(e) {
+    e.stopPropagation();
+    RP.pushHistory('Toggle segment in code');
+    RP.setSegmentProps(route.id, seg.id, { included: !seg.included });
+    RP.refreshRouteUI();
+  };
+
+  var lbl = document.createElement('span');
+  lbl.className = 'layer-item-label';
+  lbl.textContent = seg.name + '  (' + seg.moves.length + ')';
+  lbl.title = 'Double-click to rename';
+  if (!seg.visible) lbl.style.color = '#777';
+  if (!seg.included) lbl.style.textDecoration = 'line-through';
+  lbl.ondblclick = function() {
+    var name = prompt('Segment name:', seg.name);
+    if (name === null) return;
+    RP.pushHistory('Rename segment');
+    RP.setSegmentProps(route.id, seg.id, { name: name.trim() || seg.name });
+    RP.refreshRouteUI();
+  };
+
+  row.appendChild(eye);
+  row.appendChild(inc);
+  row.appendChild(lbl);
+
+  // The leading span has no marker to delete — it is what is left over.
+  if (seg.id != null) {
+    var del = document.createElement('button');
+    del.className = 'layer-del-btn';
+    del.textContent = '✕';
+    del.title = 'Remove this boundary — the actions merge into the segment above';
+    del.onclick = function(e) {
+      e.stopPropagation();
+      RP.pushHistory('Remove segment boundary');
+      RP.removeSegmentMarker(route.id, seg.id);
+      RP.refreshRouteUI();
+    };
+    row.appendChild(del);
+  }
+  list.appendChild(row);
+}
+
 RP.updateActionList = function() {
   var list = document.getElementById('action-list');
   if (!list) return;
@@ -501,6 +593,11 @@ RP.updateActionList = function() {
   var emitted = RP.emittedStepsByAction(route);
   var moveNo = 0;
 
+  // The leading span has no marker of its own, so its header is drawn
+  // here — but only once the route is actually segmented. An unsegmented
+  // route shows no segment rows at all.
+  if (RP.routeSegments(route).length > 1) renderSegmentRow(list, route, null);
+
   for (var i = 0; i < acts.length; i++) {
     (function(act) {
       var isMove = RP.isMoveAction(act);
@@ -515,6 +612,13 @@ RP.updateActionList = function() {
           act.angle == null && act.speed == null &&
           (!act.style || act.style === RP.DEFAULT_TURN_STYLE) &&
           RP.turnAngleFor(emitted, act) == null) {
+        return;
+      }
+
+      // A segment marker is a HEADER, not an action in the walk — it gets
+      // its own row shape and its two switches.
+      if (RP.isSegmentAction(act)) {
+        renderSegmentRow(list, route, act);
         return;
       }
 
@@ -859,6 +963,8 @@ RP.wireModeSwitch = function() {
   if (addTurn) addTurn.addEventListener('click', function() { RP.addTurnHere(); });
   var addCp = document.getElementById('btn-add-checkpoint');
   if (addCp) addCp.addEventListener('click', function() { RP.addCheckpointHere(); });
+  var addSeg = document.getElementById('btn-add-segment');
+  if (addSeg) addSeg.addEventListener('click', function() { RP.splitSegmentHere(); });
   RP.updateModeUI();
   RP.updateRouteModePanel();
 };

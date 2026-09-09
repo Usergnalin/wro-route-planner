@@ -570,4 +570,207 @@ check('moveLengthMm declines rather than guessing without calibration', () => {
   assert(RP.moveLengthMm(m) === null, 'no px/mm means no answer');
 });
 
+// ---- route segments ---------------------------------------------------
+// Segments are DERIVED from boundary markers, so they move with edits.
+// A route with no markers is one segment and behaves exactly as before.
+
+function fourLegs(RP) {
+  const pts = [[0,0,100,0],[100,0,200,0],[200,0,300,0],[300,0,300,100]];
+  const made = pts.map(p => RP.addConstructionLine(p[0],p[1],p[2],p[3]));
+  for (let i = 1; i < made.length; i++) {
+    RP.Sketch.addConstraint(RP.sketch, 'coincident',
+      [made[i-1].line.p2, made[i].line.p1]);
+  }
+  RP.setEditMode('route');
+  const route = RP.getActiveRoute();
+  const moves = made.map(m => RP.addMove(route.id, m.line.id, { move: 'forward' }));
+  return { route, moves };
+}
+
+check('an unsegmented route is one segment and gains no marker action', () => {
+  const RP = fresh();
+  const { route } = fourLegs(RP);
+  const before = RP.routeActions(route).length;
+  const segs = RP.routeSegments(route);
+  assert(segs.length === 1, 'one segment, got ' + segs.length);
+  assert(segs[0].moves.length === 4, 'covering every move');
+  assert(RP.routeActions(route).length === before,
+    'and asking must not have inserted anything into the action list');
+  assert(RP.routeActions(route).every(a => !RP.isSegmentAction(a)),
+    'no marker forced onto a route that never asked for one');
+});
+
+check('splitting at a move starts a new segment there', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  RP.splitSegmentHere();
+  const segs = RP.routeSegments(route);
+  assert(segs.length === 2, 'two segments, got ' + segs.length);
+  assert(segs[0].moves.length === 2, 'first holds moves 1-2, got ' + segs[0].moves.length);
+  assert(segs[1].moves.length === 2, 'second holds moves 3-4, got ' + segs[1].moves.length);
+});
+
+check('one segment ends exactly where the next begins', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  RP.splitSegmentHere();
+  const segs = RP.routeSegments(route);
+  assert(segs[0].end + 1 === segs[1].start,
+    'no gap and no overlap between segments');
+  const all = segs.reduce((n, g) => n + g.actions.length, 0);
+  assert(all === RP.routeActions(route).length,
+    'and every action belongs to exactly one segment');
+});
+
+check('boundaries move with edits rather than going stale', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  RP.splitSegmentHere();
+  // Delete a move from the FIRST segment. A stored {start,end} pair would
+  // now be pointing at the wrong actions; derived boundaries just shift.
+  RP.removeMove(route.id, moves[0].id);
+  const segs = RP.routeSegments(route);
+  assert(segs.length === 2, 'still two segments');
+  assert(segs[1].moves.length === 2, 'the second segment is untouched, got ' + segs[1].moves.length);
+  assert(segs[0].moves.length === 1, 'the first lost the deleted move, got ' + segs[0].moves.length);
+});
+
+check('removing a boundary merges into the segment above', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  const m = RP.splitSegmentHere();
+  assert(RP.routeSegments(route).length === 2, 'split happened');
+  RP.removeSegmentMarker(route.id, m.id);
+  const segs = RP.routeSegments(route);
+  assert(segs.length === 1, 'back to one, got ' + segs.length);
+  assert(segs[0].moves.length === 4, 'with every move, got ' + segs[0].moves.length);
+});
+
+// ---- hiding -----------------------------------------------------------
+check('hiding a segment hides its moves in the derived view', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  const m = RP.splitSegmentHere();
+  RP.setSegmentProps(route.id, m.id, { visible: false });
+  RP.rebuildRouteViews();
+
+  const segView = id => route.segments.find(s => s.id === id);
+  assert(segView(moves[2].id).visible === false, 'move 3 hidden');
+  assert(segView(moves[3].id).visible === false, 'move 4 hidden');
+  assert(segView(moves[0].id).visible === true, 'moves in the other segment untouched');
+});
+
+check('a hidden segment leaves the moves own visible flag alone', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  const m = RP.splitSegmentHere();
+  RP.setSegmentProps(route.id, m.id, { visible: false });
+  RP.rebuildRouteViews();
+  assert(RP.findMove(route, moves[2].id).visible !== false,
+    'the move itself was never hidden, so un-hiding the segment restores what the user had');
+  RP.setSegmentProps(route.id, m.id, { visible: true });
+  RP.rebuildRouteViews();
+  assert(route.segments.find(s => s.id === moves[2].id).visible === true, 'and it comes back');
+});
+
+check('a hidden segments moves are not clickable', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  const m = RP.splitSegmentHere();
+  const hit = RP.routeHitTest(250, 0);
+  assert(hit && hit.id === moves[2].id, 'reachable while shown');
+  RP.setSegmentProps(route.id, m.id, { visible: false });
+  const after = RP.routeHitTest(250, 0);
+  assert(!after || after.id !== moves[2].id,
+    'hidden means no clickable presence, same rule as everywhere else');
+});
+
+// ---- code inclusion ---------------------------------------------------
+const moveCalls = code => (code.match(/move_distance\(/g) || []).length;
+
+check('every segment is in the code by default', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  RP.splitSegmentHere();
+  assert(moveCalls(RP.generateCode(route)) === 4, 'all four legs emitted');
+});
+
+check('excluding a segment drops exactly its moves from the code', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  const m = RP.splitSegmentHere();
+  RP.setSegmentProps(route.id, m.id, { included: false });
+  assert(moveCalls(RP.generateCode(route)) === 2,
+    'only the first segment should be emitted');
+});
+
+check('excluded code says it is partial and where it assumes the robot is', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.robotConfig.startPos = { x: 0, y: 0 };
+  RP.robotConfig.startHeading = 0;
+  RP.selectedActionId = moves[2].id;
+  const m = RP.splitSegmentHere();
+  RP.setSegmentProps(route.id, null, { included: false });   // drop the LEAD
+  const code = RP.generateCode(route);
+  assert(/PARTIAL ROUTE/.test(code), 'must say it is partial, got:\n' + code);
+  assert(/Assumes the robot starts at/.test(code),
+    'running a middle section needs its start pose stated, got:\n' + code);
+
+  // ...but saying it is pointless when the kept part starts where the
+  // route does, since the Start line already says so.
+  const RP2 = fresh();
+  const two = fourLegs(RP2);
+  RP2.robotConfig.startPos = { x: 0, y: 0 };
+  RP2.selectedActionId = two.moves[2].id;
+  const m2 = RP2.splitSegmentHere();
+  RP2.setSegmentProps(two.route.id, m2.id, { included: false });   // drop the TAIL
+  const code2 = RP2.generateCode(two.route);
+  assert(/PARTIAL ROUTE/.test(code2), 'still partial');
+  assert(!/Assumes the robot starts at/.test(code2),
+    'and should not repeat the start pose it already prints, got:\n' + code2);
+});
+
+check('hiding and including are independent switches', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  const m = RP.splitSegmentHere();
+  // Hidden but still in the code — wanting to see less while running the
+  // whole thing is completely ordinary.
+  RP.setSegmentProps(route.id, m.id, { visible: false });
+  assert(moveCalls(RP.generateCode(route)) === 4,
+    'hiding must not change what the robot runs');
+  // ...and the reverse.
+  RP.setSegmentProps(route.id, m.id, { visible: true, included: false });
+  RP.rebuildRouteViews();
+  assert(route.segments.find(s => s.id === moves[2].id).visible === true,
+    'excluding must not change what is drawn');
+});
+
+check('kept segments keep the headings they have in the whole route', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  // Leg 4 turns a corner. Excluding the lead must not change ITS turn,
+  // because continuity is still computed across the entire route.
+  const whole = RP.generateCode(route);
+  const wholeTurn = (whole.match(/turn_in_place\((-?[\d.]+)/g) || []).pop();
+  RP.selectedActionId = moves[3].id;
+  const m = RP.splitSegmentHere();
+  RP.setSegmentProps(route.id, null, { included: false });
+  const part = RP.generateCode(route);
+  const partTurn = (part.match(/turn_in_place\((-?[\d.]+)/g) || []).pop();
+  assert(wholeTurn === partTurn,
+    'the corner turn should be identical, got ' + partTurn + ' vs ' + wholeTurn);
+});
+
 if (!report()) process.exitCode = 1;

@@ -1,3 +1,83 @@
+# Changes — 2026-08-30 (5)
+
+## Route segments: split, hide, and choose what goes in the code
+
+Testing part of a route meant commenting out generated code by hand every
+time. A route can now be cut into named segments, each with its own two
+switches.
+
+### Segments are derived, not stored spans
+
+A **segment marker** is a new action type; a segment runs from its marker
+until the next one. Boundaries therefore move with edits for free, where
+a stored `{startAction, endAction}` pair would need mending every time an
+action was inserted or removed. There is a test for exactly that: delete
+a move from the first segment and the second is untouched.
+
+**✂ Split** inserts a marker before the selected action, so "where this
+one ends" and "where the next begins" are one decision rather than two
+that can contradict each other. ✕ on a header removes the boundary and
+merges into the segment above; it never deletes actions.
+
+### The leading span has no marker, on purpose
+
+My first attempt auto-inserted a marker at the head of every route, by
+analogy with the Default group. Four existing tests failed, and they were
+right to: it rewrites the action list of every project and puts a segment
+row in front of people who never asked for segments. Groups need a
+default because geometry must be drawn *somewhere*; a route does not need
+segments until you want them.
+
+So the leading span is synthetic, its two switches live on the route, and
+an unsegmented route has no markers and behaves exactly as before — no
+new row, no changed action list, and all 13 suites pass untouched.
+
+### Two independent switches
+
+An **eye** and an **in-the-code checkbox**, deliberately separate.
+Wanting to *see* a section you are not currently running is completely
+ordinary, so tying them together would be wrong. Tested both ways round:
+hiding does not change what the robot runs, excluding does not change
+what is drawn.
+
+Hiding is enforced through the same single gate everything else uses —
+the derived view's `visible` field — and leaves the move's own flag
+alone, so un-hiding restores exactly what the user had.
+
+### Excluded segments are filtered after the walk
+
+`computeSteps` still runs over the WHOLE route, and excluded steps are
+dropped afterwards. So a kept segment's headings and distances are the
+real ones, not what they would be if the excluded parts had never
+existed. There is a test that a corner turn is byte-identical whether or
+not the segment before it is included.
+
+Partial output says so, names the kept segments, and states the assumed
+start pose — running a middle section means the robot has to already be
+there. That line is suppressed when the kept part begins at the route's
+own start, where it would only repeat the Start line under it.
+
+### Verification
+
+13 suites; route mode 39 → 52.
+
+A test caught a real gap I had left: I gated the derived route view, but
+`routeHitTest` and `routeReferencedEntities` read move ACTIONS directly,
+so hiding a segment was visual only and its moves stayed clickable. Fixed
+with one `RP.moveVisible` helper both now use.
+
+Mutation-checked both halves: removing the step filter fails the
+exclusion test, removing the view gate fails the hiding test.
+
+Verified in Chromium through the real ✂ Split button and the real header
+switches: an unsegmented route shows no segment rows; splitting at move 3
+gives `Start (2)` and `Segment 2 (2)`; hiding the second makes its moves
+invisible and unclickable while the code still emits all four; and
+excluding it emits two moves under a `PARTIAL ROUTE — 1 of 2 segments`
+header.
+
+---
+
 # Changes — 2026-08-30 (4)
 
 ## Groups: a current group, so filing costs nothing

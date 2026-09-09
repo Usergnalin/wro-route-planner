@@ -212,6 +212,43 @@ RP.computeSteps = function(route) {
   return steps;
 };
 
+// Steps belonging to segments the user has excluded. Filtering at the
+// STEP level rather than inside computeSteps keeps the resolver whole:
+// continuity is still computed across the entire route, so the headings
+// and distances of an included segment are the real ones, not what they
+// would be if the excluded parts had never existed.
+RP.excludedStepFilter = function(route) {
+  var segs = RP.routeSegments ? RP.routeSegments(route) : [];
+  if (!segs.length) return null;
+  var anyExcluded = false;
+  for (var i = 0; i < segs.length; i++) if (!segs[i].included) anyExcluded = true;
+  if (!anyExcluded) return null;
+
+  var idx = RP.segmentIndex(route);
+  return function(step) {
+    if (step.actionId == null) return true;   // never drop something unowned
+    var seg = idx[step.actionId];
+    return !seg || seg.included !== false;
+  };
+};
+
+// Where the robot actually is when a given segment begins, taken from the
+// simulator's pose track so it agrees with everything else rather than
+// being derived a second, subtly different way.
+RP.segmentStartPose = function(route, seg) {
+  if (!seg || !RP.simPoseTrack) return null;
+  var ids = {};
+  for (var i = 0; i < seg.actions.length; i++) ids[seg.actions[i].id] = true;
+  var track = RP.simPoseTrack(route);
+  if (!track.ok) return null;
+  for (var p = 0; p < track.poses.length; p++) {
+    if (ids[track.poses[p].actionId]) {
+      return { x: track.poses[p].x, y: track.poses[p].y, deg: track.poses[p].deg };
+    }
+  }
+  return null;
+};
+
 RP.generateCode = function(route) {
   if (!route || !RP.calibration) return '';
 
@@ -232,6 +269,11 @@ RP.generateCode = function(route) {
   var unit = RP.codeConfig.defaultUnit || 'mm';
   var uFactor = RP.unitFactor(unit);
   var steps = RP.computeSteps(route);
+  // Excluded segments are dropped AFTER the walk, so everything kept was
+  // computed against the whole route and carries its real headings.
+  var keep = RP.excludedStepFilter(route);
+  var partial = !!keep;
+  if (keep) steps = steps.filter(keep);
   var lines_out = [];
   // An action's own typed speed always wins. Otherwise, this kind's own
   // default (if the project bothered to set one) beats the plain global
@@ -255,6 +297,25 @@ RP.generateCode = function(route) {
     if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace' || steps[i].kind === 'arc') totalMm += steps[i].mm;
   }
   lines_out.push(cp + ' Total distance: ' + (totalMm / uFactor).toFixed(RP.CODE_DECIMALS) + ' ' + unit);
+  if (partial) {
+    // Running part of a route means the robot has to already BE at that
+    // part. Saying which segments these are, and where the first one
+    // begins, is the difference between a useful test and a confusing
+    // crash into the mat.
+    var segsAll = RP.routeSegments(route);
+    var inc = segsAll.filter(function(g) { return g.included !== false; });
+    lines_out.push(cp + ' PARTIAL ROUTE — ' + inc.length + ' of ' + segsAll.length +
+                   ' segments: ' + inc.map(function(g) { return g.name; }).join(', '));
+    // Only worth saying when the first kept segment is NOT the route's own
+    // start — otherwise it just repeats the Start line below it.
+    if (inc.length && inc[0].id != null) {
+      var startAt = RP.segmentStartPose(route, inc[0]);
+      if (startAt) {
+        lines_out.push(cp + ' Assumes the robot starts at (' + startAt.x.toFixed(1) + ', ' +
+                       startAt.y.toFixed(1) + ') heading ' + RP.formatDeg(startAt.deg) + '°');
+      }
+    }
+  }
 
   if (RP.robotConfig.startPos) {
     lines_out.push(cp + ' Start at (' + RP.robotConfig.startPos.x.toFixed(1) + ', ' +
