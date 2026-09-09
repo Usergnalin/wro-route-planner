@@ -50,8 +50,108 @@ RP.activeDocId = RP.DOC_MAT;
 RP.documents = {};
 
 function _freshDoc() {
-  return { sketch: RP.Sketch.create({ charLength: 100 }), constructionMeta: {} };
+  return { sketch: RP.Sketch.create({ charLength: 100 }), constructionMeta: {}, groups: [] };
 }
+
+// ---- groups ----------------------------------------------------------
+// A named bag of geometry with one visibility switch. Hiding a group is
+// EXACTLY hiding each of its members: invisible, unclickable, unsnappable,
+// no presence at all. That is the whole feature — it is an organisation
+// tool, not a second solver scope, so nothing here touches the sketch.
+//
+// The gate is applied once, in rebuildLines, where the `visible` field of
+// the RP.lines/arcs/points view is computed. Every consumer already reads
+// that field — render, snap, hit tests, selection, the layer list — so
+// they all inherit group hiding without knowing groups exist.
+RP.groups = [];
+RP.nextGroupId = 1;
+
+RP.findGroup = function(groupId) {
+  for (var i = 0; i < RP.groups.length; i++) {
+    if (RP.groups[i].id === groupId) return RP.groups[i];
+  }
+  return null;
+};
+
+// `groups` defaults to the ACTIVE document's, which is what the RP.lines
+// view wants. Readers that name a document explicitly — obstacleSegments,
+// robotFootprint — must pass that document's own groups, or they would
+// consult whichever document happens to be open instead.
+RP.groupVisible = function(groupId, groups) {
+  if (groupId == null) return true;          // ungrouped geometry is always shown
+  var list = groups || RP.groups || [];
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].id === groupId) return list[i].visible !== false;
+  }
+  return true;                               // a dangling id must not hide anything
+};
+
+RP.addGroup = function(name) {
+  var g = { id: RP.nextGroupId++, name: String(name || 'Group ' + RP.groups.length + 1), visible: true };
+  RP.groups.push(g);
+  return g;
+};
+
+RP.renameGroup = function(groupId, name) {
+  var g = RP.findGroup(groupId);
+  if (!g) return false;
+  g.name = String(name || g.name);
+  return true;
+};
+
+RP.setGroupVisible = function(groupId, visible) {
+  var g = RP.findGroup(groupId);
+  if (!g) return false;
+  g.visible = !!visible;
+  RP.rebuildLines();
+  return true;
+};
+
+// Deleting a group never deletes geometry — the members simply become
+// ungrouped, and therefore visible again. Losing drawn work to a tidying
+// action would be a very unpleasant surprise.
+RP.removeGroup = function(groupId) {
+  var at = -1;
+  for (var i = 0; i < RP.groups.length; i++) if (RP.groups[i].id === groupId) { at = i; break; }
+  if (at < 0) return false;
+  RP.groups.splice(at, 1);
+  for (var id in RP.constructionMeta) {
+    if (RP.constructionMeta[id] && RP.constructionMeta[id].group === groupId) {
+      RP.constructionMeta[id].group = null;
+    }
+  }
+  RP.rebuildLines();
+  return true;
+};
+
+RP.setGeometryGroup = function(entityId, groupId) {
+  var meta = RP.constructionMeta[entityId];
+  if (!meta) return false;
+  meta.group = (groupId == null) ? null : groupId;
+  RP.rebuildLines();
+  return true;
+};
+
+// Find by name, or make it. This is what the "Group…" prompt uses, so
+// typing a name that already exists joins it rather than making a second
+// group with the same label.
+RP.groupByNameOrCreate = function(name) {
+  var want = String(name || '').trim();
+  if (!want) return null;
+  for (var i = 0; i < RP.groups.length; i++) {
+    if (RP.groups[i].name.toLowerCase() === want.toLowerCase()) return RP.groups[i];
+  }
+  return RP.addGroup(want);
+};
+
+RP.entitiesInGroup = function(groupId) {
+  var out = [];
+  for (var id in RP.constructionMeta) {
+    var m = RP.constructionMeta[id];
+    if (m && (m.group == null ? null : m.group) === groupId) out.push(Number(id));
+  }
+  return out;
+};
 
 RP.ensureSketch = function() {
   if (!RP.sketch) RP.sketch = RP.Sketch.create({ charLength: 100 });
@@ -63,14 +163,17 @@ RP.ensureSketch = function() {
 RP.parkActiveDoc = function() {
   RP.documents[RP.activeDocId] = {
     sketch: RP.ensureSketch(),
-    constructionMeta: RP.constructionMeta
+    constructionMeta: RP.constructionMeta,
+    groups: RP.groups,
+    nextGroupId: RP.nextGroupId
   };
   return RP.documents;
 };
 
 RP.getDoc = function(id) {
   if (id === RP.activeDocId) {
-    return { sketch: RP.ensureSketch(), constructionMeta: RP.constructionMeta };
+    return { sketch: RP.ensureSketch(), constructionMeta: RP.constructionMeta,
+             groups: RP.groups, nextGroupId: RP.nextGroupId };
   }
   if (!RP.documents[id]) RP.documents[id] = _freshDoc();
   return RP.documents[id];
@@ -83,6 +186,8 @@ RP.setActiveDoc = function(id) {
   var doc = RP.documents[id] || (RP.documents[id] = _freshDoc());
   RP.sketch = doc.sketch;
   RP.constructionMeta = doc.constructionMeta;
+  RP.groups = doc.groups || (doc.groups = []);
+  RP.nextGroupId = doc.nextGroupId || 1;
   RP.activeDocId = id;
   // Selections are per-document ids; carrying them across would highlight
   // an unrelated entity that happens to share a number.
@@ -96,6 +201,8 @@ RP.setActiveDoc = function(id) {
 RP.resetSketch = function() {
   RP.sketch = RP.Sketch.create({ charLength: 100 });
   RP.constructionMeta = {};
+  RP.groups = [];
+  RP.nextGroupId = 1;
   RP.activeDocId = RP.DOC_MAT;
   RP.documents = {};
   RP.lines = [];
@@ -124,8 +231,9 @@ RP.rebuildLines = function() {
       ptsOut.push({
         id: e.id, x: e.x, y: e.y,
         role: RP.POINT_ROLE,
+        group: pm.group != null ? pm.group : null,
         name: pm.label || null,
-        visible: pm.visible !== false
+        visible: pm.visible !== false && RP.groupVisible(pm.group)
       });
       continue;
     }
@@ -145,8 +253,9 @@ RP.rebuildLines = function() {
         role: am.role || 'construction',
         // Radius, measured live like line lengths.
         label: ageo ? ('R ' + RP.constructionLabel(0, 0, ageo.radius, 0)) : null,
+        group: am.group != null ? am.group : null,
         name: am.label || null,
-        visible: am.visible !== false
+        visible: am.visible !== false && RP.groupVisible(am.group)
       });
       continue;
     }
@@ -166,8 +275,9 @@ RP.rebuildLines = function() {
       // stale — constrain a length and the line moved while the mm text
       // kept reporting the old value.
       label: RP.constructionLabel(a.x, a.y, b.x, b.y),
+      group: meta.group != null ? meta.group : null,
       name: meta.label || null,
-      visible: meta.visible !== false
+      visible: meta.visible !== false && RP.groupVisible(meta.group)
     });
   }
   RP.lines = out;
@@ -647,7 +757,9 @@ RP.obstacleSegments = function() {
     var e = sk.entities[ids[i]];
     if (!e) continue;
     var m = meta[e.id];
-    if (!m || m.role !== RP.OBSTACLE_ROLE || m.visible === false) continue;
+    if (!m || m.role !== RP.OBSTACLE_ROLE) continue;
+    // Hidden means inert, group or line — matching every other consumer.
+    if (m.visible === false || !RP.groupVisible(m.group, doc.groups)) continue;
     if (e.type === 'line') {
       var a = sk.entities[e.p1], b = sk.entities[e.p2];
       if (a && b) segs.push({ id: e.id, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
@@ -747,7 +859,7 @@ RP.robotFootprint = function() {
     var e = sk.entities[ids[i]];
     if (!e) continue;
     var m = meta[e.id];
-    if (!m || m.visible === false || m.role === RP.DRIVE_ROLE) continue;
+    if (!m || m.visible === false || !RP.groupVisible(m.group, doc.groups) || m.role === RP.DRIVE_ROLE) continue;
     if (e.type === 'line') {
       var a = sk.entities[e.p1], b = sk.entities[e.p2];
       if (a && b) { push(a.x, a.y); push(b.x, b.y); }
@@ -872,7 +984,9 @@ RP._serializeDoc = function(doc) {
       nextConstraintId: sk.nextConstraintId,
       charLength: sk.charLength
     },
-    construction: JSON.parse(JSON.stringify(doc.constructionMeta || {}))
+    construction: JSON.parse(JSON.stringify(doc.constructionMeta || {})),
+    groups: JSON.parse(JSON.stringify(doc.groups || [])),
+    nextGroupId: doc.nextGroupId || 1
   };
 };
 
@@ -884,7 +998,17 @@ RP._docFromData = function(data) {
     sk.nextEntityId = data.sketch.nextEntityId || 1;
     sk.nextConstraintId = data.sketch.nextConstraintId || 1;
   }
-  return { sketch: sk, constructionMeta: JSON.parse(JSON.stringify((data && data.construction) || {})) };
+  var groups = JSON.parse(JSON.stringify((data && data.groups) || []));
+  var nextG = (data && data.nextGroupId) || 1;
+  // An old file has no groups at all; everything in it is simply
+  // ungrouped, which is exactly what an empty list means.
+  for (var g = 0; g < groups.length; g++) nextG = Math.max(nextG, groups[g].id + 1);
+  return {
+    sketch: sk,
+    constructionMeta: JSON.parse(JSON.stringify((data && data.construction) || {})),
+    groups: groups,
+    nextGroupId: nextG
+  };
 };
 
 // The robot document, as it goes into a save file or an undo snapshot.
@@ -902,6 +1026,8 @@ RP.deserializeRobotDoc = function(data) {
   if (RP.activeDocId === RP.DOC_ROBOT) {
     RP.sketch = doc.sketch;
     RP.constructionMeta = doc.constructionMeta;
+    RP.groups = doc.groups || (doc.groups = []);
+    RP.nextGroupId = doc.nextGroupId || 1;
     RP.documents[RP.DOC_ROBOT] = doc;
     RP.rebuildLines();
   } else {
@@ -931,6 +1057,8 @@ RP.restoreAllDocs = function(docs) {
   var doc = RP.documents[RP.activeDocId];
   RP.sketch = doc.sketch;
   RP.constructionMeta = doc.constructionMeta;
+  RP.groups = doc.groups || (doc.groups = []);
+  RP.nextGroupId = doc.nextGroupId || 1;
   RP.rebuildLines();
 };
 
@@ -957,6 +1085,11 @@ RP.loadSketchFrom = function(data) {
   if (data && data.sketch) {
     RP.deserializeSketch(data.sketch);
     RP.constructionMeta = JSON.parse(JSON.stringify(data.construction || {}));
+    RP.groups = JSON.parse(JSON.stringify(data.groups || []));
+    RP.nextGroupId = data.nextGroupId || 1;
+    for (var gi = 0; gi < RP.groups.length; gi++) {
+      RP.nextGroupId = Math.max(RP.nextGroupId, RP.groups[gi].id + 1);
+    }
     RP.rebuildLines();
   } else {
     RP.sketchFromLegacyLines((data && data.lines) || []);

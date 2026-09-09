@@ -494,6 +494,12 @@ RP.initEvents = function() {
     // Obstacles are a mat idea, the drive axis a robot one, so each entry
     // only appears in the document where it means something. Field walls
     // are generated geometry and cannot be retagged at all.
+    var grpBtn = document.getElementById('ctx-menu-group');
+    if (grpBtn) {
+      grpBtn.style.display = target.kind === 'line' ? '' : 'none';
+      var gm = target.kind === 'line' ? RP.constructionMeta[target.lineId] : null;
+      grpBtn.textContent = (gm && gm.group != null) ? '📁 Change group…' : '📁 Group…';
+    }
     var oBtn = document.getElementById('ctx-menu-obstacle');
     var dBtn = document.getElementById('ctx-menu-drive');
     var role = (target.kind === 'line') ? ctxRoleOf(target.lineId) : null;
@@ -547,6 +553,28 @@ RP.initEvents = function() {
   function ctxRoleOf(id) {
     var m = RP.constructionMeta[id];
     return (m && m.role) || 'construction';
+  }
+
+  var ctxGroupBtn = document.getElementById('ctx-menu-group');
+  if (ctxGroupBtn) {
+    ctxGroupBtn.addEventListener('click', function() {
+      if (ctxTarget && ctxTarget.kind === 'line') {
+        var meta = RP.constructionMeta[ctxTarget.lineId];
+        var cur = meta && meta.group != null ? (RP.findGroup(meta.group) || {}).name : '';
+        var name = prompt(
+          'Group name (blank to remove from its group):', cur || '');
+        if (name === null) { hideCtxMenu(); return; }
+        RP.pushHistory('Set group');
+        var trimmed = name.trim();
+        // Typing an existing name JOINS that group rather than making a
+        // second one with the same label — see RP.groupByNameOrCreate.
+        var g = trimmed ? RP.groupByNameOrCreate(trimmed) : null;
+        RP.setGeometryGroup(ctxTarget.lineId, g ? g.id : null);
+        if (RP.updateLayerList) RP.updateLayerList();
+        RP.render();
+      }
+      hideCtxMenu();
+    });
   }
 
   if (ctxObstacleBtn) {

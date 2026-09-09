@@ -202,6 +202,23 @@ RP.bestInsertionFor = function(route, entityId) {
   return best;
 };
 
+// How long a move's geometry is, in mm — straight for lines, along the
+// curve for arcs. Null when there is nothing to measure against.
+RP.moveLengthMm = function(el) {
+  var sk = RP.ensureSketch();
+  if (!el || !RP.calibration || !RP.calibration.pixelsPerMm) return null;
+  var ent = sk.entities[el.entityId];
+  if (!ent) return null;
+  var ppm = RP.calibration.pixelsPerMm;
+  if (ent.type === 'arc') {
+    var g = RP.Sketch.arcGeometry(sk, ent);
+    return g ? Math.abs(g.sweep) * g.radius / ppm : null;
+  }
+  var a = sk.entities[ent.p1], b = sk.entities[ent.p2];
+  if (!a || !b) return null;
+  return Math.hypot(b.x - a.x, b.y - a.y) / ppm;
+};
+
 // Travel-order endpoints: entry first, exit second. Lines and arcs both
 // carry p1/p2, so this is the same for either.
 RP.moveEndpoints = function(sk, el) {

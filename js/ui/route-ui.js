@@ -234,13 +234,31 @@ RP.routeHitTest = function(ix, iy) {
   // presence to click, matching hidden construction geometry.
   if (route) {
     var moves = RP.moveActions(route);
-    var bestMove = null, bestMoveSq = threshSq;
+    var near = [];
+    var bestMoveSq = threshSq;
     for (var i = 0; i < moves.length; i++) {
       if (moves[i].visible === false) continue;
       var mDSq = RP.entityDistSq(sk, moves[i].entityId, ix, iy);
-      if (mDSq < bestMoveSq) { bestMoveSq = mDSq; bestMove = moves[i]; }
+      if (mDSq < threshSq) near.push({ move: moves[i], dSq: mDSq });
+      if (mDSq < bestMoveSq) bestMoveSq = mDSq;
     }
-    if (bestMove) return { kind: 'move', id: bestMove.id, entityId: bestMove.entityId };
+    if (near.length) {
+      // Everything within a hair of the nearest is a genuine candidate, so
+      // clicking again advances through them — the same cycling the
+      // junction actions above already do.
+      //
+      // Nearest-wins alone could not express the case that matters most:
+      // driving out and back along ONE line is two moves on one entity, at
+      // identical distance, so a strict comparison always kept the first
+      // and the second could never be clicked at all.
+      var tol = Math.max(bestMoveSq * 1.4, bestMoveSq + 1e-6);
+      var tied = near.filter(function(c) { return c.dSq <= tol; })
+                     .sort(function(a, b) { return a.dSq - b.dSq; })
+                     .map(function(c) { return c.move; });
+      var at = tied.map(function(m) { return m.id; }).indexOf(RP.selectedActionId);
+      var pickM = at >= 0 ? tied[(at + 1) % tied.length] : tied[0];
+      return { kind: 'move', id: pickM.id, entityId: pickM.entityId };
+    }
   }
   // Nearest wins rather than first-in-entity-order. Where two lines
   // overlap, "first" is arbitrary and picks the wrong one half the time,
@@ -509,6 +527,12 @@ RP.updateActionList = function() {
       if (isMove) {
         glyph.textContent = String(moveNo);
         var bits = [RP.MOVE_LABELS[act.move] || act.move];
+        // Length, because without it a back-and-forth section reads
+        // "Straight · Straight · Straight" with nothing to tell the rows
+        // apart — and this list, with its hover preview, is exactly the
+        // tool you reach for when the canvas is too crowded to click.
+        var legMm = RP.moveLengthMm(act);
+        if (legMm != null) bits.push(Math.round(legMm) + ' mm');
         if (act.reverse) bits.push('rev');
         if (act.speed != null) bits.push(act.speed);
         if (act.visible === false) bits.push('hidden');

@@ -374,4 +374,155 @@ check('switching documents abandons a half-drawn line', () => {
     'a line started on the mat must not finish itself on the robot');
 });
 
+// ---- groups ----------------------------------------------------------
+// Hiding a group must be EXACTLY hiding each member: the `visible` field
+// of the rebuilt view is the one gate every consumer reads, so testing it
+// there is testing render, snap, hit-testing and selection at once.
+
+const viewOf = (RP, id) =>
+  RP.lines.concat(RP.arcs, RP.points).find(v => v.id === id);
+
+check('geometry starts ungrouped and visible', () => {
+  const RP = fresh();
+  const l = RP.addConstructionLine(0, 0, 100, 0);
+  assert(viewOf(RP, l.line.id).visible === true, 'visible by default');
+  assert(viewOf(RP, l.line.id).group === null, 'and in no group');
+});
+
+check('hiding a group hides its members in the view every consumer reads', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(0, 50, 100, 50);
+  const g = RP.addGroup('line trace');
+  RP.setGeometryGroup(a.line.id, g.id);
+
+  RP.setGroupVisible(g.id, false);
+  assert(viewOf(RP, a.line.id).visible === false, 'the member is hidden');
+  assert(viewOf(RP, b.line.id).visible === true, 'the non-member is untouched');
+
+  RP.setGroupVisible(g.id, true);
+  assert(viewOf(RP, a.line.id).visible === true, 'and comes back');
+});
+
+check('a hidden group beats a per-line visible flag', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const g = RP.addGroup('hidden things');
+  RP.setGeometryGroup(a.line.id, g.id);
+  RP.setConstructionVisible(a.line.id, true);   // explicitly visible...
+  RP.setGroupVisible(g.id, false);              // ...but its group is not
+  assert(viewOf(RP, a.line.id).visible === false,
+    'the group switch has to win, or hiding a group would be unreliable');
+});
+
+check('a hidden group makes its obstacles inert, like hiding them one by one', () => {
+  const RP = fresh();
+  const o = RP.addConstructionLine(300, 0, 300, 400);
+  RP.setGeometryRole(o.line.id, RP.OBSTACLE_ROLE);
+  assert(RP.obstacleSegments().length === 1, 'obstacle counts while shown');
+  const g = RP.addGroup('walls');
+  RP.setGeometryGroup(o.line.id, g.id);
+  RP.setGroupVisible(g.id, false);
+  assert(RP.obstacleSegments().length === 0,
+    'hidden means no presence at all — same as the per-line rule');
+});
+
+check('groups are per-document and do not leak', () => {
+  const RP = fresh();
+  RP.addGroup('mat things');
+  RP.setActiveDoc(RP.DOC_ROBOT);
+  assert(RP.groups.length === 0, 'the robot document has its own groups');
+  RP.addGroup('robot things');
+  RP.setActiveDoc(RP.DOC_MAT);
+  assert(RP.groups.length === 1 && RP.groups[0].name === 'mat things',
+    'and the mat keeps its own');
+});
+
+check('the robot footprint respects its OWN document groups from the mat', () => {
+  const RP = fresh();
+  robotWithDrive(RP);            // leaves the robot document active
+  const bodyLine = RP.lines[0].id;
+  const g = RP.addGroup('body');
+  RP.setGeometryGroup(bodyLine, g.id);
+  RP.setGroupVisible(g.id, false);
+  RP.setActiveDoc(RP.DOC_MAT);   // now the ACTIVE groups are the mat's
+  const fp = RP.robotFootprint();
+  assert(fp.points.length === 6,
+    'a hidden robot group must still be honoured from the mat, got ' + fp.points.length);
+});
+
+check('deleting a group keeps the geometry and un-hides it', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const g = RP.addGroup('temp');
+  RP.setGeometryGroup(a.line.id, g.id);
+  RP.setGroupVisible(g.id, false);
+  RP.removeGroup(g.id);
+  assert(RP.lines.length === 1, 'the line survives — deleting a group is not deleting work');
+  assert(viewOf(RP, a.line.id).visible === true, 'and is visible again');
+  assert(RP.constructionMeta[a.line.id].group == null, 'and is ungrouped');
+});
+
+check('naming an existing group joins it instead of making a duplicate', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(0, 50, 100, 50);
+  const g1 = RP.groupByNameOrCreate('dropoff');
+  const g2 = RP.groupByNameOrCreate('Dropoff');    // different case, same group
+  assert(g1.id === g2.id, 'should have matched the existing group');
+  assert(RP.groups.length === 1, 'and not created a second, got ' + RP.groups.length);
+  RP.setGeometryGroup(a.line.id, g1.id);
+  RP.setGeometryGroup(b.line.id, g2.id);
+  assert(RP.entitiesInGroup(g1.id).length === 2, 'both members land in the one group');
+});
+
+check('a dangling group id never hides geometry', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  RP.constructionMeta[a.line.id].group = 9999;   // group that does not exist
+  RP.rebuildLines();
+  assert(viewOf(RP, a.line.id).visible === true,
+    'unknown group must fail open, or a bad save would hide work with no way back');
+});
+
+check('groups survive a save/load round trip', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const g = RP.addGroup('line trace');
+  RP.setGeometryGroup(a.line.id, g.id);
+  RP.setGroupVisible(g.id, false);
+
+  const mat = RP._serializeDoc(RP.getDoc(RP.DOC_MAT));
+  const RP2 = fresh();
+  RP2.loadSketchFrom({ sketch: mat.sketch, construction: mat.construction,
+                       groups: mat.groups, nextGroupId: mat.nextGroupId });
+  assert(RP2.groups.length === 1, 'group restored');
+  assert(RP2.groups[0].name === 'line trace', 'with its name');
+  assert(RP2.groups[0].visible === false, 'and its hidden state');
+  assert(viewOf(RP2, a.line.id).visible === false, 'so the member is still hidden');
+});
+
+check('a pre-groups save file loads with no groups rather than breaking', () => {
+  const RP = fresh();
+  RP.addConstructionLine(0, 0, 100, 0);
+  const mat = RP._serializeDoc(RP.getDoc(RP.DOC_MAT));
+  const RP2 = fresh();
+  RP2.loadSketchFrom({ sketch: mat.sketch, construction: mat.construction });
+  assert(RP2.groups.length === 0, 'no groups, and nothing thrown');
+  assert(RP2.lines.length === 1 && RP2.lines[0].visible === true,
+    'and everything is visible');
+});
+
+check('undo restores group visibility', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const g = RP.addGroup('temp');
+  RP.setGeometryGroup(a.line.id, g.id);
+  RP.pushHistory('hide group');
+  RP.setGroupVisible(g.id, false);
+  assert(viewOf(RP, a.line.id).visible === false, 'hidden');
+  RP.undo();
+  assert(viewOf(RP, a.line.id).visible === true, 'undo brings it back');
+});
+
 if (!report()) process.exitCode = 1;

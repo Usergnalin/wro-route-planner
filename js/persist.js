@@ -30,6 +30,8 @@ RP.saveProject = function() {
     // saving with the robot open must not write the robot in here.
     sketch: RP._serializeDoc(RP.getDoc(RP.DOC_MAT)).sketch,
     construction: RP._serializeDoc(RP.getDoc(RP.DOC_MAT)).construction,
+    groups: RP._serializeDoc(RP.getDoc(RP.DOC_MAT)).groups,
+    nextGroupId: RP._serializeDoc(RP.getDoc(RP.DOC_MAT)).nextGroupId,
     robotDoc: RP.serializeRobotDoc(),
     routes: RP.serializeRoutes(),
     robotConfig: JSON.parse(JSON.stringify(RP.robotConfig)),

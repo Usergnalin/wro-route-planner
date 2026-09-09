@@ -278,6 +278,62 @@ RP.updateLayerList = function() {
     return { view: p, name: p.name || ('Point ' + (i + 1)), isArc: false };
   }));
 
+  // ---- groups ----
+  // One eye per group, hiding everything inside it at once. Listed above
+  // the geometry so the switches are together rather than scattered
+  // through however many rows the group happens to contain.
+  if (RP.groups && RP.groups.length) {
+    var gh = document.createElement('div');
+    gh.className = 'layer-group-title';
+    gh.textContent = 'Groups';
+    el.appendChild(gh);
+    for (var gi = 0; gi < RP.groups.length; gi++) {
+      (function(grp) {
+        var div = document.createElement('div');
+        div.className = 'layer-item';
+
+        var eye = document.createElement('button');
+        eye.className = 'layer-vis-btn';
+        eye.textContent = grp.visible === false ? '○' : '●';
+        eye.title = grp.visible === false ? 'Show group' : 'Hide group';
+        eye.onclick = function(e) {
+          e.stopPropagation();
+          RP.pushHistory(grp.visible === false ? 'Show group' : 'Hide group');
+          RP.setGroupVisible(grp.id, grp.visible === false);
+          RP.updateLayerList(); RP.render();
+        };
+
+        var lbl = document.createElement('span');
+        lbl.className = 'layer-item-label';
+        var count = RP.entitiesInGroup(grp.id).length;
+        lbl.textContent = grp.name + '  (' + count + ')';
+        lbl.title = 'Click to rename';
+        if (grp.visible === false) lbl.style.color = '#777';
+        lbl.onclick = function() {
+          var name = prompt('Group name:', grp.name);
+          if (name === null) return;
+          RP.pushHistory('Rename group');
+          RP.renameGroup(grp.id, name.trim() || grp.name);
+          RP.updateLayerList();
+        };
+
+        var del = document.createElement('button');
+        del.className = 'layer-del-btn';
+        del.textContent = '✕';
+        del.title = 'Delete the group (its geometry is kept, and becomes ungrouped)';
+        del.onclick = function(e) {
+          e.stopPropagation();
+          RP.pushHistory('Delete group');
+          RP.removeGroup(grp.id);
+          RP.updateLayerList(); RP.render();
+        };
+
+        div.appendChild(eye); div.appendChild(lbl); div.appendChild(del);
+        el.appendChild(div);
+      })(RP.groups[gi]);
+    }
+  }
+
   if (geometry.length > 0) {
     var lh = document.createElement('div');
     lh.className = 'layer-group-title';
@@ -289,20 +345,39 @@ RP.updateLayerList = function() {
         div.className = 'layer-item' + (RP.selectedLineId === line.id ? ' active' : '');
         div.dataset.geoId = line.id;   // scroll target for RP.focusGeometryInList
 
+        // `line.visible` is the EFFECTIVE value — the group gate is already
+        // folded in by rebuildLines. So a line hidden by its group shows a
+        // closed eye whose own flag is still true, and clicking it would
+        // set true to true and silently do nothing. Say so instead.
+        var hiddenByGroup = line.group != null && !RP.groupVisible(line.group);
+        var ownMeta = RP.constructionMeta[line.id];
+        var ownHidden = ownMeta && ownMeta.visible === false;
+
         var eye = document.createElement('button');
         eye.className = 'layer-vis-btn';
         eye.textContent = line.visible === false ? '○' : '●';
-        eye.title = line.visible === false ? 'Show' : 'Hide';
-        eye.onclick = function(e) {
-          e.stopPropagation();
-          // RP.lines is a rebuilt view — visibility lives on the metadata.
-          RP.setConstructionVisible(line.id, line.visible === false);
-          RP.updateLayerList(); RP.render();
-        };
+        if (hiddenByGroup) {
+          var hidingGroup = RP.findGroup(line.group);
+          eye.disabled = true;
+          eye.title = 'Hidden by the group "' +
+                      ((hidingGroup && hidingGroup.name) || 'group') +
+                      '" — show that group to get this back';
+        } else {
+          eye.title = ownHidden ? 'Show' : 'Hide';
+          eye.onclick = function(e) {
+            e.stopPropagation();
+            // RP.lines is a rebuilt view — visibility lives on the metadata.
+            RP.setConstructionVisible(line.id, !!ownHidden);
+            RP.updateLayerList(); RP.render();
+          };
+        }
 
         var lbl = document.createElement('span');
         lbl.className = 'layer-item-label';
-        lbl.textContent = name + (line.label ? '  ' + line.label : '');
+        var grpName = line.group != null ? (RP.findGroup(line.group) || {}).name : null;
+        lbl.textContent = name + (line.label ? '  ' + line.label : '') +
+                          (grpName ? '  [' + grpName + ']' : '');
+        if (line.visible === false) lbl.style.color = '#777';
         lbl.title = lbl.textContent;
         lbl.onclick = function() {
           RP.selectedLineId = (RP.selectedLineId === line.id) ? null : line.id;

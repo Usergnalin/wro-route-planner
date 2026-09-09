@@ -477,4 +477,97 @@ check('an empty route puts the first move at index 0', () => {
   assert(where.index === 0, 'expected 0, got ' + where.index);
 });
 
+// ---- picking among overlapping moves ---------------------------------
+// Driving out and back along ONE line is two moves on one entity, at
+// identical distance from any click. Nearest-wins alone always kept the
+// first, so the second could never be selected at all.
+
+check('two moves on the same line are both reachable by clicking', () => {
+  const RP = fresh();
+  const l = RP.addConstructionLine(0, 0, 400, 0);
+  RP.setEditMode('route');
+  const out = RP.addMove(RP.getActiveRoute().id, l.line.id, { move: 'forward' });
+  const back = RP.addMove(RP.getActiveRoute().id, l.line.id, { move: 'forward', reverse: true });
+  assert(out.id !== back.id, 'two distinct moves on one entity');
+
+  const first = RP.routeHitTest(200, 0);
+  assert(first && first.kind === 'move', 'the line should be hit');
+  RP.selectedActionId = first.id;
+  const second = RP.routeHitTest(200, 0);
+  assert(second.id !== first.id,
+    'clicking again must advance to the other move, got the same one');
+
+  RP.selectedActionId = second.id;
+  const third = RP.routeHitTest(200, 0);
+  assert(third.id === first.id, 'and cycle back round');
+});
+
+check('cycling reaches every move on the line, not just two', () => {
+  const RP = fresh();
+  const l = RP.addConstructionLine(0, 0, 400, 0);
+  RP.setEditMode('route');
+  const ids = [0, 1, 2].map(() =>
+    RP.addMove(RP.getActiveRoute().id, l.line.id, { move: 'forward' }).id);
+
+  const seen = new Set();
+  let hit = RP.routeHitTest(200, 0);
+  for (let i = 0; i < 6 && hit; i++) {
+    seen.add(hit.id);
+    RP.selectedActionId = hit.id;
+    hit = RP.routeHitTest(200, 0);
+  }
+  for (const id of ids) assert(seen.has(id), 'move ' + id + ' was never reachable');
+});
+
+check('a clearly nearer move still wins over a distant one', () => {
+  const RP = fresh();
+  const near = RP.addConstructionLine(0, 0, 400, 0);
+  const far = RP.addConstructionLine(0, 300, 400, 300);
+  RP.setEditMode('route');
+  const nearMove = RP.addMove(RP.getActiveRoute().id, near.line.id, { move: 'forward' });
+  RP.addMove(RP.getActiveRoute().id, far.line.id, { move: 'forward' });
+  const hit = RP.routeHitTest(200, 1);
+  assert(hit.id === nearMove.id,
+    'cycling must not turn picking into a lottery among far-apart lines');
+});
+
+check('a hidden move is not in the cycle', () => {
+  const RP = fresh();
+  const l = RP.addConstructionLine(0, 0, 400, 0);
+  RP.setEditMode('route');
+  const a = RP.addMove(RP.getActiveRoute().id, l.line.id, { move: 'forward' });
+  const b = RP.addMove(RP.getActiveRoute().id, l.line.id, { move: 'forward' });
+  RP.setMoveProps(RP.getActiveRoute().id, b.id, { visible: false });
+  RP.selectedActionId = a.id;
+  const hit = RP.routeHitTest(200, 0);
+  assert(hit.id === a.id, 'hidden geometry has no clickable presence');
+});
+
+// ---- action rows are tellable apart ----------------------------------
+check('a move knows its own length in mm', () => {
+  const RP = fresh();                       // 2 px per mm
+  const l = RP.addConstructionLine(0, 0, 400, 0);
+  RP.setEditMode('route');
+  const m = RP.addMove(RP.getActiveRoute().id, l.line.id, { move: 'forward' });
+  assertClose(RP.moveLengthMm(m), 200, 1e-9, '400px at 2px/mm');
+});
+
+check('moveLengthMm measures an arc along its curve, not its chord', () => {
+  const RP = fresh();
+  const arc = RP.addConstructionArc(0, 0, 400, 0, { sagitta: 100 });
+  RP.setEditMode('route');
+  const m = RP.addMove(RP.getActiveRoute().id, arc.arc.id, { move: 'arc' });
+  const len = RP.moveLengthMm(m);
+  assert(len > 200, 'an arc is longer than its 200mm chord, got ' + len);
+});
+
+check('moveLengthMm declines rather than guessing without calibration', () => {
+  const RP = fresh();
+  const l = RP.addConstructionLine(0, 0, 400, 0);
+  RP.setEditMode('route');
+  const m = RP.addMove(RP.getActiveRoute().id, l.line.id, { move: 'forward' });
+  RP.calibration = null;
+  assert(RP.moveLengthMm(m) === null, 'no px/mm means no answer');
+});
+
 if (!report()) process.exitCode = 1;

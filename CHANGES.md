@@ -1,3 +1,90 @@
+# Changes — 2026-08-30 (3)
+
+## Overlapping-line pain: click-cycling, readable action rows, named groups
+
+Three changes from the post-competition feedback, smallest first. The
+first two target the case groups were never going to fix — the robot
+driving back and forth over the same geometry.
+
+### 1. Overlapping moves cycle instead of one being unreachable
+
+`routeHitTest` picked the nearest move with a strict comparison. Out and
+back along ONE line is two moves on ONE entity, at identical distance
+from any click, so the first always won and **the second could never be
+selected at all**. Not a visibility problem, so no amount of hiding or
+grouping would have helped.
+
+It now gathers every move within a hair of the nearest and advances
+through them on repeated clicks — the same cycling the junction actions
+in the same function already did. A clearly nearer move still wins, so
+picking does not become a lottery among lines that merely happen to be in
+the neighbourhood.
+
+### 2. Action rows say how long each move is
+
+Rows were built from the move type alone, so a back-and-forth section
+read `Straight · Straight · Straight` with nothing to tell the rows
+apart. Since this list has hover-preview, it IS the tool you reach for
+when the canvas is too crowded to click — and it could not do the job.
+
+Now `Straight · 400 mm · rev`. `RP.moveLengthMm` measures along the curve
+for arcs rather than across the chord, and returns null without
+calibration rather than inventing a number.
+
+### 3. Named groups, hard hide
+
+A group is a named bag of geometry with one switch. Hiding it is exactly
+hiding each member: invisible, unclickable, unsnappable, and its
+obstacles stop colliding.
+
+That last part is worth stating plainly because it is a footgun: hide a
+group containing your obstacles and the simulator will report no
+collisions. It is consistent — hiding a single obstacle line already did
+this, and there is a test for it — but "hidden means inert" is a rule to
+know rather than discover.
+
+The implementation is one gate, not twenty. `rebuildLines` computes the
+`visible` field of the `RP.lines`/`arcs`/`points` view, and the ~20
+consumers that check `visible === false` all read that field. ANDing the
+group's state in there gives render, snap, hit-testing, selection and the
+layer list group-hiding without any of them knowing groups exist.
+
+A bug I introduced and caught while writing it: `obstacleSegments` and
+`robotFootprint` read a NAMED document, but `RP.groups` follows the
+ACTIVE one, so they would have consulted whichever document happened to
+be open. `groupVisible` now takes the groups list explicitly and those
+two pass their own document's.
+
+Details that matter:
+- Groups are per-document — the mat and the robot each have their own.
+- Deleting a group keeps its geometry and un-groups it. Losing drawn work
+  to a tidying action would be a nasty surprise.
+- A dangling group id fails OPEN. A bad save file must not hide work with
+  no way to get it back.
+- Typing an existing group name joins that group rather than creating a
+  second one with the same label.
+- A line hidden by its group shows a closed, DISABLED eye saying which
+  group hides it. Its own flag is still true, so clicking would have set
+  true to true and silently done nothing.
+
+### Verification
+
+13 suites; documents 26 → 38, route mode 32 → 39.
+
+Both new behaviours were confirmed to catch their own absence by
+mutation: reverting move-picking to nearest-wins fails 2 tests, and
+removing the group gate from the line view fails 4, including the
+save/load and undo round trips.
+
+Verified in Chromium: repeated clicks on a doubled-up line alternate
+between the two move ids (`3, 5, 3, 5`); action rows read
+`Straight · 500 mm` / `Straight · 400 mm` / `Straight · 400 mm · rev`;
+and hiding a group leaves its member with `visible: false`, no longer
+hit-testable, dimmed in the list, with a disabled eye reading "Hidden by
+the group "line trace" — show that group to get this back".
+
+---
+
 # Changes — 2026-08-30 (2)
 
 ## Route geometry is inserted where it connects, not always appended
