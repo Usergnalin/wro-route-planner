@@ -150,6 +150,58 @@ RP.reorderMove = function(routeId, elementId, newIndex) {
   return true;
 };
 
+// Where a newly-picked piece of geometry belongs in the route.
+//
+// Appending blindly is right only while you are drawing the route in
+// order. Editing one — which is what a surprise mission actually is —
+// means dropping a leg into the middle, and an appended move there is
+// always disconnected, so every insertion had to be fixed by hand.
+//
+// Returns { index, flip, joins }, where `index` counts MOVES (exactly
+// what addMove's own opts.index wants) and `joins` is how many of the two
+// neighbouring junctions the geometry actually meets:
+//
+//   2  it bridges a gap exactly — both the move before and the move after
+//      connect to it. This is the case that used to be impossible.
+//   1  it extends a chain at one end, including plain appending.
+//   0  nothing touches; the route will be reported broken, as before.
+//
+// Ties go to the LATEST slot, so drawing a route in order still appends —
+// that flow is by far the most common and must not regress.
+RP.bestInsertionFor = function(route, entityId) {
+  var sk = RP.ensureSketch();
+  var ent = sk.entities[entityId];
+  var moves = route ? RP.moveActions(route) : [];
+  if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) {
+    return { index: moves.length, flip: false, joins: 0 };
+  }
+  if (!moves.length) return { index: 0, flip: false, joins: 0 };
+
+  var find = RP.Sketch.coincidenceClusters(sk);
+  var best = { index: moves.length, flip: false, joins: -1 };
+
+  // Descending, and unflipped before flipped, so a strict > keeps the
+  // latest slot and the unflipped direction when scores tie.
+  for (var i = moves.length; i >= 0; i--) {
+    for (var f = 0; f < 2; f++) {
+      var flip = (f === 1);
+      var entry = flip ? ent.p2 : ent.p1;
+      var exit  = flip ? ent.p1 : ent.p2;
+      var joins = 0;
+      if (i > 0) {
+        var prev = RP.moveEndpoints(sk, moves[i - 1]);
+        if (prev && find(prev.exit) === find(entry)) joins++;
+      }
+      if (i < moves.length) {
+        var next = RP.moveEndpoints(sk, moves[i]);
+        if (next && find(next.entry) === find(exit)) joins++;
+      }
+      if (joins > best.joins) best = { index: i, flip: flip, joins: joins };
+    }
+  }
+  return best;
+};
+
 // Travel-order endpoints: entry first, exit second. Lines and arcs both
 // carry p1/p2, so this is the same for either.
 RP.moveEndpoints = function(sk, el) {

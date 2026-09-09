@@ -268,31 +268,18 @@ RP.getSelectedMove = function() {
 };
 
 // ---- adding geometry to the route ------------------------------------
-// Pick the traversal direction that joins the previous move's exit, so
-// appending geometry usually just works.
-RP.bestFlipFor = function(route, entityId) {
-  var sk = RP.sketch;
-  var ent = sk.entities[entityId];
-  var moves = RP.moveActions(route);
-  if (!ent || moves.length === 0) return false;
-  var last = moves[moves.length - 1];
-  var lastEnds = RP.moveEndpoints(sk, last);
-  if (!lastEnds) return false;
-  var find = RP.Sketch.coincidenceClusters(sk);
-  var exitKey = find(lastEnds.exit);
-  if (find(ent.p1) === exitKey) return false;
-  if (find(ent.p2) === exitKey) return true;
-  return false;
-};
-
-RP.appendGeometryToRoute = function(entityId) {
+// Named "add", not "append": RP.bestInsertionFor decides WHERE it goes,
+// which is the end only when that is genuinely where it connects.
+RP.addGeometryToRoute = function(entityId) {
   var route = RP.getActiveRoute();
   if (!route) return null;
   RP.pushHistory('Add move');
-  // No explicit move: addMove picks one the geometry can actually
+  var where = RP.bestInsertionFor(route, entityId);
+  // No explicit move type: addMove picks one the geometry can actually
   // do (an arc entity must be driven as an arc).
   var el = RP.addMove(route.id, entityId, {
-    flip: RP.bestFlipFor(route, entityId)
+    index: where.index,
+    flip: where.flip
   });
   if (!el) { RP.undoStack.pop(); return null; }
   RP.recomputeFlips(route);

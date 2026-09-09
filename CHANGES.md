@@ -1,3 +1,66 @@
+# Changes — 2026-08-30 (2)
+
+## Route geometry is inserted where it connects, not always appended
+
+Clicking geometry in Route mode always put the move at the END of the
+route. That is right exactly while you are drawing a route front-to-back.
+It is wrong the moment you EDIT one — which is what adapting to a
+surprise mission is — because a move appended to the end of a route it
+belongs in the middle of is always disconnected, and had to be dragged
+into place by hand every time.
+
+`RP.bestInsertionFor(route, entityId)` (`js/model/route.js`, pure model)
+scores every slot in the route by how many of the two neighbouring
+junctions the geometry actually meets, through the same coincidence
+clusters that decide route continuity everywhere else:
+
+| joins | meaning |
+|---|---|
+| 2 | it bridges a gap exactly — the move before AND the move after connect to it |
+| 1 | it extends a chain at one end. Plain appending is this case |
+| 0 | nothing touches; append, and the route is reported broken as before |
+
+Both traversal directions are scored, so a line drawn "backwards" is
+flipped to fit rather than rejected.
+
+**Ties go to the latest slot.** Drawing a route in order is by far the
+most common flow and must not regress — the ~30 existing tests that build
+routes sequentially are the net that proves it, and they all still pass
+untouched.
+
+`RP.appendGeometryToRoute` is renamed **`RP.addGeometryToRoute`**. A
+function called "append" that no longer always appends is an active lie
+to the next reader; the rename is mechanical across `events.js` and four
+test files. `RP.bestFlipFor` is gone — it only ever considered the LAST
+move, which was the append assumption in miniature, and
+`bestInsertionFor` subsumes it.
+
+### Verification
+
+13 suites, route mode 24 → 32.
+
+Confirmed the new tests actually discriminate by mutating
+`bestInsertionFor` to always append: four of them fail, including the two
+that matter most — geometry landing in the gap, and the route resolving
+as a result. Restored, all pass.
+
+Verified in Chromium through the real hit-test path rather than by
+calling the model directly: built A→C with the middle leg missing (status
+reads "Route is broken between move 1 and 2"), then clicked the middle
+leg on the canvas. It landed BETWEEN the two moves, the status changed to
+"3 moves · connected", and the generated code came out as three straights
+with the corner turn — with no manual reordering.
+
+### Next
+
+Groups for overlapping geometry, per the discussion: separate solver
+documents were measured as genuinely faster (390 params → 57ms, and the
+curve is ~n², so quartering a sketch quarters its solve), but route
+continuity is a per-sketch union-find used in 9 places, so splitting mat
+geometry across documents would break the invariant routes depend on.
+
+---
+
 # Changes — 2026-08-30
 
 ## Turn angles are no longer rounded away; output goes to 3dp

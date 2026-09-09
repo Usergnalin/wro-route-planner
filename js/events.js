@@ -59,7 +59,7 @@ RP.initEvents = function() {
           RP.selectedActionId = hitRM.id;
           if (hitRM.kind === 'move') RP.focusGeometryInList(hitRM.entityId);
         } else {
-          var added = RP.appendGeometryToRoute(hitRM.id);
+          var added = RP.addGeometryToRoute(hitRM.id);
           RP.selectedActionId = added ? added.id : null;
           RP.focusGeometryInList(hitRM.id);
         }

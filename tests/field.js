@@ -32,7 +32,7 @@ function approachRightWall(RP) {
   RP.createFieldBoundary();
   const lead = RP.addConstructionLine(1000, 600, 1950, 600);
   RP.setEditMode('route');
-  const el = RP.appendGeometryToRoute(lead.line.id);
+  const el = RP.addGeometryToRoute(lead.line.id);
   return { lead, el, route: RP.routes[0] };
 }
 
@@ -189,7 +189,7 @@ check('a point drawn onto a wall is stood off it, not left conflicting', () => {
   const lead = RP.addConstructionLine(1000, 600, 2000, 600);
   RP.Sketch.addConstraint(RP.sketch, 'point_on_line', [lead.p2.id, wall]);
   RP.setEditMode('route');
-  const el = RP.appendGeometryToRoute(lead.line.id);
+  const el = RP.addGeometryToRoute(lead.line.id);
 
   RP.selectedMoveId = el.id;
   RP.updateSelectedMove({ move: 'wall_align' });

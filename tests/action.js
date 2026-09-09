@@ -467,8 +467,8 @@ check('nearest wins among overlapping moves, not first-added', () => {
   const a = RP.addConstructionLine(0, 100, 300, 100);
   const b = RP.addConstructionLine(0, 106, 300, 106);
   RP.setEditMode('route');
-  const eA = RP.appendGeometryToRoute(a.line.id);
-  const eB = RP.appendGeometryToRoute(b.line.id);
+  const eA = RP.addGeometryToRoute(a.line.id);
+  const eB = RP.addGeometryToRoute(b.line.id);
 
   const hitNearA = RP.routeHitTest(150, 100);
   assert(hitNearA && hitNearA.id === eA.id, 'closer to A should hit A, not whichever was added last');
@@ -481,8 +481,8 @@ check('hiding the nearer of two overlapping moves reveals the farther one', () =
   const a = RP.addConstructionLine(0, 100, 300, 100);
   const b = RP.addConstructionLine(0, 103, 300, 103);
   RP.setEditMode('route');
-  const eA = RP.appendGeometryToRoute(a.line.id);
-  const eB = RP.appendGeometryToRoute(b.line.id);
+  const eA = RP.addGeometryToRoute(a.line.id);
+  const eB = RP.addGeometryToRoute(b.line.id);
 
   // Clicking between them currently favours A (closer).
   const before = RP.routeHitTest(150, 101);

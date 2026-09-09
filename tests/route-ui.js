@@ -58,7 +58,7 @@ check('leaving route mode clears the element selection', () => {
   const RP = fresh();
   const { a } = drawL(RP);
   RP.setEditMode('route');
-  RP.appendGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(a.line.id);
   RP.selectedMoveId = RP.moveActions(RP.routes[0])[0].id;
   RP.setEditMode('sketch');
   assert(RP.selectedMoveId === null, 'element selection should clear');
@@ -71,8 +71,8 @@ check('route mode never moves geometry', () => {
   const before = RP.lines.map(l => [l.x1, l.y1, l.x2, l.y2].join(','));
 
   RP.setEditMode('route');
-  RP.appendGeometryToRoute(a.line.id);
-  RP.appendGeometryToRoute(b.line.id);
+  RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(b.line.id);
   RP.updateSelectedMove && (RP.selectedMoveId = RP.moveActions(RP.routes[0])[0].id);
   RP.updateSelectedMove({ move: 'linetrace_dist', speed: 250 });
 
@@ -85,7 +85,7 @@ check('removing an element keeps the geometry it referenced', () => {
   const RP = fresh();
   const { a } = drawL(RP);
   RP.setEditMode('route');
-  const el = RP.appendGeometryToRoute(a.line.id);
+  const el = RP.addGeometryToRoute(a.line.id);
   RP.selectedMoveId = el.id;
   RP.removeSelectedMove();
   assert(RP.moveActions(RP.routes[0]).length === 0, 'element removed');
@@ -98,7 +98,7 @@ check('hit test prefers route elements over bare geometry', () => {
   const { a } = drawL(RP);
   RP.setEditMode('route');
   assert(RP.routeHitTest(50, 0).kind === 'geometry', 'unreferenced line is geometry');
-  const el = RP.appendGeometryToRoute(a.line.id);
+  const el = RP.addGeometryToRoute(a.line.id);
   const hit = RP.routeHitTest(50, 0);
   assert(hit.kind === 'move' && hit.id === el.id,
     'once referenced it should hit as an element');
@@ -121,8 +121,8 @@ check('appending picks the traversal direction that connects', () => {
   RP.Sketch.addConstraint(RP.sketch, 'coincident', [a.p2.id, b.p2.id]);
 
   RP.setEditMode('route');
-  RP.appendGeometryToRoute(a.line.id);
-  const second = RP.appendGeometryToRoute(b.line.id);
+  RP.addGeometryToRoute(a.line.id);
+  const second = RP.addGeometryToRoute(b.line.id);
   assert(second.flip === true, 'expected the second element to be flipped');
   assert(RP.resolveRoute(RP.routes[0]).ok, 'route should resolve as connected');
 });
@@ -131,8 +131,8 @@ check('appending connected geometry builds a resolvable route', () => {
   const RP = fresh();
   const { a, b } = drawL(RP);
   RP.setEditMode('route');
-  RP.appendGeometryToRoute(a.line.id);
-  RP.appendGeometryToRoute(b.line.id);
+  RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(b.line.id);
   const res = RP.resolveRoute(RP.routes[0]);
   assert(res.ok, 'expected ok: ' + JSON.stringify(res));
   assert(res.moves.length === 2, 'two elements');
@@ -142,7 +142,7 @@ check('routeReferencedEntities reports what routes already use', () => {
   const RP = fresh();
   const { a, b } = drawL(RP);
   RP.setEditMode('route');
-  RP.appendGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(a.line.id);
   const refs = RP.routeReferencedEntities();
   assert(refs[a.line.id] === true, 'referenced line listed');
   assert(refs[b.line.id] === undefined, 'unreferenced line absent');
@@ -153,8 +153,8 @@ check('element parameters round-trip into generated code', () => {
   const RP = fresh();
   const { a, b } = drawL(RP);
   RP.setEditMode('route');
-  const e1 = RP.appendGeometryToRoute(a.line.id);
-  RP.appendGeometryToRoute(b.line.id);
+  const e1 = RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(b.line.id);
 
   RP.selectedMoveId = e1.id;
   RP.updateSelectedMove({ move: 'linetrace_junct', junctions: 3, speed: 250 });
@@ -168,7 +168,7 @@ check('checkpoint set on an element appears in the code', () => {
   const RP = fresh();
   const { a } = drawL(RP);
   RP.setEditMode('route');
-  const el = RP.appendGeometryToRoute(a.line.id);
+  const el = RP.addGeometryToRoute(a.line.id);
   RP.selectedMoveId = el.id;
   RP.updateSelectedMove({ checkpoint: 'grab_block' });
   const code = RP.generateCode(RP.routes[0]);
@@ -180,8 +180,8 @@ check('reordering elements changes traversal order', () => {
   const RP = fresh();
   const { a, b } = drawL(RP);
   RP.setEditMode('route');
-  const e1 = RP.appendGeometryToRoute(a.line.id);
-  const e2 = RP.appendGeometryToRoute(b.line.id);
+  const e1 = RP.addGeometryToRoute(a.line.id);
+  const e2 = RP.addGeometryToRoute(b.line.id);
   RP.selectedMoveId = e2.id;
   RP.reorderSelectedMove(-1);
   assert(RP.moveActions(RP.routes[0])[0].id === e2.id, 'second element moved to front');
@@ -191,7 +191,7 @@ check('route edits are undoable', () => {
   const RP = fresh();
   const { a } = drawL(RP);
   RP.setEditMode('route');
-  RP.appendGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(a.line.id);
   assert(RP.moveActions(RP.routes[0]).length === 1, 'setup');
   RP.undo();
   assert(RP.moveActions(RP.routes[0]).length === 0, 'undo should remove the element');
@@ -208,9 +208,9 @@ function staircase(RP) {
   RP.Sketch.addConstraint(sk, 'coincident', [a.p2.id, b.p1.id]);
   RP.Sketch.addConstraint(sk, 'coincident', [b.p2.id, c.p1.id]);
   RP.setEditMode('route');
-  const e1 = RP.appendGeometryToRoute(a.line.id);
-  const e2 = RP.appendGeometryToRoute(b.line.id);
-  const e3 = RP.appendGeometryToRoute(c.line.id);
+  const e1 = RP.addGeometryToRoute(a.line.id);
+  const e2 = RP.addGeometryToRoute(b.line.id);
+  const e3 = RP.addGeometryToRoute(c.line.id);
   return { a, b, c, e1, e2, e3, route: RP.routes[0] };
 }
 
@@ -222,8 +222,8 @@ check('reordering finds a valid orientation when one exists', () => {
   const b = RP.addConstructionLine(100, 0, 200, 0);
   RP.Sketch.addConstraint(RP.sketch, 'coincident', [a.p2.id, b.p1.id]);
   RP.setEditMode('route');
-  RP.appendGeometryToRoute(a.line.id);
-  const e2 = RP.appendGeometryToRoute(b.line.id);
+  RP.addGeometryToRoute(a.line.id);
+  const e2 = RP.addGeometryToRoute(b.line.id);
   const route = RP.routes[0];
   assert(RP.resolveRoute(route).ok, 'setup should resolve');
 
@@ -258,8 +258,8 @@ check('appending in a chain derives each travel direction', () => {
   const sk = RP.sketch;
   RP.Sketch.addConstraint(sk, 'coincident', [a.p2.id, b.p2.id]);
   RP.setEditMode('route');
-  RP.appendGeometryToRoute(a.line.id);
-  RP.appendGeometryToRoute(b.line.id);
+  RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(b.line.id);
   const route = RP.routes[0];
   assert(RP.resolveRoute(route).ok, 'chain should resolve regardless of draw order');
   assert(RP.moveActions(route)[1].flip === true, 'direction should have been derived');
@@ -309,7 +309,7 @@ check('drive backwards keeps the same endpoints, only the heading changes', () =
   const RP = fresh();
   const a = RP.addConstructionLine(0, 0, 100, 0);
   RP.setEditMode('route');
-  const el = RP.appendGeometryToRoute(a.line.id);
+  const el = RP.addGeometryToRoute(a.line.id);
   const route = RP.routes[0];
 
   const fwd = RP.resolveRoute(route).moves[0];
@@ -350,6 +350,131 @@ check('getActiveRoute always returns the one route', () => {
   RP.activeRouteId = 12345;               // stale id
   assert(RP.getActiveRoute() === RP.routes[0],
     'lookup should not depend on activeRouteId any more');
+});
+
+// ---- smart insertion --------------------------------------------------
+// Geometry lands where it CONNECTS, not always at the end. Editing the
+// middle of a route is the normal case when adapting to a surprise
+// mission, and an appended move there was always disconnected.
+
+// Three collinear-ish legs forming one chain: A(0,0)-(100,0),
+// B(100,0)-(200,0), C(200,0)-(200,100). Coincident at each junction.
+function threeLegs(RP) {
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(100, 0, 200, 0);
+  const c = RP.addConstructionLine(200, 0, 200, 100);
+  const sk = RP.sketch;
+  RP.Sketch.addConstraint(sk, 'coincident', [a.line.p2, b.line.p1]);
+  RP.Sketch.addConstraint(sk, 'coincident', [b.line.p2, c.line.p1]);
+  return { a, b, c };
+}
+
+const moveEntities = (RP) =>
+  RP.moveActions(RP.getActiveRoute()).map(m => m.entityId);
+
+check('drawing a route in order still appends', () => {
+  const RP = fresh();
+  const { a, b, c } = threeLegs(RP);
+  RP.setEditMode('route');
+  RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(b.line.id);
+  RP.addGeometryToRoute(c.line.id);
+  assert(JSON.stringify(moveEntities(RP)) ===
+         JSON.stringify([a.line.id, b.line.id, c.line.id]),
+    'sequential drawing must not change, got ' + JSON.stringify(moveEntities(RP)));
+});
+
+check('geometry that bridges a gap lands IN the gap, not at the end', () => {
+  const RP = fresh();
+  const { a, b, c } = threeLegs(RP);
+  RP.setEditMode('route');
+  // Build the route with the middle leg missing.
+  RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(c.line.id);
+  assert(JSON.stringify(moveEntities(RP)) === JSON.stringify([a.line.id, c.line.id]),
+    'setup: A then C');
+
+  // B joins A's exit AND C's entry, so it belongs between them.
+  RP.addGeometryToRoute(b.line.id);
+  assert(JSON.stringify(moveEntities(RP)) ===
+         JSON.stringify([a.line.id, b.line.id, c.line.id]),
+    'B should have landed in the middle, got ' + JSON.stringify(moveEntities(RP)));
+  assert(RP.resolveRoute(RP.getActiveRoute()).ok,
+    'and the route should now be continuous');
+});
+
+check('the bridging insertion is what makes the route resolve at all', () => {
+  const RP = fresh();
+  const { a, b, c } = threeLegs(RP);
+  RP.setEditMode('route');
+  RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(c.line.id);
+  assert(!RP.resolveRoute(RP.getActiveRoute()).ok,
+    'A then C alone is a broken route — that is the premise');
+  RP.addGeometryToRoute(b.line.id);
+  assert(RP.resolveRoute(RP.getActiveRoute()).ok, 'and B repairs it');
+});
+
+check('geometry joining only the FRONT is inserted at the front', () => {
+  const RP = fresh();
+  const { a, b, c } = threeLegs(RP);
+  RP.setEditMode('route');
+  RP.addGeometryToRoute(b.line.id);
+  RP.addGeometryToRoute(c.line.id);
+  // A meets B's entry and nothing else — it precedes the route.
+  RP.addGeometryToRoute(a.line.id);
+  assert(JSON.stringify(moveEntities(RP)) ===
+         JSON.stringify([a.line.id, b.line.id, c.line.id]),
+    'A should lead, got ' + JSON.stringify(moveEntities(RP)));
+});
+
+check('geometry touching nothing still goes on the end', () => {
+  const RP = fresh();
+  const { a, b } = threeLegs(RP);
+  const far = RP.addConstructionLine(900, 900, 1000, 900);
+  RP.setEditMode('route');
+  RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(b.line.id);
+  RP.addGeometryToRoute(far.line.id);
+  assert(moveEntities(RP)[2] === far.line.id,
+    'disconnected geometry keeps the old append behaviour');
+});
+
+check('insertion picks the traversal direction that connects', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  // Drawn "backwards": its p1 is the far end, so it must be flipped to
+  // follow A.
+  const b = RP.addConstructionLine(200, 0, 100, 0);
+  RP.Sketch.addConstraint(RP.sketch, 'coincident', [a.line.p2, b.line.p2]);
+  RP.setEditMode('route');
+  RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(b.line.id);
+  assert(RP.resolveRoute(RP.getActiveRoute()).ok,
+    'the reversed line should still join up');
+});
+
+check('bestInsertionFor reports how well the geometry fits', () => {
+  const RP = fresh();
+  const { a, b, c } = threeLegs(RP);
+  const far = RP.addConstructionLine(900, 900, 1000, 900);
+  RP.setEditMode('route');
+  RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(c.line.id);
+  const route = RP.getActiveRoute();
+
+  assert(RP.bestInsertionFor(route, b.line.id).joins === 2,
+    'B bridges both sides');
+  assert(RP.bestInsertionFor(route, far.line.id).joins === 0,
+    'unrelated geometry joins nothing');
+});
+
+check('an empty route puts the first move at index 0', () => {
+  const RP = fresh();
+  const { a } = threeLegs(RP);
+  RP.setEditMode('route');
+  const where = RP.bestInsertionFor(RP.getActiveRoute(), a.line.id);
+  assert(where.index === 0, 'expected 0, got ' + where.index);
 });
 
 if (!report()) process.exitCode = 1;

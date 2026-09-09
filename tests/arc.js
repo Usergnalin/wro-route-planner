@@ -141,7 +141,7 @@ check('an arc can be a route element and defaults to an arc move', () => {
   const RP = fresh();
   const made = RP.addConstructionArc(0, 0, 200, 0, { sagitta: 50 });
   RP.setEditMode('route');
-  const el = RP.appendGeometryToRoute(made.arc.id);
+  const el = RP.addGeometryToRoute(made.arc.id);
   assert(el, 'arc should be addable to the route');
   assert(el.move === 'arc', 'expected an arc move, got ' + el.move);
   assert(RP.resolveRoute(RP.routes[0]).ok, 'route should resolve');
@@ -159,7 +159,7 @@ check('an arc element generates an arc move', () => {
   const RP = fresh();
   const made = RP.addConstructionArc(200, 200, 600, 200, { sagitta: 80 });
   RP.setEditMode('route');
-  RP.appendGeometryToRoute(made.arc.id);
+  RP.addGeometryToRoute(made.arc.id);
   const code = RP.generateCode(RP.routes[0]);
   assert(/turn_arc/.test(code), 'expected an arc call, got:\n' + code);
 });
@@ -301,7 +301,7 @@ check('clicking an arc in Route mode adds it to the route', () => {
   assert(hit && hit.kind === 'geometry' && hit.id === made.arc.id,
     'route mode should see the arc as addable geometry, got ' + JSON.stringify(hit));
 
-  const el = RP.appendGeometryToRoute(hit.id);
+  const el = RP.addGeometryToRoute(hit.id);
   assert(el && el.move === 'arc', 'and it should join the route as an arc');
 });
 
@@ -309,7 +309,7 @@ check('an arc element is clickable along its curve, not just its chord', () => {
   const RP = fresh();
   const made = RP.addConstructionArc(0, 0, 200, 0, { sagitta: 60 });
   RP.setEditMode('route');
-  const el = RP.appendGeometryToRoute(made.arc.id);
+  const el = RP.addGeometryToRoute(made.arc.id);
 
   const onCurve = RP.routeHitTest(100, 60);
   assert(onCurve && onCurve.kind === 'move' && onCurve.id === el.id,
