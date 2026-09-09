@@ -134,6 +134,7 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - **Canvas is DPR-aware** — renders at native device resolution for sharp lines on HiDPI screens.
 - **Two sketch documents, not one sketch with a role tag** — the mat (field geometry, routes, obstacles) and the robot body are separate `RP.Sketch` instances in unrelated coordinate spaces. The solver treats a sketch as one system, so a robot drawn into the mat would join the mat's DOF count, could be constrained to mat geometry, and would be dragged around by mat edits — a body and the field it drives over have nothing to solve together. `RP.sketch` / `RP.constructionMeta` always point at the ACTIVE document and the other parks in `RP.documents`, so every existing reader works unchanged. Both share one `RP.calibration`, which is what makes the robot's footprint directly comparable to mat coordinates.
 - **The robot's frame comes from a drawn line, not numbers** — one line in the robot document tagged `role:'drive'` fixes both the origin (its start point is the turning centre) and the facing (it points forwards). One entity rather than two, because an axle alone leaves "which way is forward?" unanswerable and it cannot be guessed from a body outline. `RP.robotFrame()` / `RP.robotFootprint()` read it out; the footprint is expressed once in robot-local coordinates so a sweep never recomputes it per pose. Which end is the nose is stored as metadata (`flipped`), not by reordering the line's points — swapping `p1`/`p2` on the entity would silently negate any angle constraint measured against it.
+- **Everything is in exactly one group; there is no "ungrouped"** — a document always has a `Default` group, new geometry is filed into the *current* group without being asked, and old files migrate into `Default` on load. A second kind of membership that behaves differently would be a rule to carry in your head for no benefit.
 - **Groups gate visibility in one place** — a group is a named bag of geometry with one switch, and hiding it is *exactly* hiding each member: invisible, unclickable, unsnappable. That works because the gate is applied once, in `rebuildLines`, where the `visible` field of the `RP.lines`/`arcs`/`points` view is computed — the ~20 consumers that already check `visible === false` (render, snap, hit tests, selection, the layer list) inherit it without knowing groups exist. Readers that name a document explicitly (`obstacleSegments`, `robotFootprint`) pass that document's own groups, since `RP.groups` follows the active document.
 - **Overlapping moves cycle on repeated clicks** — driving out and back along one line is two moves on one entity at identical distance, so nearest-wins alone could never select the second. `routeHitTest` gathers everything within a hair of the nearest and advances through them, the same way actions sharing a junction already did.
 - **Geometry is inserted where it connects, not always appended** — `RP.bestInsertionFor` scores every slot in the route by how many of the two neighbouring junctions the geometry actually meets (2 = it bridges a gap exactly, 1 = it extends a chain, 0 = nothing touches) and inserts at the best one. Ties go to the latest slot, so drawing a route in order still appends. Appending blindly is only right while building a route front-to-back; editing one — which is what adapting to a surprise mission is — meant every mid-route addition landed disconnected and had to be dragged into place by hand.
@@ -159,11 +160,19 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - [x] Recalibrate later using the longest existing construction line
 - [x] Create named multi-waypoint routes
 - [x] Insert waypoints by clicking route segment midpoints
-- [x] **Named groups** — right-click geometry → Group… to file it under a name
-      (typing an existing name joins that group). One eye per group in the
-      geometry list hides everything in it at once, completely: no rendering, no
-      clicking, no snapping, and its obstacles stop colliding. Deleting a group
-      keeps the geometry and un-groups it
+- [x] **Named groups with a current group** — new geometry goes into whichever
+      group is current, so filing costs nothing while drawing. Click a group row
+      to draw into it (double-click to rename), ＋ New group to add one. The
+      sidebar always says *drawing into "…"*, and the current row is marked ✎
+- [x] Right-click → **Add to "…"** files geometry into the current group in one
+      click. If the right-clicked line is part of a multi-selection it moves the
+      whole selection, so shift-clicking a dozen lines then filing them is still
+      two clicks
+- [x] One eye per group hides everything in it at once, completely: no
+      rendering, no clicking, no snapping, and its obstacles stop colliding.
+      Setting a hidden group current un-hides it, so the next line drawn cannot
+      vanish as it is created. `Default` cannot be deleted; deleting any other
+      group keeps its geometry and moves it to `Default`
 - [x] Repeated clicks cycle through moves that overlap, so an out-and-back pair
       sharing one line is reachable
 - [x] Action rows show each move's length, so a back-and-forth section reads

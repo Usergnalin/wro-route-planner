@@ -65,6 +65,43 @@ function _freshDoc() {
 // they all inherit group hiding without knowing groups exist.
 RP.groups = [];
 RP.nextGroupId = 1;
+RP.currentGroupId = null;
+
+// Every piece of geometry is in exactly ONE group — there is no
+// "ungrouped" tier. A second kind of membership that behaves differently
+// is a rule you have to carry in your head for no benefit, so a document
+// always has a Default group and anything without one lands there.
+RP.DEFAULT_GROUP_NAME = 'Default';
+
+RP.ensureDefaultGroup = function() {
+  if (!RP.groups) RP.groups = [];
+  for (var i = 0; i < RP.groups.length; i++) {
+    if (RP.groups[i].isDefault) return RP.groups[i];
+  }
+  var g = { id: RP.nextGroupId++, name: RP.DEFAULT_GROUP_NAME, visible: true, isDefault: true };
+  RP.groups.unshift(g);
+  if (RP.currentGroupId == null) RP.currentGroupId = g.id;
+  return g;
+};
+
+// The group new geometry is drawn into. Never null once a document has
+// been touched, so drawing always has somewhere to go.
+RP.currentGroup = function() {
+  var g = RP.currentGroupId != null ? RP.findGroup(RP.currentGroupId) : null;
+  return g || RP.ensureDefaultGroup();
+};
+
+// Setting a group current also SHOWS it. Otherwise the next line drawn
+// vanishes the instant it is created, which reads as drawing being
+// broken rather than as the group being hidden.
+RP.setCurrentGroup = function(groupId) {
+  var g = RP.findGroup(groupId);
+  if (!g) return false;
+  RP.currentGroupId = g.id;
+  if (g.visible === false) g.visible = true;
+  RP.rebuildLines();
+  return true;
+};
 
 RP.findGroup = function(groupId) {
   for (var i = 0; i < RP.groups.length; i++) {
@@ -87,7 +124,8 @@ RP.groupVisible = function(groupId, groups) {
 };
 
 RP.addGroup = function(name) {
-  var g = { id: RP.nextGroupId++, name: String(name || 'Group ' + RP.groups.length + 1), visible: true };
+  RP.ensureDefaultGroup();
+  var g = { id: RP.nextGroupId++, name: String(name || 'Group ' + (RP.groups.length + 1)), visible: true };
   RP.groups.push(g);
   return g;
 };
@@ -114,12 +152,17 @@ RP.removeGroup = function(groupId) {
   var at = -1;
   for (var i = 0; i < RP.groups.length; i++) if (RP.groups[i].id === groupId) { at = i; break; }
   if (at < 0) return false;
+  // Default is the floor everything falls back to, so it cannot be the
+  // thing that disappears.
+  if (RP.groups[at].isDefault) return false;
   RP.groups.splice(at, 1);
+  var home = RP.ensureDefaultGroup();
   for (var id in RP.constructionMeta) {
     if (RP.constructionMeta[id] && RP.constructionMeta[id].group === groupId) {
-      RP.constructionMeta[id].group = null;
+      RP.constructionMeta[id].group = home.id;
     }
   }
+  if (RP.currentGroupId === groupId) RP.currentGroupId = home.id;
   RP.rebuildLines();
   return true;
 };
@@ -127,9 +170,35 @@ RP.removeGroup = function(groupId) {
 RP.setGeometryGroup = function(entityId, groupId) {
   var meta = RP.constructionMeta[entityId];
   if (!meta) return false;
-  meta.group = (groupId == null) ? null : groupId;
+  meta.group = (groupId == null) ? RP.ensureDefaultGroup().id : groupId;
   RP.rebuildLines();
   return true;
+};
+
+// Move geometry into a group in one action. `ids` is whatever the caller
+// decided the target is — see RP.groupAssignmentTargets, which resolves
+// "the thing I right-clicked" against "the things I had selected".
+RP.setGeometryGroupMany = function(ids, groupId) {
+  var n = 0;
+  for (var i = 0; i < ids.length; i++) {
+    if (RP.constructionMeta[ids[i]]) {
+      RP.constructionMeta[ids[i]].group = groupId;
+      n++;
+    }
+  }
+  if (n) RP.rebuildLines();
+  return n;
+};
+
+// Right-clicking geometry that is part of the current selection acts on
+// the WHOLE selection; right-clicking outside it acts on just that one.
+// That is what file managers do, and it means shift-clicking a dozen
+// lines then assigning them is still two clicks rather than twenty-four.
+RP.groupAssignmentTargets = function(clickedId) {
+  var sel = RP.sketchSelection || [];
+  if (clickedId != null && sel.indexOf(clickedId) < 0) return [clickedId];
+  if (sel.length) return sel.slice();
+  return clickedId != null ? [clickedId] : [];
 };
 
 // Find by name, or make it. This is what the "Group…" prompt uses, so
@@ -165,7 +234,8 @@ RP.parkActiveDoc = function() {
     sketch: RP.ensureSketch(),
     constructionMeta: RP.constructionMeta,
     groups: RP.groups,
-    nextGroupId: RP.nextGroupId
+    nextGroupId: RP.nextGroupId,
+    currentGroupId: RP.currentGroupId
   };
   return RP.documents;
 };
@@ -173,7 +243,8 @@ RP.parkActiveDoc = function() {
 RP.getDoc = function(id) {
   if (id === RP.activeDocId) {
     return { sketch: RP.ensureSketch(), constructionMeta: RP.constructionMeta,
-             groups: RP.groups, nextGroupId: RP.nextGroupId };
+             groups: RP.groups, nextGroupId: RP.nextGroupId,
+             currentGroupId: RP.currentGroupId };
   }
   if (!RP.documents[id]) RP.documents[id] = _freshDoc();
   return RP.documents[id];
@@ -188,6 +259,8 @@ RP.setActiveDoc = function(id) {
   RP.constructionMeta = doc.constructionMeta;
   RP.groups = doc.groups || (doc.groups = []);
   RP.nextGroupId = doc.nextGroupId || 1;
+  RP.currentGroupId = doc.currentGroupId != null ? doc.currentGroupId : null;
+  RP.ensureDefaultGroup();
   RP.activeDocId = id;
   // Selections are per-document ids; carrying them across would highlight
   // an unrelated entity that happens to share a number.
@@ -203,6 +276,8 @@ RP.resetSketch = function() {
   RP.constructionMeta = {};
   RP.groups = [];
   RP.nextGroupId = 1;
+  RP.currentGroupId = null;
+  RP.ensureDefaultGroup();
   RP.activeDocId = RP.DOC_MAT;
   RP.documents = {};
   RP.lines = [];
@@ -296,7 +371,8 @@ RP.addConstructionPoint = function(x, y, opts) {
   var sk = RP.ensureSketch();
   var p = RP.Sketch.addPoint(sk, x, y);
   RP.constructionMeta[p.id] = {
-    label: opts.name || null, visible: true, role: RP.POINT_ROLE
+    label: opts.name || null, visible: true, role: RP.POINT_ROLE,
+    group: RP.currentGroup().id
   };
   var added = RP.autoConstrainPoint(p.id, opts.snap);
   var res = RP.solveSketch();
@@ -327,7 +403,7 @@ RP.addConstructionArc = function(x1, y1, x2, y2, opts) {
   var p2 = RP.Sketch.addPoint(sk, x2, y2);
   var pc = RP.Sketch.addPoint(sk, geom.cx, geom.cy);
   var arc = RP.Sketch.addArc(sk, pc.id, p1.id, p2.id, geom.sweepRad > 0);
-  RP.constructionMeta[arc.id] = { label: opts.name || null, visible: true };
+  RP.constructionMeta[arc.id] = { label: opts.name || null, visible: true, group: RP.currentGroup().id };
 
   var added = [];
   added = added.concat(RP.autoConstrainPoint(p1.id, opts.startSnap));
@@ -624,7 +700,7 @@ RP.addConstructionLine = function(x1, y1, x2, y2, opts) {
   var line = RP.Sketch.addLine(sk, a.id, b.id);
   // No label stored — length is derived in rebuildLines(). `label` here is
   // reserved for an optional user-given name.
-  RP.constructionMeta[line.id] = { label: opts.name || null, visible: true };
+  RP.constructionMeta[line.id] = { label: opts.name || null, visible: true, group: RP.currentGroup().id };
 
   var added = [];
   added = added.concat(RP.autoConstrainPoint(a.id, opts.startSnap));
@@ -958,6 +1034,21 @@ RP.nearestFieldLine = function(pointId) {
   return best;
 };
 
+// Bring a loaded document up to the "everything is in exactly one group"
+// rule. Files written before groups existed have none at all; files from
+// the first groups build could leave geometry ungrouped.
+RP.migrateGroups = function() {
+  var home = RP.ensureDefaultGroup();
+  for (var id in RP.constructionMeta) {
+    var m = RP.constructionMeta[id];
+    if (!m) continue;
+    if (m.group == null || !RP.findGroup(m.group)) m.group = home.id;
+  }
+  if (RP.currentGroupId == null || !RP.findGroup(RP.currentGroupId)) {
+    RP.currentGroupId = home.id;
+  }
+};
+
 // ---- serialization ---------------------------------------------------
 RP.serializeSketch = function() {
   var sk = RP.ensureSketch();
@@ -986,7 +1077,8 @@ RP._serializeDoc = function(doc) {
     },
     construction: JSON.parse(JSON.stringify(doc.constructionMeta || {})),
     groups: JSON.parse(JSON.stringify(doc.groups || [])),
-    nextGroupId: doc.nextGroupId || 1
+    nextGroupId: doc.nextGroupId || 1,
+    currentGroupId: doc.currentGroupId != null ? doc.currentGroupId : null
   };
 };
 
@@ -1007,7 +1099,8 @@ RP._docFromData = function(data) {
     sketch: sk,
     constructionMeta: JSON.parse(JSON.stringify((data && data.construction) || {})),
     groups: groups,
-    nextGroupId: nextG
+    nextGroupId: nextG,
+    currentGroupId: (data && data.currentGroupId != null) ? data.currentGroupId : null
   };
 };
 
@@ -1028,6 +1121,8 @@ RP.deserializeRobotDoc = function(data) {
     RP.constructionMeta = doc.constructionMeta;
     RP.groups = doc.groups || (doc.groups = []);
     RP.nextGroupId = doc.nextGroupId || 1;
+    RP.currentGroupId = doc.currentGroupId != null ? doc.currentGroupId : null;
+    RP.migrateGroups();
     RP.documents[RP.DOC_ROBOT] = doc;
     RP.rebuildLines();
   } else {
@@ -1059,6 +1154,8 @@ RP.restoreAllDocs = function(docs) {
   RP.constructionMeta = doc.constructionMeta;
   RP.groups = doc.groups || (doc.groups = []);
   RP.nextGroupId = doc.nextGroupId || 1;
+  RP.currentGroupId = doc.currentGroupId != null ? doc.currentGroupId : null;
+  RP.migrateGroups();
   RP.rebuildLines();
 };
 
@@ -1087,9 +1184,11 @@ RP.loadSketchFrom = function(data) {
     RP.constructionMeta = JSON.parse(JSON.stringify(data.construction || {}));
     RP.groups = JSON.parse(JSON.stringify(data.groups || []));
     RP.nextGroupId = data.nextGroupId || 1;
+    RP.currentGroupId = data.currentGroupId != null ? data.currentGroupId : null;
     for (var gi = 0; gi < RP.groups.length; gi++) {
       RP.nextGroupId = Math.max(RP.nextGroupId, RP.groups[gi].id + 1);
     }
+    RP.migrateGroups();
     RP.rebuildLines();
   } else {
     RP.sketchFromLegacyLines((data && data.lines) || []);

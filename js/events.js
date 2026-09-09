@@ -496,9 +496,19 @@ RP.initEvents = function() {
     // are generated geometry and cannot be retagged at all.
     var grpBtn = document.getElementById('ctx-menu-group');
     if (grpBtn) {
-      grpBtn.style.display = target.kind === 'line' ? '' : 'none';
-      var gm = target.kind === 'line' ? RP.constructionMeta[target.lineId] : null;
-      grpBtn.textContent = (gm && gm.group != null) ? '📁 Change group…' : '📁 Group…';
+      var canGroup = target.kind === 'line';
+      grpBtn.style.display = canGroup ? '' : 'none';
+      if (canGroup) {
+        var gm = RP.constructionMeta[target.lineId];
+        var cg = RP.currentGroup();
+        var n = RP.groupAssignmentTargets(target.lineId).length;
+        // Say what will happen, including how many — moving twelve lines
+        // by accident because they were still selected is worth naming.
+        grpBtn.textContent = (gm && gm.group === cg.id && n === 1)
+          ? '📁 Already in "' + cg.name + '"'
+          : '📁 Add ' + (n > 1 ? (n + ' to ') : 'to ') + '"' + cg.name + '"';
+        grpBtn.disabled = (gm && gm.group === cg.id && n === 1);
+      }
     }
     var oBtn = document.getElementById('ctx-menu-obstacle');
     var dBtn = document.getElementById('ctx-menu-drive');
@@ -555,21 +565,17 @@ RP.initEvents = function() {
     return (m && m.role) || 'construction';
   }
 
+  // One click, no typing: geometry joins whatever group is current. Acts
+  // on the whole SELECTION when the right-clicked line is part of it, so
+  // shift-clicking a dozen lines then filing them is still two clicks.
   var ctxGroupBtn = document.getElementById('ctx-menu-group');
   if (ctxGroupBtn) {
     ctxGroupBtn.addEventListener('click', function() {
       if (ctxTarget && ctxTarget.kind === 'line') {
-        var meta = RP.constructionMeta[ctxTarget.lineId];
-        var cur = meta && meta.group != null ? (RP.findGroup(meta.group) || {}).name : '';
-        var name = prompt(
-          'Group name (blank to remove from its group):', cur || '');
-        if (name === null) { hideCtxMenu(); return; }
-        RP.pushHistory('Set group');
-        var trimmed = name.trim();
-        // Typing an existing name JOINS that group rather than making a
-        // second one with the same label — see RP.groupByNameOrCreate.
-        var g = trimmed ? RP.groupByNameOrCreate(trimmed) : null;
-        RP.setGeometryGroup(ctxTarget.lineId, g ? g.id : null);
+        var targets = RP.groupAssignmentTargets(ctxTarget.lineId);
+        var g = RP.currentGroup();
+        RP.pushHistory('Add to group');
+        RP.setGeometryGroupMany(targets, g.id);
         if (RP.updateLayerList) RP.updateLayerList();
         RP.render();
       }

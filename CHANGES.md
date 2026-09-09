@@ -1,3 +1,72 @@
+# Changes — 2026-08-30 (4)
+
+## Groups: a current group, so filing costs nothing
+
+The first groups build made you right-click each line and type a group
+name. That is fine for three lines and unusable for thirty — which is the
+number that actually matters. Reworked to the active-layer model every
+CAD tool uses.
+
+### Everything is in exactly one group
+
+There is no longer an "ungrouped" tier. A document always has a
+**Default** group; new geometry goes into the **current** group with no
+extra step; files without groups migrate into Default on load. Two kinds
+of membership that behave differently is a rule to keep in your head for
+no benefit.
+
+Default cannot be deleted, because it is the floor everything falls back
+to. Deleting any other group keeps its geometry and moves it there.
+
+### Setting the current group
+
+- **Click** a group row to draw into it. **Double-click** to rename.
+  Setting the current group is the frequent action, so it gets the plain
+  click; renaming is rare and moves out of the way. Left-click used to
+  rename, which was easy to trigger by accident.
+- **＋ New group** creates one and makes it current, because making a
+  group means you want to use it.
+- Setting a hidden group current **un-hides** it. Otherwise the next line
+  drawn vanishes the instant it is created, which reads as drawing being
+  broken rather than as the group being hidden.
+- The sidebar always shows *drawing into "…"* and the current row is
+  marked ✎. Without that, the classic failure is drawing ten lines into
+  the wrong group and finding out only when you hide it.
+
+### Filing existing geometry
+
+Right-click → **Add to "dropoff"**. One click, no typing.
+
+It acts on the whole SELECTION when the right-clicked line is part of it,
+and on just that line otherwise — the rule file managers use. Since
+shift-click multi-select already existed, that turns "twenty-four clicks
+for a dozen lines" into two. The menu names the count (`Add 12 to
+"dropoff"`) so moving a stale selection by accident is at least visible,
+and greys out when there is nothing to do.
+
+### Verification
+
+13 suites; documents 38 → 46. The six tests that failed were asserting
+the OLD contract — an ungrouped tier, no Default — and were rewritten to
+the new one rather than patched around: new geometry landing in the
+current group, the current group being per-document, a hidden group
+un-hiding when made current, Default refusing deletion, deleted groups
+falling back to Default, and a pre-groups file migrating rather than
+loading with nothing.
+
+New tests cover the selection rule in all three cases (click inside the
+selection, outside it, nothing selected) and twelve lines moving in one
+action.
+
+Verified in Chromium through the real UI: Default exists at startup with
+the hint reading `drawing into "Default"`; a drawn line lands in Default;
+＋ New group makes "line trace" current and the next line goes there;
+clicking the Default row switches back and the list marks it ✎; hiding
+"line trace" then making it current leaves it visible; and a five-line
+selection files in one action.
+
+---
+
 # Changes — 2026-08-30 (3)
 
 ## Overlapping-line pain: click-cycling, readable action rows, named groups

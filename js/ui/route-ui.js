@@ -81,9 +81,13 @@ RP.updateDocUI = function() {
   }
   var hint = document.getElementById('doc-hint');
   if (hint) {
-    hint.textContent = RP.activeDocId === RP.DOC_ROBOT
+    // Where new geometry is going, always on screen. The alternative is
+    // finding out ten lines later.
+    var cg = RP.currentGroup ? RP.currentGroup() : null;
+    var into = cg ? '  ·  drawing into "' + cg.name + '"' : '';
+    hint.textContent = (RP.activeDocId === RP.DOC_ROBOT
       ? 'Robot body. Right-click a line to set the drive axis (its start is the turning centre, and it points forwards).'
-      : 'Field geometry, routes and obstacles';
+      : 'Field geometry, routes and obstacles') + into;
   }
   // Route mode is meaningless over the robot document — see switchDoc.
   var br = document.getElementById('btn-mode-route');

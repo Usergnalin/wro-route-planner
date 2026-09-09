@@ -282,11 +282,30 @@ RP.updateLayerList = function() {
   // One eye per group, hiding everything inside it at once. Listed above
   // the geometry so the switches are together rather than scattered
   // through however many rows the group happens to contain.
-  if (RP.groups && RP.groups.length) {
+  RP.ensureDefaultGroup();
+  {
     var gh = document.createElement('div');
     gh.className = 'layer-group-title';
     gh.textContent = 'Groups';
     el.appendChild(gh);
+
+    var addRow = document.createElement('div');
+    addRow.className = 'layer-item';
+    var addBtn = document.createElement('span');
+    addBtn.className = 'layer-item-label';
+    addBtn.textContent = '＋ New group';
+    addBtn.style.color = '#8bd';
+    addBtn.onclick = function() {
+      var name = prompt('New group name:', '');
+      if (name === null) return;
+      RP.pushHistory('Add group');
+      var g = RP.groupByNameOrCreate(name.trim() || ('Group ' + (RP.groups.length + 1)));
+      if (g) RP.setCurrentGroup(g.id);      // making one means you want to use it
+      RP.updateLayerList(); RP.render();
+      if (RP.updateDocUI) RP.updateDocUI();
+    };
+    addRow.appendChild(addBtn);
+    el.appendChild(addRow);
     for (var gi = 0; gi < RP.groups.length; gi++) {
       (function(grp) {
         var div = document.createElement('div');
@@ -303,32 +322,54 @@ RP.updateLayerList = function() {
           RP.updateLayerList(); RP.render();
         };
 
+        var isCurrent = grp.id === RP.currentGroupId;
+        if (isCurrent) div.className += ' active';
+
         var lbl = document.createElement('span');
         lbl.className = 'layer-item-label';
         var count = RP.entitiesInGroup(grp.id).length;
-        lbl.textContent = grp.name + '  (' + count + ')';
-        lbl.title = 'Click to rename';
+        // The marker matters more than it looks: without it the classic
+        // mistake is drawing ten lines into the wrong group and only
+        // finding out when you hide it.
+        lbl.textContent = (isCurrent ? '✎ ' : '') + grp.name + '  (' + count + ')';
+        lbl.title = isCurrent
+          ? 'New geometry is drawn into this group'
+          : 'Click to draw into this group · double-click to rename';
         if (grp.visible === false) lbl.style.color = '#777';
+        // Setting the current group is the FREQUENT action, so it gets the
+        // plain click; renaming is rare and moves to double-click.
         lbl.onclick = function() {
+          if (grp.id === RP.currentGroupId) return;
+          RP.pushHistory('Set current group');
+          RP.setCurrentGroup(grp.id);
+          RP.updateLayerList(); RP.render();
+          if (RP.updateDocUI) RP.updateDocUI();
+        };
+        lbl.ondblclick = function() {
           var name = prompt('Group name:', grp.name);
           if (name === null) return;
           RP.pushHistory('Rename group');
           RP.renameGroup(grp.id, name.trim() || grp.name);
           RP.updateLayerList();
+          if (RP.updateDocUI) RP.updateDocUI();
         };
 
-        var del = document.createElement('button');
-        del.className = 'layer-del-btn';
-        del.textContent = '✕';
-        del.title = 'Delete the group (its geometry is kept, and becomes ungrouped)';
-        del.onclick = function(e) {
-          e.stopPropagation();
-          RP.pushHistory('Delete group');
-          RP.removeGroup(grp.id);
-          RP.updateLayerList(); RP.render();
-        };
-
-        div.appendChild(eye); div.appendChild(lbl); div.appendChild(del);
+        div.appendChild(eye); div.appendChild(lbl);
+        // Default is where everything falls back to, so it has no ✕.
+        if (!grp.isDefault) {
+          var del = document.createElement('button');
+          del.className = 'layer-del-btn';
+          del.textContent = '✕';
+          del.title = 'Delete the group — its geometry is kept and moves to Default';
+          del.onclick = function(e) {
+            e.stopPropagation();
+            RP.pushHistory('Delete group');
+            RP.removeGroup(grp.id);
+            RP.updateLayerList(); RP.render();
+            if (RP.updateDocUI) RP.updateDocUI();
+          };
+          div.appendChild(del);
+        }
         el.appendChild(div);
       })(RP.groups[gi]);
     }

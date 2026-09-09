@@ -382,11 +382,41 @@ check('switching documents abandons a half-drawn line', () => {
 const viewOf = (RP, id) =>
   RP.lines.concat(RP.arcs, RP.points).find(v => v.id === id);
 
-check('geometry starts ungrouped and visible', () => {
+check('new geometry lands in the current group, which starts as Default', () => {
   const RP = fresh();
   const l = RP.addConstructionLine(0, 0, 100, 0);
   assert(viewOf(RP, l.line.id).visible === true, 'visible by default');
-  assert(viewOf(RP, l.line.id).group === null, 'and in no group');
+  const def = RP.currentGroup();
+  assert(def.isDefault === true, 'the current group starts as Default');
+  assert(viewOf(RP, l.line.id).group === def.id,
+    'and geometry is filed into it without being asked');
+});
+
+check('new geometry follows the current group when it changes', () => {
+  const RP = fresh();
+  const g = RP.addGroup('dropoff');
+  RP.setCurrentGroup(g.id);
+  const l = RP.addConstructionLine(0, 0, 100, 0);
+  assert(viewOf(RP, l.line.id).group === g.id,
+    'drawing should go where you said, with no per-line step');
+});
+
+check('setting a hidden group current un-hides it', () => {
+  const RP = fresh();
+  const g = RP.addGroup('dropoff');
+  RP.setGroupVisible(g.id, false);
+  RP.setCurrentGroup(g.id);
+  assert(RP.findGroup(g.id).visible !== false,
+    'or the next line drawn would vanish as it was created');
+  const l = RP.addConstructionLine(0, 0, 100, 0);
+  assert(viewOf(RP, l.line.id).visible === true, 'and it is actually visible');
+});
+
+check('Default cannot be deleted, because it is the fallback', () => {
+  const RP = fresh();
+  const def = RP.currentGroup();
+  assert(RP.removeGroup(def.id) === false, 'should refuse');
+  assert(RP.currentGroup().isDefault === true, 'and still be there');
 });
 
 check('hiding a group hides its members in the view every consumer reads', () => {
@@ -430,12 +460,25 @@ check('a hidden group makes its obstacles inert, like hiding them one by one', (
 check('groups are per-document and do not leak', () => {
   const RP = fresh();
   RP.addGroup('mat things');
+  const matNames = RP.groups.map(g => g.name);
   RP.setActiveDoc(RP.DOC_ROBOT);
-  assert(RP.groups.length === 0, 'the robot document has its own groups');
+  assert(RP.groups.map(g => g.name).indexOf('mat things') < 0,
+    'the robot document must not see the mat\'s groups');
+  assert(RP.currentGroup().isDefault === true, 'and gets its own Default');
   RP.addGroup('robot things');
   RP.setActiveDoc(RP.DOC_MAT);
-  assert(RP.groups.length === 1 && RP.groups[0].name === 'mat things',
-    'and the mat keeps its own');
+  assert(JSON.stringify(RP.groups.map(g => g.name)) === JSON.stringify(matNames),
+    'and the mat keeps exactly its own, got ' + JSON.stringify(RP.groups.map(g => g.name)));
+});
+
+check('the current group is per-document too', () => {
+  const RP = fresh();
+  const matG = RP.addGroup('mat things');
+  RP.setCurrentGroup(matG.id);
+  RP.setActiveDoc(RP.DOC_ROBOT);
+  assert(RP.currentGroup().id !== matG.id, 'the robot has its own current group');
+  RP.setActiveDoc(RP.DOC_MAT);
+  assert(RP.currentGroup().id === matG.id, 'and the mat remembers its own');
 });
 
 check('the robot footprint respects its OWN document groups from the mat', () => {
@@ -460,7 +503,9 @@ check('deleting a group keeps the geometry and un-hides it', () => {
   RP.removeGroup(g.id);
   assert(RP.lines.length === 1, 'the line survives — deleting a group is not deleting work');
   assert(viewOf(RP, a.line.id).visible === true, 'and is visible again');
-  assert(RP.constructionMeta[a.line.id].group == null, 'and is ungrouped');
+  assert(RP.constructionMeta[a.line.id].group === RP.currentGroup().id &&
+         RP.currentGroup().isDefault === true,
+    'and falls back to Default rather than to a nonexistent ungrouped tier');
 });
 
 check('naming an existing group joins it instead of making a duplicate', () => {
@@ -470,7 +515,8 @@ check('naming an existing group joins it instead of making a duplicate', () => {
   const g1 = RP.groupByNameOrCreate('dropoff');
   const g2 = RP.groupByNameOrCreate('Dropoff');    // different case, same group
   assert(g1.id === g2.id, 'should have matched the existing group');
-  assert(RP.groups.length === 1, 'and not created a second, got ' + RP.groups.length);
+  const dropoffs = RP.groups.filter(g => g.name.toLowerCase() === 'dropoff');
+  assert(dropoffs.length === 1, 'and not created a second, got ' + dropoffs.length);
   RP.setGeometryGroup(a.line.id, g1.id);
   RP.setGeometryGroup(b.line.id, g2.id);
   assert(RP.entitiesInGroup(g1.id).length === 2, 'both members land in the one group');
@@ -496,21 +542,27 @@ check('groups survive a save/load round trip', () => {
   const RP2 = fresh();
   RP2.loadSketchFrom({ sketch: mat.sketch, construction: mat.construction,
                        groups: mat.groups, nextGroupId: mat.nextGroupId });
-  assert(RP2.groups.length === 1, 'group restored');
-  assert(RP2.groups[0].name === 'line trace', 'with its name');
-  assert(RP2.groups[0].visible === false, 'and its hidden state');
+  const lt = RP2.groups.filter(g => g.name === 'line trace');
+  assert(lt.length === 1, 'group restored');
+  assert(lt[0].visible === false, 'with its hidden state');
   assert(viewOf(RP2, a.line.id).visible === false, 'so the member is still hidden');
 });
 
-check('a pre-groups save file loads with no groups rather than breaking', () => {
+check('a pre-groups save file migrates its geometry into Default', () => {
   const RP = fresh();
   RP.addConstructionLine(0, 0, 100, 0);
   const mat = RP._serializeDoc(RP.getDoc(RP.DOC_MAT));
+  // Strip every trace of groups, as a file written before they existed.
+  const legacyMeta = JSON.parse(JSON.stringify(mat.construction));
+  for (const k in legacyMeta) delete legacyMeta[k].group;
+
   const RP2 = fresh();
-  RP2.loadSketchFrom({ sketch: mat.sketch, construction: mat.construction });
-  assert(RP2.groups.length === 0, 'no groups, and nothing thrown');
-  assert(RP2.lines.length === 1 && RP2.lines[0].visible === true,
-    'and everything is visible');
+  RP2.loadSketchFrom({ sketch: mat.sketch, construction: legacyMeta });
+  const def = RP2.currentGroup();
+  assert(def.isDefault === true, 'a Default group is created for it');
+  assert(RP2.lines.length === 1 && RP2.lines[0].visible === true, 'everything visible');
+  assert(RP2.constructionMeta[RP2.lines[0].id].group === def.id,
+    'and the old geometry is filed into Default rather than left in limbo');
 });
 
 check('undo restores group visibility', () => {
@@ -523,6 +575,48 @@ check('undo restores group visibility', () => {
   assert(viewOf(RP, a.line.id).visible === false, 'hidden');
   RP.undo();
   assert(viewOf(RP, a.line.id).visible === true, 'undo brings it back');
+});
+
+// ---- assigning by selection ------------------------------------------
+check('right-clicking inside the selection acts on the whole selection', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(0, 50, 100, 50);
+  const c = RP.addConstructionLine(0, 90, 100, 90);
+  RP.sketchSelection = [a.line.id, b.line.id];
+  const targets = RP.groupAssignmentTargets(a.line.id);
+  assert(targets.length === 2, 'both selected lines, got ' + targets.length);
+  assert(targets.indexOf(c.line.id) < 0, 'and not the unselected one');
+});
+
+check('right-clicking OUTSIDE the selection acts on just that line', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(0, 50, 100, 50);
+  const c = RP.addConstructionLine(0, 90, 100, 90);
+  RP.sketchSelection = [a.line.id, b.line.id];
+  const targets = RP.groupAssignmentTargets(c.line.id);
+  assert(JSON.stringify(targets) === JSON.stringify([c.line.id]),
+    'clicking away from a selection should mean that one thing, got ' + JSON.stringify(targets));
+});
+
+check('with nothing selected it is just the clicked line', () => {
+  const RP = fresh();
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  RP.sketchSelection = [];
+  assert(JSON.stringify(RP.groupAssignmentTargets(a.line.id)) ===
+         JSON.stringify([a.line.id]), 'one line');
+});
+
+check('a dozen selected lines move in one action', () => {
+  const RP = fresh();
+  const ids = [];
+  for (let i = 0; i < 12; i++) ids.push(RP.addConstructionLine(0, i * 10, 100, i * 10).line.id);
+  const g = RP.addGroup('dropoff');
+  RP.sketchSelection = ids.slice();
+  const n = RP.setGeometryGroupMany(RP.groupAssignmentTargets(ids[0]), g.id);
+  assert(n === 12, 'all twelve moved, got ' + n);
+  assert(RP.entitiesInGroup(g.id).length === 12, 'and they are all in the group');
 });
 
 if (!report()) process.exitCode = 1;
