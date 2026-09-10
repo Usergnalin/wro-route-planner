@@ -1,3 +1,51 @@
+# Changes — 2026-08-30 (6)
+
+## Segment names, and segment headings in the generated code
+
+Two follow-ups to segmentation.
+
+### Named at the moment they are created
+
+Splitting now asks for a name, while what the segment is *for* is still
+in mind. Cancelling keeps the auto name rather than abandoning the split:
+the cut is the thing that was asked for, the name is a detail. Renaming
+afterwards by double-clicking the header still works.
+
+### A one-line heading above each segment's code
+
+Generated code now carries `<comment prefix> Segment <name>` above the
+lines that belong to it, with a blank line between segments. It uses the
+project's configured comment prefix, so it is `#` for Python and `//` for
+anything that wants that.
+
+Two details worth stating, because they are what the tests pin down:
+
+The heading is keyed off **each step's owning segment**, not off where
+the markers sit in the action list. That means a segment whose actions
+all emitted nothing — a run of junction turns below the emit threshold —
+never gets a heading with no code under it, and an excluded segment takes
+its heading away with it rather than leaving an orphan label.
+
+An **unsegmented route is untouched**: no headings, no blank lines, byte
+for byte what it produced before. The golden fixtures confirm it — they
+regenerated unchanged.
+
+### Verification
+
+13 suites; route mode 52 → 55.
+
+Mutation-checked all three: dropping the "more than one segment" gate
+fails the unsegmented test, and emitting the heading only after the first
+step fails the ordering assertion.
+
+Verified in Chromium through the real ✂ Split button and the real name
+dialog: typing "To the wall" gives rows `Start (2)` / `To the wall (2)`
+and code split under `# Segment Start` and `# Segment To the wall`, and
+unticking the tail leaves the first heading with its two moves under a
+`PARTIAL ROUTE` line.
+
+---
+
 # Changes — 2026-08-30 (5)
 
 ## Route segments: split, hide, and choose what goes in the code

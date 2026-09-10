@@ -404,6 +404,11 @@ RP.splitSegmentHere = function() {
   RP.pushHistory('Split route');
   var m = RP.insertSegmentMarker(route.id, RP.selectedActionId, null);
   if (!m) { RP.undoStack.pop(); return null; }
+  // Named at the moment it is created, while what it is for is still in
+  // mind. Cancelling keeps the auto name rather than abandoning the split —
+  // the cut is the thing that was asked for; the name is a detail.
+  var name = prompt('Name this segment:', m.name);
+  if (name !== null && name.trim()) RP.setSegmentProps(route.id, m.id, { name: name.trim() });
   RP.refreshRouteUI();
   return m;
 };

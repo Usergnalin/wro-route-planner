@@ -740,6 +740,44 @@ check('excluded code says it is partial and where it assumes the robot is', () =
     'and should not repeat the start pose it already prints, got:\n' + code2);
 });
 
+check('segment transitions are marked in the code with a one-line comment', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  const m = RP.splitSegmentHere();
+  RP.setSegmentProps(route.id, m.id, { name: 'To the wall' });
+  RP.setSegmentProps(route.id, null, { name: 'Off the base' });
+  const code = RP.generateCode(route);
+  const heads = code.split('\n').filter(l => /Segment /.test(l));
+  assert(heads.length === 2, 'one heading per segment, got ' + JSON.stringify(heads));
+  assert(/Segment Off the base/.test(heads[0]), 'named, got ' + heads[0]);
+  assert(/Segment To the wall/.test(heads[1]), 'named, got ' + heads[1]);
+
+  // The heading has to sit ABOVE its own code, not after it — the whole
+  // point is knowing which lines belong to what.
+  const body = code.split('─'.repeat(37))[1].split('\n').filter(l => l.trim());
+  assert(/Segment Off the base/.test(body[0]),
+    'first heading should lead the emitted code, got ' + JSON.stringify(body.slice(0, 3)));
+});
+
+check('an unsegmented route gets no segment headings at all', () => {
+  const RP = fresh();
+  const { route } = fourLegs(RP);
+  assert(!/Segment /.test(RP.generateCode(route)),
+    'nothing was split, so nothing should be labelled');
+});
+
+check('an excluded segment takes its heading with it', () => {
+  const RP = fresh();
+  const { route, moves } = fourLegs(RP);
+  RP.selectedActionId = moves[2].id;
+  const m = RP.splitSegmentHere();
+  RP.setSegmentProps(route.id, m.id, { name: 'Tail', included: false });
+  const code = RP.generateCode(route);
+  assert(!/Segment Tail/.test(code),
+    'a heading with no code under it is worse than no heading, got:\n' + code);
+});
+
 check('hiding and including are independent switches', () => {
   const RP = fresh();
   const { route, moves } = fourLegs(RP);

@@ -324,8 +324,26 @@ RP.generateCode = function(route) {
 
   lines_out.push(cp + ' ' + '─'.repeat(37));
 
+  // Segment headings in the emitted code. Only when the route actually has
+  // segments — an unsegmented route gets exactly the output it always did.
+  //
+  // Keyed off the OWNING SEGMENT of each step rather than off marker
+  // positions, so a segment whose actions all emitted nothing never gets a
+  // heading with no code under it.
+  var segMark = (RP.routeSegments(route).length > 1) ? RP.segmentIndex(route) : null;
+  var curSeg;
+
   for (var s = 0; s < steps.length; s++) {
     var st = steps[s];
+    if (segMark && st.actionId != null) {
+      var owner = segMark[st.actionId];
+      var ownerId = owner ? owner.id : null;
+      if (owner && ownerId !== curSeg) {
+        if (s > 0) lines_out.push('');
+        lines_out.push(cp + ' Segment ' + owner.name);
+        curSeg = ownerId;
+      }
+    }
     if (st.kind === 'turn') {
       // A spin and a one-wheel pivot are different manoeuvres, so each
       // style can have its own template. Blank means "same as a spin",
