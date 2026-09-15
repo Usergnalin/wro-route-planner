@@ -811,7 +811,6 @@ RP.initEvents = function() {
           !confirm('Replace the existing field walls?')) return;
       RP.pushHistory('Add field walls');
       RP.createFieldBoundary();
-      RP.syncAllWallAligns();
       if (RP.updateLayerList) RP.updateLayerList();
       RP.refreshSketchUI();
     });
@@ -932,7 +931,7 @@ RP.initEvents = function() {
     });
   }
 
-  ['robot-fc', 'robot-rc', 'robot-drift'].forEach(function(id) {
+  ['robot-drift'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', RP.updateRobotConfigFromUI);

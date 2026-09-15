@@ -267,24 +267,6 @@ check('robotExtentsMm measures reach from the turning centre, in mm', () => {
   assertClose(ext.width, 90, 1e-9, '180px / 2');
 });
 
-check('wall clearance is measured from the body instead of the typed numbers', () => {
-  const RP = fresh();
-  RP.robotConfig.frontClearance = 999;   // deliberately wrong
-  RP.robotConfig.rearClearance = 888;
-  robotWithDrive(RP);
-  RP.setActiveDoc(RP.DOC_MAT);
-  assertClose(RP.wallClearanceMm({ reverse: false }), 75, 1e-9, 'front comes from the body');
-  assertClose(RP.wallClearanceMm({ reverse: true }), 25, 1e-9, 'rear comes from the body');
-});
-
-check('with no body drawn the typed clearances still apply', () => {
-  const RP = fresh();
-  RP.robotConfig.frontClearance = 60;
-  RP.robotConfig.rearClearance = 40;
-  assertClose(RP.wallClearanceMm({ reverse: false }), 60, 1e-9, 'falls back to the field');
-  assertClose(RP.wallClearanceMm({ reverse: true }), 40, 1e-9, 'falls back to the field');
-});
-
 check('flipping the drive axis reverses forward without redrawing it', () => {
   const RP = fresh();
   RP.setActiveDoc(RP.DOC_ROBOT);

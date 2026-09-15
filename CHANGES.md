@@ -1,3 +1,76 @@
+# Changes — 2026-08-30 (7)
+
+## Wall align trusts the geometry you drew
+
+The last of the post-competition pain points. A wall align used to add a
+`point_line_distance` constraint to the move's exit point and let the
+solver push that point off the wall by the robot's front or rear
+overhang. Three things were wrong with that:
+
+- It was a constraint the user never asked for, solved against the ones
+  they did draw. A point deliberately drawn ON a wall had its
+  `point_on_line` silently DELETED to make room for it.
+- It moved geometry out from under them the moment a move changed mode,
+  or the robot body changed, or a clearance number changed.
+- It made "where does this leg end" a question with two answers.
+
+It now does what a line trace does: **nothing**. The move ends where it
+was drawn. Switching a move's mode no longer writes to the sketch at all.
+
+Standing off a wall by the body's overhang is still perfectly reasonable
+— it is just yours to apply now, as a **Distance to line** constraint in
+the sketcher, where you can see it, edit it, and have it solved against
+everything else you drew.
+
+### Old projects
+
+Their `point_line_distance` constraints are kept exactly as they are.
+They are ordinary user geometry now: nothing updates them, nothing
+deletes them, and no geometry shifts on load. That is deliberate — a
+migration that "cleaned up" would move competition-day geometry.
+
+### The clearance fields are gone
+
+Front and rear clearance existed only to feed that constraint, so leaving
+two editable numbers that silently do nothing would be a trap. The body's
+reach ahead, behind and either side of the turning centre is still
+measured and still reported in Robot & Code — it is what the collision
+sweep uses, and it is how you check the drive axis sits where you think.
+
+### Which wall, and the panel
+
+The simulator still needs to know which wall an align squares against, to
+decide which axis of drift it cancels. That is now READ out of the
+drawing — an explicit `point_line_distance` names one, otherwise it is
+the nearest wall to where the leg ends — and never written back.
+
+Because it is a guess, the move panel now says which wall it landed on,
+along with the new contract:
+
+> Ends exactly where you drew it — draw the end point where the turning
+> centre should come to rest. Squares against **right wall**.
+
+`{expected_distance}` is unchanged in meaning and now comes straight from
+the drawn leg.
+
+### Verification
+
+13 suites; field + wall align 19 → 20, documents 46 → 44 (two clearance
+tests deleted with the thing they tested). Goldens regenerated unchanged.
+
+The six old wall-align tests asserted the OPPOSITE contract — that the
+point gets moved to 1900 and the user's `point_on_line` is replaced — so
+they were rewritten to the new one rather than patched. They are their
+own mutation test: every one of them failed before the rewrite.
+
+Verified in Chromium through the real mode dropdown: switching a move to
+Wall Align leaves its end point at x=1950 where it was drawn, the sketch
+does not go to conflict, the panel names the right wall, the clearance
+inputs are gone, and the code still emits
+`expected_distance=475.000`.
+
+---
+
 # Changes — 2026-08-30 (6)
 
 ## Segment names, and segment headings in the generated code

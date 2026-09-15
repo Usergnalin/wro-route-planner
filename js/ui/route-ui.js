@@ -61,10 +61,6 @@ RP.switchDoc = function(id) {
   if (v) { RP.scale = v.scale; RP.offsetX = v.offsetX; RP.offsetY = v.offsetY; }
   else if (RP.resetView) RP.resetView();
 
-  // Leaving the robot means its extents may have changed, and wall_align
-  // stands off by exactly those — so the mat's constraints have to catch up.
-  if (id === RP.DOC_MAT && RP.syncAllWallAligns) RP.syncAllWallAligns();
-
   RP.updateDocUI();
   RP.updateModeUI();
   if (RP.updateLayerList) RP.updateLayerList();
@@ -452,15 +448,9 @@ RP.updateSelectedMove = function(props) {
     delete props.checkpoint;
   }
   RP.setMoveProps(route.id, RP.selectedMoveId, props);
-  // Becoming (or ceasing to be) a wall align changes the constraints, and
-  // driving backwards swaps front clearance for rear.
-  if (props.move !== undefined || props.reverse !== undefined) {
-    var el = RP.getSelectedMove();
-    if (el) {
-      RP.syncWallAlignConstraint(route, el);
-      RP.solveSketch();
-    }
-  }
+  // Changing mode no longer touches the sketch. A wall align is a
+  // statement about what the robot DOES at the end of this leg, not a
+  // reason to move where the leg ends.
   RP.refreshRouteUI();
   return true;
 };
@@ -909,6 +899,16 @@ RP.renderMoveParams = function(host, el) {
   if (el.move === 'linetrace_junct') {
     html += '<label class="ap-row"><span>Junctions</span><input type="number" id="ap-junctions" min="1" ' +
             'value="' + (el.junctions || 1) + '" style="' + INPUT_CSS + '"></label>';
+  }
+  if (el.move === 'wall_align') {
+    // Naming the wall matters now that nothing snaps to it: this is the
+    // line the simulator credits the align with squaring against, and it
+    // is the one place that guess is visible before it affects anything.
+    var wId = RP.wallAlignTarget ? RP.wallAlignTarget(sk, el) : null;
+    var wMeta = wId != null ? RP.constructionMeta[wId] : null;
+    html += '<div class="sidebar-hint">Ends exactly where you drew it — draw the ' +
+            'end point where the turning centre should come to rest. Squares against <b>' +
+            (wMeta ? (wMeta.label || ('#' + wId)) : 'no wall found') + '</b>.</div>';
   }
   if (el.move === 'teleport') {
     html += '<label class="ap-row"><span>Name</span><input type="text" id="ap-teleport" ' +

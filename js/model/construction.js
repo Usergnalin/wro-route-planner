@@ -564,14 +564,12 @@ RP.flipDriveAxis = function() {
   return true;
 };
 
-// The robot's reach from its turning centre, in mm. This is what front
-// and rear clearance actually ARE — how far the body sticks out ahead of
-// and behind the point it pivots about — so once a body is drawn there is
-// nothing left for a human to type, and two numbers that could disagree
-// with the drawing become one that cannot.
+// The robot's reach from its turning centre, in mm: how far the body
+// sticks out ahead of, behind and either side of the point it pivots
+// about. Used by the collision sweep, and reported in Robot & Code so the
+// drive axis can be checked against the drawing.
 //
-// Returns null when there is no body or no calibration to convert with,
-// which is what keeps the manual fields meaningful as a fallback.
+// Returns null when there is no body or no calibration to convert with.
 RP.robotExtentsMm = function() {
   if (!RP.calibration || !RP.calibration.pixelsPerMm) return null;
   var fp = RP.robotFootprint();
@@ -587,7 +585,7 @@ RP.robotExtentsMm = function() {
   }
   // Forward is +x in the robot frame. A centre that sits outside the body
   // (a drive axis drawn ahead of the whole chassis) would give a negative
-  // extent, which is not a clearance — clamp so it reads as "no overhang".
+  // extent, which is not an overhang — clamp so it reads as "none".
   return {
     front: Math.max(0, maxX) / ppm,
     rear:  Math.max(0, -minX) / ppm,

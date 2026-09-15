@@ -226,11 +226,10 @@ RP.simPoseTrack = function(route, opts) {
         // Squaring against a wall fixes the distance to that wall, i.e.
         // the axis NORMAL to it. Position ALONG the wall is untouched —
         // a robot can drive into a wall perfectly and still be a hand's
-        // width off sideways. The wall is whichever line the move's own
-        // point_line_distance constraint names.
-        var ends = RP.moveEndpoints(sk, el);
-        var wc = ends && RP.wallConstraintFor(sk, ends.exit);
-        var wall = wc && sk.entities[wc.refs[1]];
+        // width off sideways. The wall is whichever one the move ends
+        // against — read from the drawing, never written back to it.
+        var wallId = RP.wallAlignTarget(sk, el);
+        var wall = wallId && sk.entities[wallId];
         var wa = wall && sk.entities[wall.p1], wb = wall && sk.entities[wall.p2];
         if (wa && wb) {
           RP.simCorrectAlong(u, wb.x - wa.x, wb.y - wa.y);

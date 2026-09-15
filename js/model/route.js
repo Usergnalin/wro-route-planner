@@ -443,23 +443,21 @@ RP.rebuildRouteViews = function() {
   }
 };
 
-// ---- wall_align as a constraint --------------------------------------
-// Replaces the deleted applyWallAlignSnap, which wrote node.x/y directly.
-// The stopping point is now CONSTRAINED to stand `clearance` away from a
-// real wall, and the solver puts it there.
-// How far the robot's body stands off a wall when it aligns against it.
+// ---- wall_align ------------------------------------------------------
+// A wall align used to ADD a point_line_distance constraint to the move's
+// exit point and let the solver push that point off the wall by the
+// robot's front or rear overhang. That was one constraint the user never
+// asked for, fighting the ones they did draw, and it moved geometry out
+// from under them the moment a move changed mode.
 //
-// Derived from the drawn body when there is one: this distance IS the
-// overhang from the turning centre to whichever end leads, so with a
-// robot document open there is nothing for a human to type, and the two
-// numbers can no longer disagree with the drawing they describe. The
-// manual fields stay as the fallback for projects with no robot drawn.
-RP.wallClearanceMm = function(el) {
-  var ext = RP.robotExtentsMm ? RP.robotExtentsMm() : null;
-  if (ext) return el.reverse ? ext.rear : ext.front;
-  return el.reverse ? (RP.robotConfig.rearClearance || 50)
-                    : (RP.robotConfig.frontClearance || 50);
-};
+// It now trusts the drawing, exactly like a line trace does: the move ends
+// where the user put it, and nothing here writes to the sketch. If you
+// want the stopping point to stand off a wall, draw it standing off the
+// wall — or constrain it yourself, in the sketcher, where you can see it.
+//
+// Projects made before this keep whatever point_line_distance constraints
+// they have. They are ordinary user geometry now: nothing updates them,
+// nothing deletes them, and the geometry does not shift on load.
 
 RP.wallConstraintFor = function(sk, pointId) {
   var cs = RP.Sketch.constraintsOn(sk, pointId);
@@ -469,61 +467,16 @@ RP.wallConstraintFor = function(sk, pointId) {
   return null;
 };
 
-RP.syncWallAlignConstraint = function(route, el) {
-  var sk = RP.ensureSketch();
+// Which wall a wall align squares against — read, never written. An
+// explicit constraint names one; otherwise it is the nearest wall to where
+// the move ends. Used by the simulator to work out which axis the align
+// actually corrects.
+RP.wallAlignTarget = function(sk, el) {
   var ends = RP.moveEndpoints(sk, el);
   if (!ends) return null;
-  var exitId = ends.exit;
-  var existing = RP.wallConstraintFor(sk, exitId);
-
-  if (el.move !== RP.MOVE_WALL_ALIGN) {
-    if (existing) RP.Sketch.removeConstraint(sk, existing.id);
-    return null;
-  }
-
-  // Which wall: keep the one already chosen, else honour an explicit
-  // point_on_line the user drew against a wall, else the nearest wall.
-  var wallId = existing ? existing.refs[1] : null;
-  if (!wallId) {
-    var fieldIds = RP.fieldLineIds();
-    var onWall = RP.Sketch.constraintsOn(sk, exitId).filter(function(c) {
-      return c.type === 'point_on_line' && fieldIds.indexOf(c.refs[1]) >= 0;
-    });
-    if (onWall.length) {
-      wallId = onWall[0].refs[1];
-      // Sitting ON the wall contradicts standing off it by clearance.
-      for (var i = 0; i < onWall.length; i++) RP.Sketch.removeConstraint(sk, onWall[i].id);
-    } else {
-      wallId = RP.nearestFieldLine(exitId);
-    }
-  }
-  if (!wallId) return null;
-
-  var ppm = RP.calibration ? RP.calibration.pixelsPerMm : 1;
-  var clearPx = RP.wallClearanceMm(el) * ppm;
-  // Signed, so the point stays on the side of the wall it is already on.
-  var signed = RP.Sketch.perpDistance(sk, exitId, wallId);
-  var target = (signed !== null && signed < 0) ? -clearPx : clearPx;
-
-  if (existing) {
-    existing.refs[1] = wallId;
-    existing.value = target;
-    return existing;
-  }
-  return RP.Sketch.addConstraint(sk, 'point_line_distance', [exitId, wallId], target);
-};
-
-RP.syncAllWallAligns = function() {
-  var route = RP.getActiveRoute();
-  if (!route) return 0;
-  var moves = RP.moveActions(route);
-  var n = 0;
-  for (var i = 0; i < moves.length; i++) {
-    if (RP.syncWallAlignConstraint(route, moves[i])) n++;
-  }
-  if (RP.solveSketch) RP.solveSketch();
-  RP.rebuildRouteViews();
-  return n;
+  var c = RP.wallConstraintFor(sk, ends.exit);
+  if (c) return c.refs[1];
+  return RP.nearestFieldLine ? RP.nearestFieldLine(ends.exit) : null;
 };
 
 // ---- serialization ---------------------------------------------------

@@ -195,10 +195,10 @@ RP.computeSteps = function(route) {
       } else if (mode === RP.MOVE_LINETRACE_JUNCT) {
         steps.push({ kind: 'linetrace_junct', junctions: el.junctions || 1, reverse: backward, speed: el.speed });
       } else if (mode === RP.MOVE_WALL_ALIGN) {
-        // The solver already knows this leg's length (it pinned the exit
-        // point to stand `clearance` off the wall) — hand it out as
-        // expected_distance so a real robot can slow down on approach
-        // instead of driving blind at wall_align speed the whole leg.
+        // How long the leg is AS DRAWN — hand it out as expected_distance
+        // so a real robot can slow down on approach instead of driving
+        // blind at wall_align speed the whole leg. It is the user's own
+        // number now: draw the line ending where the robot should stop.
         steps.push({ kind: 'wall_align', reverse: backward, speed: el.speed, expectedDistanceMm: legMm });
       } else {
         steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: backward, speed: el.speed });

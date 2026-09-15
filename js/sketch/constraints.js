@@ -133,11 +133,11 @@ RP.Sketch.registerConstraint('point_on_line', {
 // ======================================================================
 // point_line_distance(point, line, d)
 //
-// Hold a point a fixed perpendicular distance from a line. This is what
-// makes wall_align honest: the field wall is real fixed geometry, and the
-// robot's stopping point is CONSTRAINED to sit `clearance` away from it,
-// solved like everything else — rather than a helper writing coordinates
-// behind the solver's back.
+// Hold a point a fixed perpendicular distance from a line. Standing a
+// stopping point off a wall by the robot's overhang is the obvious use,
+// and wall_align used to add this constraint by itself — it no longer
+// does, so this is now something you apply deliberately, where you can
+// see it, like every other constraint.
 //
 // The value is SIGNED, so which side of the wall the point sits on is
 // preserved.

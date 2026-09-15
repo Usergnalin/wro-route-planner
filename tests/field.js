@@ -1,6 +1,6 @@
 /* ========================================================================
-   field.js - Phase 7: field walls as fixed geometry, wall_align as a
-   real distance constraint.
+   field.js - Phase 7: field walls as fixed geometry, and wall_align
+   trusting the geometry the user drew.
 
      node tests/field.js
    ======================================================================== */
@@ -20,8 +20,6 @@ function fresh() {
   RP.imgNaturalH = 1200;
   RP.scale = 1;
   RP.resetSketch();
-  RP.robotConfig.frontClearance = 50;         // mm
-  RP.robotConfig.rearClearance = 30;          // mm
   RP.undoStack = [];
   RP.redoStack = [];
   return RP;
@@ -128,64 +126,38 @@ check('nearestFieldLine picks the wall actually being approached', () => {
   assert(RP.nearestFieldLine(p.id) === rightWallId(RP), 'expected the right wall');
 });
 
-// ---- wall_align --------------------------------------------------------
-check('making an element a wall align constrains it off the wall', () => {
+// ---- wall_align -------------------------------------------------------
+// A wall align says what the robot DOES at the end of a leg. It is not a
+// reason to move where the leg ends — the drawing is trusted, exactly as
+// it is for a line trace.
+check('making a move a wall align does not move the geometry', () => {
   const RP = fresh();
   const { el, route, lead } = approachRightWall(RP);
+  const before = { x: RP.sketch.entities[lead.p2.id].x, y: RP.sketch.entities[lead.p2.id].y };
   RP.selectedMoveId = el.id;
   RP.updateSelectedMove({ move: 'wall_align' });
 
-  const sk = RP.sketch;
-  const c = RP.wallConstraintFor(sk, lead.p2.id);
-  assert(c, 'a distance-to-wall constraint should exist');
-  assert(c.refs[1] === rightWallId(RP), 'against the right wall');
-  // 50 mm front clearance at 2 px/mm = 100 px, so x = 2000 - 100
-  assertClose(sk.entities[lead.p2.id].x, 1900, 1e-6,
-    'the solver should stand the robot off the wall');
+  assertClose(RP.sketch.entities[lead.p2.id].x, before.x, 1e-9, 'x must not shift');
+  assertClose(RP.sketch.entities[lead.p2.id].y, before.y, 1e-9, 'y must not shift');
+  assert(!RP.wallConstraintFor(RP.sketch, lead.p2.id),
+    'no constraint the user did not ask for');
   assert(RP.resolveRoute(route).ok, 'route still resolves');
 });
 
-check('changing clearance moves the stopping point', () => {
+check('reversing a wall align does not move it either', () => {
   const RP = fresh();
   const { el, lead } = approachRightWall(RP);
   RP.selectedMoveId = el.id;
   RP.updateSelectedMove({ move: 'wall_align' });
-
-  RP.robotConfig.frontClearance = 80;        // mm -> 160 px
-  RP.syncAllWallAligns();
-  assertClose(RP.sketch.entities[lead.p2.id].x, 1840, 1e-6,
-    'clearance now drives the position through the solver');
+  RP.updateSelectedMove({ reverse: true });
+  assertClose(RP.sketch.entities[lead.p2.id].x, 1950, 1e-9,
+    'front/rear overhang is not the planner\'s business any more');
 });
 
-check('driving backwards uses the rear clearance', () => {
-  const RP = fresh();
-  const { el, lead } = approachRightWall(RP);
-  RP.selectedMoveId = el.id;
-  RP.updateSelectedMove({ move: 'wall_align' });
-  assertClose(RP.sketch.entities[lead.p2.id].x, 1900, 1e-6, 'front clearance first');
-
-  RP.updateSelectedMove({ reverse: true });   // rear clearance is 30 mm = 60 px
-  assertClose(RP.sketch.entities[lead.p2.id].x, 1940, 1e-6,
-    'reversing should switch to the rear clearance');
-});
-
-check('leaving wall_align drops the constraint', () => {
-  const RP = fresh();
-  const { el, lead } = approachRightWall(RP);
-  RP.selectedMoveId = el.id;
-  RP.updateSelectedMove({ move: 'wall_align' });
-  assert(RP.wallConstraintFor(RP.sketch, lead.p2.id), 'setup');
-
-  RP.updateSelectedMove({ move: 'forward' });
-  assert(!RP.wallConstraintFor(RP.sketch, lead.p2.id),
-    'a plain forward move should not be pinned to a wall');
-});
-
-check('a point drawn onto a wall is stood off it, not left conflicting', () => {
+check('a point drawn onto a wall stays on the wall', () => {
   const RP = fresh();
   RP.createFieldBoundary();
   const wall = rightWallId(RP);
-  // As if the user drew a line to the wall and it auto-constrained.
   const lead = RP.addConstructionLine(1000, 600, 2000, 600);
   RP.Sketch.addConstraint(RP.sketch, 'point_on_line', [lead.p2.id, wall]);
   RP.setEditMode('route');
@@ -196,9 +168,23 @@ check('a point drawn onto a wall is stood off it, not left conflicting', () => {
 
   const onLine = RP.Sketch.constraintsOn(RP.sketch, lead.p2.id)
     .filter(c => c.type === 'point_on_line' && c.refs[1] === wall);
-  assert(onLine.length === 0, 'the on-the-wall constraint must be replaced');
-  assert(RP.sketch.status !== 'conflict', 'and must not leave a conflict');
-  assertClose(RP.sketch.entities[lead.p2.id].x, 1900, 1e-6, 'stood off by clearance');
+  assert(onLine.length === 1, 'a constraint the user drew must survive');
+  assert(RP.sketch.status !== 'conflict', 'and must not be fought with a second one');
+  assertClose(RP.sketch.entities[lead.p2.id].x, 2000, 1e-6, 'left where it was drawn');
+});
+
+check('leaving wall_align leaves the sketch alone too', () => {
+  const RP = fresh();
+  const { el, lead } = approachRightWall(RP);
+  // A distance-to-wall constraint the USER applied, as a pre-2026-08-30
+  // project would also have.
+  RP.Sketch.addConstraint(RP.sketch, 'point_line_distance',
+    [lead.p2.id, rightWallId(RP)], -100);
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
+  RP.updateSelectedMove({ move: 'forward' });
+  assert(RP.wallConstraintFor(RP.sketch, lead.p2.id),
+    'switching modes must never delete a constraint');
 });
 
 check('wall_align still generates its move', () => {
@@ -210,37 +196,54 @@ check('wall_align still generates its move', () => {
   assert(/wall_align/.test(code), 'expected a wall_align call, got:\n' + code);
 });
 
-// ---- {expected_distance} ----------------------------------------------
-// The solver already knows how far this leg is once the exit point is
-// pinned off the wall — expected_distance hands that out so a real robot
-// can slow down on approach instead of driving blind the whole leg.
-check('wall_align reports the solved leg length as expected_distance', () => {
+// ---- which wall it squares against ------------------------------------
+// Read out of the drawing for the simulator's benefit, never written back.
+check('the wall is the nearest one to where the move ends', () => {
   const RP = fresh();
-  const { el, route, lead } = approachRightWall(RP);
-  RP.selectedMoveId = el.id;
-  RP.updateSelectedMove({ move: 'wall_align' });
-
-  // Line ran 1000 -> stood off at 1900 (50mm front clearance @ 2px/mm),
-  // at 2px/mm that leg is (1900-1000)/2 = 450mm.
-  assertClose(RP.sketch.entities[lead.p2.id].x, 1900, 1e-6, 'setup: stood off');
-  const code = RP.generateCode(route);
-  assert(/expected_distance=450\.0/.test(code),
-    'expected_distance should be the solved leg length, got:\n' + code);
+  const { el } = approachRightWall(RP);
+  assert(RP.wallAlignTarget(RP.sketch, el) === rightWallId(RP),
+    'the leg ends 50px from the right wall');
 });
 
-check('expected_distance tracks clearance changes through the solver', () => {
+check('an explicit constraint names the wall instead of proximity', () => {
+  const RP = fresh();
+  RP.createFieldBoundary();
+  const lead = RP.addConstructionLine(1000, 600, 1950, 600);
+  const bottom = RP.fieldLineIds().filter(id =>
+    RP.constructionMeta[id].label === 'bottom wall')[0];
+  RP.Sketch.addConstraint(RP.sketch, 'point_line_distance', [lead.p2.id, bottom], -1200);
+  RP.setEditMode('route');
+  const el = RP.addGeometryToRoute(lead.line.id);
+  assert(RP.wallAlignTarget(RP.sketch, el) === bottom,
+    'a constraint the user drew says which wall this is about');
+});
+
+// ---- {expected_distance} ----------------------------------------------
+// The leg AS DRAWN — so a real robot can slow down on approach instead of
+// driving blind the whole way.
+check('expected_distance is the drawn leg length', () => {
   const RP = fresh();
   const { el, route } = approachRightWall(RP);
   RP.selectedMoveId = el.id;
   RP.updateSelectedMove({ move: 'wall_align' });
-
-  RP.robotConfig.frontClearance = 80;   // mm -> 160 px
-  RP.syncAllWallAligns();
+  // 1000 -> 1950 at 2px/mm is 475mm.
   const code = RP.generateCode(route);
-  // (1950-160-1000... ) — same math as "changing clearance moves the
-  // stopping point" above: x lands at 1840, so leg = (1840-1000)/2 = 420.
-  assert(/expected_distance=420\.0/.test(code),
-    'expected_distance must follow the solved position, not the old one, got:\n' + code);
+  assert(/expected_distance=475(\.0+)?/.test(code),
+    'expected_distance should be the leg the user drew, got:\n' + code);
+});
+
+check('moving the geometry moves expected_distance with it', () => {
+  const RP = fresh();
+  const { el, route, lead } = approachRightWall(RP);
+  RP.selectedMoveId = el.id;
+  RP.updateSelectedMove({ move: 'wall_align' });
+  RP.Sketch.addConstraint(RP.sketch, 'point_line_distance',
+    [lead.p2.id, rightWallId(RP)], 160);         // 80mm off the right wall
+  RP.solveSketch();
+  RP.rebuildRouteViews();
+  const code = RP.generateCode(route);
+  assert(/expected_distance=420(\.0+)?/.test(code),
+    'the drawing is the source of truth, got:\n' + code);
 });
 
 // ---- {extra_args} -------------------------------------------------------
@@ -254,7 +257,7 @@ check('extraArgs is blank by default and does not touch the template', () => {
   const code = RP.generateCode(route);
   assert(!/\{extra_args\}/.test(code), 'the placeholder itself must never leak into output');
   // Decimal places deliberately not pinned — see tests/action.js.
-  assert(/wall_align\(reversed=False, power=200, expected_distance=450(\.0+)?\)/.test(code),
+  assert(/wall_align\(reversed=False, power=200, expected_distance=475(\.0+)?\)/.test(code),
     'blank extraArgs should vanish cleanly, got:\n' + code);
 });
 
