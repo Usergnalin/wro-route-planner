@@ -61,8 +61,14 @@ RP.resolveRoute = function(route) {
     if (prevExit !== null && find(prevExit) !== find(ends.entry)) {
       return {
         ok: false, code: 'OPEN_JUNCTION',
+        // The distance is the diagnosis: 0.0mm means the endpoints are on
+        // top of each other and simply are not joined, which looks
+        // perfectly continuous and is the case that wastes the most time.
         message: 'Route is broken between move ' + i + ' and ' + (i + 1) +
-                 ' — join the endpoints with a coincident constraint',
+                 ' — endpoints are ' +
+                 (RP.dist(sk.entities[prevExit].x, sk.entities[prevExit].y, pa.x, pa.y) /
+                  ((RP.calibration && RP.calibration.pixelsPerMm) || 1)).toFixed(1) +
+                 ' mm apart and not joined',
         moveIds: [prevMove.id, mv.id]
       };
     }
@@ -78,6 +84,84 @@ RP.resolveRoute = function(route) {
   }
 
   return { ok: true, moves: out };
+};
+
+// ---- diagnosing a break ----------------------------------------------
+// resolveRoute stops at the FIRST break, which is right for codegen and
+// wrong for a human: you fix one, regenerate, and find another. This
+// walks the whole route and reports every break at once.
+//
+// The one that actually costs time is a break you cannot see: two
+// endpoints at exactly the same pixel that are not joined by a coincident
+// constraint. Continuity is a constraint relation, not a positional one,
+// so the drawing looks perfect and the route is still cut in half. The
+// gap distance is what separates that case from having referenced the
+// wrong line entirely, so it is measured and reported.
+//
+// Nothing here writes to the sketch. Joining the points is the user's
+// call — an auto-join is a constraint they did not ask for, in a document
+// where an unwanted constraint is its own kind of afternoon.
+//
+// → [ { index, gapMm, joined, fromMove, toMove, exitId, entryId, a, b } ]
+//   `index` is the number of the move BEFORE the break, 1-based, matching
+//   what the action list shows.
+RP.BREAK_TOUCH_MM = 0.5;
+
+RP.routeBreaks = function(route) {
+  var sk = RP.sketch;
+  var moves = route ? RP.moveActions(route) : [];
+  if (!sk || moves.length < 2) return [];
+
+  var find = RP.Sketch.coincidenceClusters(sk);
+  var ppm = (RP.calibration && RP.calibration.pixelsPerMm) || 1;
+  var breaks = [];
+  var prev = null;
+
+  for (var i = 0; i < moves.length; i++) {
+    var mv = moves[i];
+    var ent = sk.entities[mv.entityId];
+    if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) { prev = null; continue; }
+    var ends = RP.moveEndpoints(sk, mv);
+    var pa = ends && sk.entities[ends.entry], pb = ends && sk.entities[ends.exit];
+    if (!pa || !pb) { prev = null; continue; }
+
+    if (prev && find(prev.exitId) !== find(ends.entry)) {
+      var pe = sk.entities[prev.exitId];
+      breaks.push({
+        index: prev.n, gapMm: RP.dist(pe.x, pe.y, pa.x, pa.y) / ppm,
+        // Same place, different cluster: the invisible one.
+        joined: false,
+        fromMove: prev.move, toMove: mv,
+        exitId: prev.exitId, entryId: ends.entry,
+        a: { x: pe.x, y: pe.y }, b: { x: pa.x, y: pa.y }
+      });
+    }
+    prev = { move: mv, exitId: ends.exit, n: i + 1 };
+  }
+  return breaks;
+};
+
+// Which moves sit either side of a break, so the action list can mark
+// them without re-walking the route per row.
+RP.breakIndexFor = function(route) {
+  var idx = { before: {}, after: {}, count: 0 };
+  var bs = RP.routeBreaks(route);
+  for (var i = 0; i < bs.length; i++) {
+    idx.before[bs[i].fromMove.id] = bs[i];
+    idx.after[bs[i].toMove.id] = bs[i];
+  }
+  idx.count = bs.length;
+  return idx;
+};
+
+// How a break should be described, in one line. The distance is the
+// whole point: 0.0 mm means "these are on top of each other and simply
+// are not joined", which is a completely different mistake from 40 mm.
+RP.describeBreak = function(b) {
+  if (!b) return '';
+  return (b.gapMm <= RP.BREAK_TOUCH_MM)
+    ? 'touching (' + b.gapMm.toFixed(1) + ' mm) but not joined — they need a coincident constraint'
+    : b.gapMm.toFixed(1) + ' mm apart';
 };
 
 // ---- action timeline -------------------------------------------------

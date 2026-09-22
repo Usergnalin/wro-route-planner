@@ -560,6 +560,10 @@ RP.render = function() {
     // drawn where they happen rather than only appearing on hover.
     if (inRouteMode && r.id === RP.activeRouteId && RP.drawActionMarkers) {
       RP.drawActionMarkers(ctx, r, fs);
+      // Drawn after the markers so a break is never hidden under one, and
+      // unconditionally: a broken route has no timeline, so this is the
+      // only thing that will be on screen to explain the silence.
+      if (RP.drawRouteBreaks) RP.drawRouteBreaks(ctx, r, fs);
     }
 
     // Route name label at first node
@@ -722,6 +726,71 @@ RP.render = function() {
 
   RP.updateInstructions();
   RP.updateInfoPanel();
+};
+
+// ======================================================================
+// ROUTE BREAKS (route mode)
+// ======================================================================
+// A break is where the chain stops being continuous. The status line has
+// always named the two moves; the useful thing is seeing WHERE, because
+// the case that wastes time is the one that looks perfect: two endpoints
+// at the same pixel that no coincident constraint joins.
+//
+// So the marker has to be visible even when the gap is zero — a ring and
+// a cross at the point, not just a line between two points that would
+// have no length. The distance is drawn next to it, since 0.0 mm and
+// 40 mm are different mistakes with different fixes.
+RP.drawRouteBreaks = function(ctx, route, fs) {
+  if (!RP.routeBreaks) return;
+  var breaks = RP.routeBreaks(route);
+  if (!breaks.length) return;
+
+  var r = 13 / RP.scale;
+  ctx.save();
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.font = 'bold ' + fs + 'px -apple-system, sans-serif';
+
+  for (var i = 0; i < breaks.length; i++) {
+    var b = breaks[i];
+    var touching = b.gapMm <= RP.BREAK_TOUCH_MM;
+    var sel = RP.selectedActionId === b.fromMove.id || RP.selectedActionId === b.toMove.id;
+
+    // The gap itself, when there is one to draw.
+    if (!touching) {
+      ctx.beginPath();
+      ctx.moveTo(b.a.x, b.a.y);
+      ctx.lineTo(b.b.x, b.b.y);
+      ctx.setLineDash([7 / RP.scale, 5 / RP.scale]);
+      ctx.strokeStyle = '#ff4444';
+      ctx.lineWidth = (sel ? 3 : 2) / RP.scale;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    var pts = touching ? [b.a] : [b.a, b.b];
+    for (var j = 0; j < pts.length; j++) {
+      ctx.beginPath();
+      ctx.arc(pts[j].x, pts[j].y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ff4444';
+      ctx.lineWidth = (sel ? 3 : 2) / RP.scale;
+      ctx.stroke();
+      var d = r * 0.55;
+      ctx.beginPath();
+      ctx.moveTo(pts[j].x - d, pts[j].y - d); ctx.lineTo(pts[j].x + d, pts[j].y + d);
+      ctx.moveTo(pts[j].x + d, pts[j].y - d); ctx.lineTo(pts[j].x - d, pts[j].y + d);
+      ctx.stroke();
+    }
+
+    var lx = b.a.x + r * 1.3, ly = b.a.y - r * 1.3;
+    var txt = b.gapMm.toFixed(1) + ' mm' + (touching ? ' · not joined' : '');
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.lineWidth = 3 / RP.scale;
+    ctx.strokeText(txt, lx, ly);
+    ctx.fillStyle = '#ff6666';
+    ctx.fillText(txt, lx, ly);
+  }
+  ctx.restore();
 };
 
 // ======================================================================

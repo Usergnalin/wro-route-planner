@@ -476,7 +476,11 @@ RP.updateRouteModePanel = function() {
         statusEl.textContent = 'Empty — click geometry to add a move';
         statusEl.style.color = '#888';
       } else {
-        statusEl.textContent = res.message;
+        // resolveRoute stops at the first break; say how many there are in
+        // total, so fixing one does not come as a surprise a minute later.
+        var nb = RP.routeBreaks ? RP.routeBreaks(route).length : 0;
+        statusEl.textContent = res.message +
+          (nb > 1 ? '  (' + nb + ' breaks in this route)' : '');
         statusEl.style.color = '#ff4444';
       }
     }
@@ -586,6 +590,9 @@ RP.updateActionList = function() {
   }
 
   var emitted = RP.emittedStepsByAction(route);
+  // Every break, up front — a row that walked the route itself would
+  // re-resolve once per action.
+  var breaks = RP.breakIndexFor ? RP.breakIndexFor(route) : { before: {}, after: {} };
   var moveNo = 0;
 
   // The leading span has no marker of its own, so its header is drawn
@@ -617,9 +624,28 @@ RP.updateActionList = function() {
         return;
       }
 
+      // The break lands BETWEEN two moves, so it gets a row between them
+      // rather than a mark on either one — which of the pair is "wrong"
+      // is exactly the thing that is not known.
+      var brk = breaks.after[act.id];
+      if (brk) {
+        var brow = document.createElement('div');
+        brow.className = 'layer-group-title break-row';
+        brow.textContent = '⚡ Route breaks here — ' + RP.describeBreak(brk);
+        brow.title = 'Move ' + brk.index + ' ends ' + brk.gapMm.toFixed(1) +
+                     ' mm from where the next one starts. Join the two ' +
+                     'endpoints in Sketch mode to close it.';
+        brow.onclick = function() {
+          RP.selectedActionId = brk.toMove.id;
+          RP.refreshRouteUI();
+        };
+        list.appendChild(brow);
+      }
+
       var row = document.createElement('div');
       row.className = (isMove ? 'layer-item' : 'action-sub') +
-                      (RP.selectedActionId === act.id ? ' active' : '');
+                      (RP.selectedActionId === act.id ? ' active' : '') +
+                      (brk || breaks.before[act.id] ? ' at-break' : '');
 
       var glyph = document.createElement('span');
       glyph.className = 'constraint-glyph';

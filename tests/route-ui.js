@@ -692,6 +692,94 @@ check('a hidden segments moves are not clickable', () => {
     'hidden means no clickable presence, same rule as everywhere else');
 });
 
+// ---- diagnosing breaks ------------------------------------------------
+// Two lines that touch at the pixel level but are NOT joined by a
+// coincident constraint. This is the case that looks continuous and is
+// not, and it is the whole reason the gap distance is reported.
+function touchingButUnjoined(RP) {
+  const a = RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(100, 0, 200, 0);   // no coincident
+  RP.setEditMode('route');
+  const m1 = RP.addGeometryToRoute(a.line.id);
+  const m2 = RP.addGeometryToRoute(b.line.id);
+  return { route: RP.routes[0], a, b, m1, m2 };
+}
+
+check('a route that touches but is not joined is reported as a break', () => {
+  const RP = fresh();
+  const { route } = touchingButUnjoined(RP);
+  const bs = RP.routeBreaks(route);
+  assert(bs.length === 1, 'expected one break, got ' + bs.length);
+  assertClose(bs[0].gapMm, 0, 1e-9, 'the endpoints are in the same place');
+  assert(/not joined/.test(RP.describeBreak(bs[0])),
+    'a zero gap has to say WHY, got: ' + RP.describeBreak(bs[0]));
+});
+
+check('a real gap is reported as a distance, not as "not joined"', () => {
+  const RP = fresh();
+  RP.addConstructionLine(0, 0, 100, 0);
+  const b = RP.addConstructionLine(160, 0, 260, 0);   // 60px = 30mm away
+  RP.setEditMode('route');
+  RP.addGeometryToRoute(RP.lines[0].id);
+  RP.addGeometryToRoute(b.line.id);
+  const bs = RP.routeBreaks(RP.routes[0]);
+  assert(bs.length === 1, 'expected one break');
+  assertClose(bs[0].gapMm, 30, 1e-9, '60px at 2px/mm');
+  assert(!/not joined/.test(RP.describeBreak(bs[0])),
+    'referencing the wrong line is a different mistake from forgetting to join');
+});
+
+check('joining the endpoints clears the break', () => {
+  const RP = fresh();
+  const { route, a, b } = touchingButUnjoined(RP);
+  assert(RP.routeBreaks(route).length === 1, 'setup');
+  RP.Sketch.addConstraint(RP.sketch, 'coincident', [a.p2.id, b.p1.id]);
+  assert(RP.routeBreaks(route).length === 0, 'the break should be gone');
+});
+
+check('every break is reported, not just the first', () => {
+  const RP = fresh();
+  const ls = [
+    RP.addConstructionLine(0, 0, 100, 0),
+    RP.addConstructionLine(100, 0, 200, 0),
+    RP.addConstructionLine(200, 0, 300, 0)
+  ];
+  RP.setEditMode('route');
+  ls.forEach(l => RP.addGeometryToRoute(l.line.id));
+  // resolveRoute stops at the first; that is right for codegen and no use
+  // to someone trying to fix the route.
+  const res = RP.resolveRoute(RP.routes[0]);
+  assert(!res.ok && res.code === 'OPEN_JUNCTION', 'setup: route is broken');
+  assert(RP.routeBreaks(RP.routes[0]).length === 2,
+    'both breaks should be listed, got ' + RP.routeBreaks(RP.routes[0]).length);
+});
+
+check('the break names the moves either side of it', () => {
+  const RP = fresh();
+  const { route, m1, m2 } = touchingButUnjoined(RP);
+  const b = RP.routeBreaks(route)[0];
+  assert(b.fromMove.id === m1.id && b.toMove.id === m2.id, 'wrong pair');
+  assert(b.index === 1, 'the break is after move 1, got ' + b.index);
+  const idx = RP.breakIndexFor(route);
+  assert(idx.before[m1.id] && idx.after[m2.id], 'both sides should be flagged');
+  assert(idx.count === 1, 'count should come along for the status line');
+});
+
+check('the resolver error says how far apart the endpoints are', () => {
+  const RP = fresh();
+  const { route } = touchingButUnjoined(RP);
+  const msg = RP.resolveRoute(route).message;
+  assert(/0\.0 mm apart/.test(msg),
+    'the distance IS the diagnosis, got: ' + msg);
+});
+
+check('a continuous route has no breaks at all', () => {
+  const RP = fresh();
+  const { route } = fourLegs(RP);
+  assert(RP.routeBreaks(route).length === 0, 'nothing to report');
+  assert(RP.resolveRoute(route).ok, 'and it resolves');
+});
+
 // ---- code inclusion ---------------------------------------------------
 const moveCalls = code => (code.match(/move_distance\(/g) || []).length;
 

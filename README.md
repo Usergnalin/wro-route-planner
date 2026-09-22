@@ -139,6 +139,7 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - **Route segments are derived from boundary markers** — a segment runs from its marker until the next one, so boundaries move with edits for free. A stored `{startAction, endAction}` pair would need mending every time an action was inserted or removed. The leading span is deliberately *not* given a marker: forcing one onto the head of every route would put a segment row in front of people who never asked for segments and rewrite every existing project's action list, so an unsegmented route has no markers and behaves exactly as it always did.
 - **Segment headings are keyed off each step's owning segment, not off marker positions** — so a segment whose actions all emitted nothing (a route of pure junction turns, say) never gets a heading with no code under it, and an excluded segment takes its heading away with it.
 - **Excluded segments are filtered AFTER the walk** — `computeSteps` still runs over the whole route, so an included segment's headings and distances are the real ones rather than what they would be if the excluded parts had never existed. Generated code says when it is partial, and states the assumed start pose when the kept part does not begin at the route's own start.
+- **A break is shown, never fixed** — the planner reports where the route stops being continuous and how far apart the endpoints are, and stops there. Joining them is a constraint, and adding a constraint nobody asked for is exactly how a sketch acquires conflicts it takes an afternoon to unpick — so the fix stays in Sketch mode, where it is visible and undoable. `RP.routeBreaks()` reports EVERY break rather than stopping at the first, which is what `resolveRoute` does and is right for codegen and useless to a human.
 - **Overlapping moves cycle on repeated clicks** — driving out and back along one line is two moves on one entity at identical distance, so nearest-wins alone could never select the second. `routeHitTest` gathers everything within a hair of the nearest and advances through them, the same way actions sharing a junction already did.
 - **Geometry is inserted where it connects, not always appended** — `RP.bestInsertionFor` scores every slot in the route by how many of the two neighbouring junctions the geometry actually meets (2 = it bridges a gap exactly, 1 = it extends a chain, 0 = nothing touches) and inserts at the best one. Ties go to the latest slot, so drawing a route in order still appends. Appending blindly is only right while building a route front-to-back; editing one — which is what adapting to a surprise mission is — meant every mid-route addition landed disconnected and had to be dragged into place by hand.
 - **Turn angles are never rounded away** — the robot integrates emitted angles into its own idea of its heading, so a dropped or rounded turn is a permanent error in that idea. Generated values carry `RP.CODE_DECIMALS` (3) decimal places, and a turn is only suppressed when it would print as zero at that precision (`RP.turnEpsilonDeg()`). The old 0.5° threshold meant typing 89.5° at a 90° corner silently discarded the 0.5° remainder while the planner still advanced its heading the full 90.
@@ -187,6 +188,12 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
       each one gets a `# Segment <name>` heading above its own lines in the
       generated code. Generating part of a route replaces commenting code
       out by hand
+- [x] **Break diagnosis** — a broken route draws a red ⊗ on the canvas exactly
+      where the chain snaps, with the gap in mm beside it, and a red
+      **⚡ Route breaks here** row lands between the two moves in the action
+      list. `0.0 mm · not joined` is the important one: endpoints at the same
+      pixel with no coincident constraint look perfectly continuous and are
+      not. The status line says how many breaks there are in total
 - [x] Repeated clicks cycle through moves that overlap, so an out-and-back pair
       sharing one line is reachable
 - [x] Action rows show each move's length, so a back-and-forth section reads

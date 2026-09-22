@@ -1,3 +1,69 @@
+# Changes — 2026-08-30 (8)
+
+## Seeing why a route is discontinuous
+
+Continuity is decided by the coincidence union-find, not by comparing
+coordinates — two endpoints are "the same place" only if a constraint
+says so. That is the right rule, and it is also why a route can look
+perfectly continuous and not be: two points at the SAME PIXEL, never
+joined, and the chain is cut in half with nothing on screen to show it.
+
+### The gap distance is the diagnosis
+
+`0.0 mm` and `40 mm` are different mistakes needing different fixes —
+one is a forgotten coincident constraint, the other is having referenced
+the wrong line entirely. So the distance is measured and reported
+everywhere the break is mentioned, and the zero case says outright that
+the endpoints are touching but not joined.
+
+### Shown on the canvas
+
+A red ⊗ where the chain snaps. Drawn as a ring and a cross at the point
+rather than a line between two points, because the case worth catching
+has ZERO length and a line would be invisible. A real gap gets a dashed
+segment between the two ends and a ⊗ on each. The distance is drawn
+beside it.
+
+Drawn unconditionally in route mode, after the action markers — a broken
+route has no timeline, so nothing else will be on screen to explain the
+silence.
+
+### Shown in the action list
+
+A red **⚡ Route breaks here** row BETWEEN the two moves, and a red edge
+on both. Between, rather than marked on one of them, because which of the
+pair is the wrong one is exactly what is not known. Clicking it selects
+the move after the break.
+
+### Every break, not just the first
+
+`resolveRoute` stops at the first — right for codegen, useless to a
+human, who fixes it and finds another a minute later. `RP.routeBreaks()`
+walks the whole route, and the status line says how many there are.
+
+### It does not join anything
+
+Deliberately, at the user's call: an auto-join is a constraint nobody
+asked for, and an unwanted constraint in a sketch this size is its own
+kind of afternoon. The tool says where and how far; the fix stays in
+Sketch mode where it is visible and undoable.
+
+### Verification
+
+13 suites; route mode 55 → 62. Goldens unchanged.
+
+Mutation-checked: swapping the cluster test for a coordinate-distance
+test fails the touching-but-unjoined tests (which is the whole point of
+them), and stopping at the first break fails the every-break test.
+
+Verified in Chromium on a three-leg route with both kinds of break at
+once: one ⊗ labelled `0.0 mm · not joined`, a dashed gap with two ⊗
+labelled `50.0 mm`, two ⚡ rows in the list, three moves edged red, and
+the status line reading `… 0.0 mm apart and not joined (2 breaks in this
+route)`.
+
+---
+
 # Changes — 2026-08-30 (7)
 
 ## Wall align trusts the geometry you drew
