@@ -14,7 +14,7 @@
   --card-3:#2c2c36;        /* pressed / emphasised */
   --border:#24242c;
   --border-strong:#353542;
-  --canvas:#050507;
+  --canvas:#111111;         /* matches what render() paints */
 
   --fg:#e6e7eb;
   --fg-2:#b6b9c3;
@@ -215,6 +215,12 @@ canvas{display:block;width:100%;height:100%}
   background:rgba(17,17,21,.85);padding:5px 12px;border-radius:var(--pill);border:1px solid var(--border);white-space:nowrap;
   opacity:1;transition:opacity .5s}
 .zoom-hint.hidden{opacity:0}
+.canvas-empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);display:flex;flex-direction:column;align-items:center;
+  gap:8px;text-align:center;max-width:380px;padding:28px 32px;border-radius:24px;background:var(--surface);border:1px dashed var(--border-strong)}
+.canvas-empty>.ic{width:44px;height:44px;color:var(--primary);margin-bottom:4px}
+.ce-title{font-size:16px;font-weight:700;color:var(--fg)}
+.ce-sub{font-size:12.5px;color:var(--muted);line-height:1.5}
+.canvas-empty .btn-row{margin-top:10px}
 
 /* Status bar: glanceable readouts. */
 #status-bar{display:flex;align-items:center;gap:16px;height:26px;padding:0 12px;background:var(--surface);

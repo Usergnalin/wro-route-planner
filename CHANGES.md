@@ -44,6 +44,10 @@ the ~50 icons the app shows are copied in, which adds about 17 KB.
   sessions, because the app keeps nothing in browser storage.
 - **Robot & Code has tabs**: Robot, Code templates, Speeds. Escape still
   closes it from inside any field.
+- **An empty canvas says what to do.** On first launch the canvas was
+  blank and "Open image" was inside a menu. It now shows a prompt with
+  Open image / Open project buttons, which forward to the real controls.
+  It is shown exactly when `render()` has nothing to draw.
 - **Row actions float.** Delete and flip appear over the end of a row on
   hover, instead of reserving a column. That column was why move labels
   were cut off in the sidebar.
@@ -65,7 +69,8 @@ switch, the menu (click, hover, Escape, outside click), Save, undo/redo,
 mode switching by button and by key, the Code toggle, action selection,
 the drive toggle, row delete and eye, panel collapse, the dialog tabs and
 fields, Escape from a field, Set start, the context menu, zoom/fit and
-switching documents. No page errors.
+switching documents, and both empty-state buttons through a real file
+chooser. No page errors.
 
 # Changes — 2026-08-30 (8)
 

@@ -122,6 +122,16 @@
   <main id="canvas-col">
     <div id="canvas-wrap">
       <canvas id="canvas"></canvas>
+      <!-- Shown exactly while render() has nothing to draw (no photo, mat document). -->
+      <div id="canvas-empty" class="canvas-empty">
+        <i data-icon="image"></i>
+        <div class="ce-title">Start with a photo of the mat</div>
+        <div class="ce-sub">Drop an image anywhere here, or open one. A saved project brings its photo with it.</div>
+        <div class="btn-row">
+          <button id="empty-open-image" class="pill-btn primary"><i data-icon="image"></i><span>Open image…</span></button>
+          <button id="empty-open-project" class="pill-btn"><i data-icon="open"></i><span>Open project…</span></button>
+        </div>
+      </div>
       <div class="zoom-hint" id="zoom-hint">Scroll to zoom · Drag to pan · Arrow keys to pan · 1 Sketch / 2 Route · Tab to flip</div>
     </div>
     <!-- Readouts that used to fill the right sidebar. They are glanced at,

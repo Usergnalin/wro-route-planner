@@ -17,6 +17,10 @@ RP.render = function() {
   // with no image loaded at all, or you could not draw a robot before
   // opening a project.
   var onRobotDoc = RP.activeDocId === RP.DOC_ROBOT;
+  // The empty-state prompt over the canvas is up exactly when this early
+  // return is taken, so the two can never disagree.
+  var emptyEl = document.getElementById('canvas-empty');
+  if (emptyEl) emptyEl.classList.toggle('hidden', !!RP.img || onRobotDoc);
   if (!RP.img && !onRobotDoc) return;
 
   if (RP.img && !onRobotDoc) {

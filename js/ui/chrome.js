@@ -87,6 +87,21 @@ var RP = window.RP || {};
     })(tabBtns[t]);
   }
 
+  // ---- empty canvas ----------------------------------------------------
+  // The same two actions as the File menu, where a first-time user is
+  // actually looking. They forward to the real controls rather than
+  // duplicating what those do.
+  var emptyImg = document.getElementById('empty-open-image');
+  if (emptyImg) emptyImg.addEventListener('click', function() {
+    var fi = document.getElementById('file-input');
+    if (fi) fi.click();
+  });
+  var emptyProj = document.getElementById('empty-open-project');
+  if (emptyProj) emptyProj.addEventListener('click', function() {
+    var op = document.getElementById('btn-open-project');
+    if (op) op.click();
+  });
+
   // ---- resizable bottom dock ------------------------------------------
   // The generated code is the thing you read most in Route mode, and a
   // fixed 180px showed about eight lines of it. Drag the top edge. (Not
