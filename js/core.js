@@ -137,63 +137,99 @@ RP.DEFAULT_ROBOT_CONFIG = {
   startHeading: 0
 };
 // ----------------------------------------------------------------------
-// Code config fields — THE single source of truth for every field in the
-// Robot & Code panel's template/speed section. Everything else (default
-// values, backfilling old saves, reading the panel into RP.codeConfig,
-// writing RP.codeConfig back into the panel, and wiring up each input's
-// change listener) walks this list instead of naming fields by hand. Add
-// a row here and a field works everywhere else — see RP.ensureCodeConfig
-// and RP.updateCodeConfigFromUI/UI in config.js, and the listener setup
-// in events.js.
+// Code config — what generated code looks like. Saved in each project.
 //
-// kind controls how a field's raw <input> string becomes a stored value:
-//   'text'         - blank in the UI falls back to `default` (a template
-//                    or unit string that should never actually be empty)
-//   'blank'        - stored verbatim, including ''; blank IS a meaningful
-//                    value here (e.g. "same as a plain turn"), so it must
-//                    never be coerced to `default`
-//   'posNum'       - a positive number; blank/invalid falls back to `default`
-//   'posNumOrNull' - a positive number, or null for "no override" — blank
-//                    must stay tellable apart from a value that happens
-//                    to match the global default, so it can never fall
-//                    back to one
+// Two parts. RP.CODE_CONFIG_FIELDS are the plain project-wide settings,
+// one <input>/<select> each, read and written by walking this table (see
+// RP.updateCodeConfigFromUI/UI in config.js and the listener setup in
+// events.js). RP.MOVEMENTS, below, is everything per movement: its
+// template(s) and its own parameter list.
 //
-// stepKind ties a per-move-kind speed field to the RP.computeSteps() step
-// kind it overrides the speed for — see RP.STEP_KIND_SPEED_KEYS/spd() in
-// output.js, itself derived from this same table.
+// kind controls how a field's raw control value becomes a stored value:
+//   'text'   - blank in the UI falls back to `default`
+//   'choice' - one of `options`; anything else falls back to `default`
+RP.BOOL_STYLES = {
+  'True/False': ['True', 'False'],     // Python
+  'true/false': ['true', 'false'],     // C, C++, Java, JS, Rust...
+  '1/0':        ['1', '0'],
+  'TRUE/FALSE': ['TRUE', 'FALSE']
+};
 RP.CODE_CONFIG_FIELDS = [
-  { key: 'commentPrefix',          id: 'code-comment',      kind: 'text',  default: '#' },
-  { key: 'forwardTemplate',        id: 'code-forward',      kind: 'text',  default: 'robot.move_distance({distance}, power={speed}{extra_args})' },
-  { key: 'turnTemplate',           id: 'code-turn',         kind: 'text',  default: 'robot.turn_in_place({angle}, power={speed}{extra_args})' },
-  // Fill these in only if the robot has a real one-wheel pivot that
-  // differs from a centre spin; blank means "same as turnTemplate".
-  { key: 'turnPivotLeftTemplate',  id: 'code-turn-pivot-l', kind: 'blank', default: '' },
-  { key: 'turnPivotRightTemplate', id: 'code-turn-pivot-r', kind: 'blank', default: '' },
-  { key: 'turnArcTemplate',        id: 'code-turn-arc',     kind: 'text',  default: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})' },
-  // expected_distance is how far the robot should have left to travel
-  // when wall_align starts — the point-line-distance solver already
-  // knows this leg's length, so a real robot can use it to slow down on
-  // approach instead of driving blind at wall_align speed the whole time.
-  { key: 'wallAlignTemplate',      id: 'code-wall-align',   kind: 'text',  default: 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})' },
-  { key: 'lineTraceDistTemplate',  id: 'code-lt-dist',      kind: 'text',  default: 'line_trace_distance({distance}, {speed}{extra_args})' },
-  { key: 'lineTraceJunctTemplate', id: 'code-lt-junct',     kind: 'text',  default: 'line_trace_until_junctions({junctions}, {speed}{extra_args})' },
-  { key: 'checkpointTemplate',     id: 'code-checkpoint',   kind: 'text',  default: 'if callable({name}): {name}({extra_args})' },
-  { key: 'defaultSpeed',           id: 'code-speed',        kind: 'posNum', default: 200 },
-  // Per-move-kind speed overrides — a straight-line move and a wall
-  // approach rarely want the same speed, but most projects don't care to
-  // say so for every kind, so each one defaults to null ("use
-  // defaultSpeed above") and only narrows the fallback chain when set.
-  { key: 'defaultSpeedForward',        id: 'code-speed-forward',    kind: 'posNumOrNull', default: null, stepKind: 'forward' },
-  { key: 'defaultSpeedTurn',           id: 'code-speed-turn',       kind: 'posNumOrNull', default: null, stepKind: 'turn' },
-  { key: 'defaultSpeedArc',            id: 'code-speed-arc',        kind: 'posNumOrNull', default: null, stepKind: 'arc' },
-  { key: 'defaultSpeedWallAlign',      id: 'code-speed-wall-align', kind: 'posNumOrNull', default: null, stepKind: 'wall_align' },
-  { key: 'defaultSpeedLineTraceDist',  id: 'code-speed-lt-dist',    kind: 'posNumOrNull', default: null, stepKind: 'linetrace' },
-  { key: 'defaultSpeedLineTraceJunct', id: 'code-speed-lt-junct',   kind: 'posNumOrNull', default: null, stepKind: 'linetrace_junct' },
-  { key: 'defaultUnit',            id: 'code-unit',         kind: 'text',  default: 'mm' }
+  { key: 'commentPrefix', id: 'code-comment',    kind: 'text',   default: '#' },
+  { key: 'defaultUnit',   id: 'code-unit',       kind: 'text',   default: 'mm' },
+  // How every true/false value is spelled — parameters and the built-in
+  // {reversed} alike. One per project, because a project targets one
+  // language.
+  { key: 'boolStyle',     id: 'code-bool-style', kind: 'choice', default: 'True/False',
+    options: Object.keys(RP.BOOL_STYLES) }
 ];
+
+// Movements. `key` is also the RP.computeSteps() step kind it renders.
+//
+// builtins are values MEASURED from the drawing (or, for {name}, typed on
+// the checkpoint itself). They are read-only and cannot be shadowed by a
+// parameter: a parameter called "radius" would let the code disagree
+// with the arc that was drawn.
+//
+// templates: the first is the movement's own; any others are variants
+// that fall back to it when left blank (a turn's pivot styles).
+//
+// params: { name, type: 'number'|'text'|'bool'|'choice', default, options }
+// `default` is stored as text for number/text/choice and as true/false/''
+// for bool. An empty default fills in nothing.
+RP.BUILTINS = {
+  distance:          'Leg length in the output unit (negative when driving backwards)',
+  angle:             'Turn angle in degrees, clockwise positive',
+  radius:            'Arc radius in the output unit (+right / -left)',
+  reversed:          'Whether this leg is driven backwards',
+  expected_distance: 'Leg length as drawn, for slowing on approach',
+  name:              'The checkpoint’s name'
+};
+RP.MOVEMENTS = [
+  { key: 'forward', label: 'Forward', builtins: ['distance', 'reversed'],
+    templates: [{ key: 'template', label: 'Forward' }] },
+  { key: 'turn', label: 'Turn', builtins: ['angle'],
+    templates: [{ key: 'template',   label: 'Turn in place' },
+                { key: 'pivotLeft',  label: 'Pivot left',  fallback: true },
+                { key: 'pivotRight', label: 'Pivot right', fallback: true }] },
+  { key: 'arc', label: 'Arc', builtins: ['angle', 'radius', 'distance'],
+    templates: [{ key: 'template', label: 'Arc' }] },
+  { key: 'wall_align', label: 'Wall align', builtins: ['reversed', 'expected_distance'],
+    templates: [{ key: 'template', label: 'Wall align' }] },
+  { key: 'linetrace', label: 'Line trace · distance', builtins: ['distance', 'reversed'],
+    templates: [{ key: 'template', label: 'Line trace · distance' }] },
+  { key: 'linetrace_junct', label: 'Line trace · junctions', builtins: ['reversed'],
+    templates: [{ key: 'template', label: 'Line trace · junctions' }] },
+  { key: 'checkpoint', label: 'Checkpoint', builtins: ['name'],
+    templates: [{ key: 'template', label: 'Checkpoint' }] }
+];
+RP.MOVEMENT_BY_KEY = {};
+RP.MOVEMENTS.forEach(function(m) { RP.MOVEMENT_BY_KEY[m.key] = m; });
+
+// A new project's movements. Shaped like the old fixed templates, so it
+// doubles as a worked example of parameters: a shared-looking `speed` that
+// is really one per movement, and an `extra_args` text slot.
+RP.DEFAULT_MOVEMENTS = (function() {
+  function num(n, d) { return { name: n, type: 'number', default: String(d) }; }
+  var speed = num('speed', 200);
+  var extra = { name: 'extra_args', type: 'text', default: '' };
+  return {
+    forward:         { template: 'robot.move_distance({distance}, power={speed}{extra_args})', params: [speed, extra] },
+    turn:            { template: 'robot.turn_in_place({angle}, power={speed}{extra_args})', pivotLeft: '', pivotRight: '',
+                       params: [speed, extra] },
+    arc:             { template: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})', params: [speed] },
+    wall_align:      { template: 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})',
+                       params: [speed, extra] },
+    linetrace:       { template: 'line_trace_distance({distance}, {speed}{extra_args})', params: [speed, extra] },
+    linetrace_junct: { template: 'line_trace_until_junctions({junctions}, {speed}{extra_args})',
+                       params: [num('junctions', 1), speed, extra] },
+    checkpoint:      { template: 'if callable({name}): {name}({extra_args})', params: [extra] }
+  };
+})();
 
 RP.DEFAULT_CODE_CONFIG_VALUES = {};
 RP.CODE_CONFIG_FIELDS.forEach(function(f) { RP.DEFAULT_CODE_CONFIG_VALUES[f.key] = f.default; });
+RP.DEFAULT_CODE_CONFIG_VALUES.movements = RP.DEFAULT_MOVEMENTS;
 
 RP.freshRobotConfig = function() { return JSON.parse(JSON.stringify(RP.DEFAULT_ROBOT_CONFIG)); };
 RP.freshCodeConfig = function() { return JSON.parse(JSON.stringify(RP.DEFAULT_CODE_CONFIG_VALUES)); };

@@ -246,10 +246,10 @@ check('moving the geometry moves expected_distance with it', () => {
     'the drawing is the source of truth, got:\n' + code);
 });
 
-// ---- {extra_args} -------------------------------------------------------
-// A user-typed string spliced verbatim into the template, for whatever a
-// project's own robot API needs that no built-in placeholder covers.
-check('extraArgs is blank by default and does not touch the template', () => {
+// ---- parameters on a wall align ----------------------------------------
+// extra_args is an ordinary text parameter in the default templates: a
+// user-typed string spliced verbatim, for whatever a robot API needs.
+check('an empty extra_args fills in nothing', () => {
   const RP = fresh();
   const { el, route } = approachRightWall(RP);
   RP.selectedMoveId = el.id;
@@ -258,29 +258,29 @@ check('extraArgs is blank by default and does not touch the template', () => {
   assert(!/\{extra_args\}/.test(code), 'the placeholder itself must never leak into output');
   // Decimal places deliberately not pinned — see tests/action.js.
   assert(/wall_align\(reversed=False, power=200, expected_distance=475(\.0+)?\)/.test(code),
-    'blank extraArgs should vanish cleanly, got:\n' + code);
+    'an empty value should vanish cleanly, got:\n' + code);
 });
 
-check('extraArgs on a wall_align move is spliced into its own line only', () => {
+check('extra_args on a wall_align move is spliced into its own line only', () => {
   const RP = fresh();
   const { el, route } = approachRightWall(RP);
   RP.selectedMoveId = el.id;
-  RP.updateSelectedMove({ move: 'wall_align', extraArgs: ', blocking=True' });
+  RP.updateSelectedMove({ move: 'wall_align' });
+  RP.setSelectedParam('extra_args', ', blocking=True');
   const code = RP.generateCode(route);
   assert(/wall_align\([^)]*, blocking=True\)/.test(code),
     'expected the user text appended verbatim, got:\n' + code);
 });
 
-check('defaultSpeedWallAlign overrides the global default for wall_align only', () => {
+check('Wall align’s own speed default applies to wall aligns only', () => {
   const RP = fresh();
   const { el, route } = approachRightWall(RP);
   RP.selectedMoveId = el.id;
   RP.updateSelectedMove({ move: 'wall_align' });
-  RP.codeConfig.defaultSpeed = 200;
-  RP.codeConfig.defaultSpeedWallAlign = 60;   // approach a wall slower than everything else
+  RP.findParam('wall_align', 'speed').default = '60';   // approach a wall slower than everything else
   const code = RP.generateCode(route);
   assert(/wall_align\(reversed=False, power=60,/.test(code),
-    'wall_align should pick up its own kind default, got:\n' + code);
+    'wall_align should pick up its own default, got:\n' + code);
 });
 
 if (!report()) process.exitCode = 1;

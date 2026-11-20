@@ -71,6 +71,7 @@ RP.openProject = function(file) {
         RP.routes = data.routes || [];
         RP.migrateAllRoutes();            // v1 waypoints -> nodes/segments
         RP.migrateRoutesToActions();   // nodes/segments -> actions
+        RP.normalizeAllActionParams(); // speed/extraArgs/junctions -> params
         RP.selectedActionId = null;
 
         if (data.nextIds) {

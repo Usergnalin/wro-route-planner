@@ -7,27 +7,14 @@ var RP = window.RP || {};
 // ======================================================================
 // ROBOT CONFIG UI
 // ======================================================================
-function _posNum(raw, fallback) {
-  var v = parseFloat(raw);
-  return (isFinite(v) && v > 0) ? v : fallback;
-}
-// Unlike _posNum, a blank/invalid field here means "no override" — it
-// must stay null rather than collapse to some fallback number, or a
-// per-kind speed left blank could never be told apart from one that
-// happens to match the global default.
-function _posNumOrNull(raw) {
-  if (typeof raw !== 'string' || raw.trim() === '') return null;
-  var v = parseFloat(raw);
-  return (isFinite(v) && v > 0) ? v : null;
-}
 function _strOr(raw, fallback) {
   if (typeof raw !== 'string') return fallback;
   return raw.length > 0 ? raw : fallback;
 }
 
 RP.updateRobotConfigFromUI = function() {
-  // Zero is a meaningful value here (model off), so this cannot use
-  // _posNum's "fall back to a default" shape.
+  // Zero is a meaningful value here (model off), so it cannot fall back
+  // to a default the way a blank text field does.
   var dRaw = parseFloat(document.getElementById('robot-drift').value);
   RP.robotConfig.driftPerMm = (isFinite(dRaw) && dRaw >= 0) ? dRaw : 0;
   if (RP.render) RP.render();
@@ -59,61 +46,51 @@ RP.updateRobotUI = function() {
 // ======================================================================
 // CODE CONFIG MIGRATION
 // ======================================================================
+// Brings any codeConfig up to the current shape: a pre-parameter save is
+// converted (RP.migrateCodeConfig), then anything still missing — a
+// project-wide field, a whole movement, one of a movement's template
+// variants — is backfilled from the defaults.
 RP.ensureCodeConfig = function() {
   var cfg = RP.codeConfig;
-  if (!cfg) { RP.codeConfig = RP.freshCodeConfig(); cfg = RP.codeConfig; }
-
-  // Migrate an old save's split left/right turn templates onto the one
-  // unified turnTemplate field — unrelated to the table below, since
-  // those two fields no longer exist at all.
-  if (!cfg.turnTemplate && (cfg.turnRightTemplate || cfg.turnLeftTemplate)) {
-    cfg.turnTemplate = RP.DEFAULT_CODE_CONFIG_VALUES.turnTemplate;
-  }
-  delete cfg.turnRightTemplate; delete cfg.turnLeftTemplate;
-
-  // Backfill anything an old save file never had, one field at a time per
-  // RP.CODE_CONFIG_FIELDS. 'blank'/'posNumOrNull' fields treat their own
-  // blank/null as a real, meaningful value (not "missing"), so those only
-  // backfill when the key is absent entirely; the rest backfill whenever
-  // they're falsy, same as an empty template string would be.
+  if (!cfg) cfg = RP.freshCodeConfig();
+  if (!cfg.movements) cfg = RP.migrateCodeConfig(cfg);
   RP.CODE_CONFIG_FIELDS.forEach(function(f) {
-    if (f.kind === 'blank' || f.kind === 'posNumOrNull') {
-      if (cfg[f.key] === undefined) cfg[f.key] = f.default;
-    } else if (!cfg[f.key]) {
-      cfg[f.key] = f.default;
-    }
+    if (cfg[f.key] == null || cfg[f.key] === '') cfg[f.key] = f.default;
+    if (f.kind === 'choice' && f.options.indexOf(cfg[f.key]) < 0) cfg[f.key] = f.default;
   });
+  RP.MOVEMENTS.forEach(function(m) {
+    var def = RP.DEFAULT_MOVEMENTS[m.key];
+    var mc = cfg.movements[m.key];
+    if (!mc) { cfg.movements[m.key] = JSON.parse(JSON.stringify(def)); return; }
+    m.templates.forEach(function(t) {
+      if (mc[t.key] == null) mc[t.key] = t.fallback ? '' : def[t.key];
+    });
+    if (!Array.isArray(mc.params)) mc.params = [];
+  });
+  RP.codeConfig = cfg;
 };
 
 // ======================================================================
-// CODE CONFIG UI
+// CODE CONFIG UI — the project-wide fields. Movements and their
+// parameters have their own editor (js/ui/params-ui.js).
 // ======================================================================
-// Reads every field in RP.CODE_CONFIG_FIELDS from its <input> straight
-// into RP.codeConfig. A new field needs a row in that table (core.js)
-// and an <input id> in index.html — nothing here changes.
 RP.updateCodeConfigFromUI = function() {
-  function _el(id) { var e = document.getElementById(id); return e && e.value !== undefined ? e.value : ''; }
   RP.CODE_CONFIG_FIELDS.forEach(function(f) {
-    var raw = _el(f.id);
-    if (f.kind === 'text') RP.codeConfig[f.key] = _strOr(raw, f.default);
-    else if (f.kind === 'blank') RP.codeConfig[f.key] = raw;
-    else if (f.kind === 'posNum') RP.codeConfig[f.key] = _posNum(raw, f.default);
-    else RP.codeConfig[f.key] = _posNumOrNull(raw); // posNumOrNull
+    var el = document.getElementById(f.id);
+    if (!el || el.value === undefined) return;
+    var raw = el.value;
+    if (f.kind === 'choice') RP.codeConfig[f.key] = f.options.indexOf(raw) >= 0 ? raw : f.default;
+    else RP.codeConfig[f.key] = _strOr(raw, f.default);
   });
   if (RP.render) RP.render();
 };
 
-// The inverse: writes RP.codeConfig back into the panel's <input>s.
 RP.updateCodeConfigUI = function() {
   RP.CODE_CONFIG_FIELDS.forEach(function(f) {
     var el = document.getElementById(f.id);
     if (!el) return;
     var v = RP.codeConfig[f.key];
-    // 'blank'/'posNumOrNull' show a genuinely blank field for null/''
-    // rather than falling back to `default` — a blank field and one
-    // explicitly set to match the default must not look identical.
-    if (f.kind === 'blank' || f.kind === 'posNumOrNull') el.value = (v != null) ? v : '';
-    else el.value = (v != null && v !== '') ? v : f.default;
+    el.value = (v != null && v !== '') ? v : f.default;
   });
+  if (RP.renderMovementEditor) RP.renderMovementEditor();
 };
-

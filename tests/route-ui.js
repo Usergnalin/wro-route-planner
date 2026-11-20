@@ -74,7 +74,8 @@ check('route mode never moves geometry', () => {
   RP.addGeometryToRoute(a.line.id);
   RP.addGeometryToRoute(b.line.id);
   RP.updateSelectedMove && (RP.selectedMoveId = RP.moveActions(RP.routes[0])[0].id);
-  RP.updateSelectedMove({ move: 'linetrace_dist', speed: 250 });
+  RP.updateSelectedMove({ move: 'linetrace_dist' });
+  RP.setSelectedParam('speed', '250');
 
   const after = RP.lines.map(l => [l.x1, l.y1, l.x2, l.y2].join(','));
   assert(JSON.stringify(before) === JSON.stringify(after),
@@ -157,11 +158,42 @@ check('element parameters round-trip into generated code', () => {
   RP.addGeometryToRoute(b.line.id);
 
   RP.selectedMoveId = e1.id;
-  RP.updateSelectedMove({ move: 'linetrace_junct', junctions: 3, speed: 250 });
+  RP.updateSelectedMove({ move: 'linetrace_junct' });
+  RP.setSelectedParam('junctions', '3');
+  RP.setSelectedParam('speed', '250');
 
   const code = RP.generateCode(RP.routes[0]);
   assert(/line_trace_until_junctions\(3, 250\)/.test(code),
     'expected the junction move in the output, got:\n' + code);
+});
+
+check('switching a move’s type keeps values the new movement also has', () => {
+  const RP = fresh();
+  const { a, b } = drawL(RP);
+  RP.setEditMode('route');
+  const e1 = RP.addGeometryToRoute(a.line.id);
+  RP.addGeometryToRoute(b.line.id);
+  RP.selectedMoveId = e1.id;
+  RP.updateSelectedMove({ move: 'linetrace_junct' });
+  RP.setSelectedParam('junctions', '4');
+  RP.setSelectedParam('speed', '90');
+  RP.updateSelectedMove({ move: 'forward' });
+  assert(e1.params.speed === '90', 'speed exists on both, so it carried over');
+  assert(!('junctions' in e1.params), 'Forward has no junctions parameter, so it was dropped');
+});
+
+check('clearing a parameter box goes back to the default, and is undoable', () => {
+  const RP = fresh();
+  const { a } = drawL(RP);
+  RP.setEditMode('route');
+  const e1 = RP.addGeometryToRoute(a.line.id);
+  RP.selectedMoveId = e1.id;
+  RP.setSelectedParam('speed', '90');
+  assert(e1.params.speed === '90', 'set');
+  RP.setSelectedParam('speed', '');
+  assert(!('speed' in RP.moveActions(RP.routes[0])[0].params), 'cleared back to the default');
+  RP.undo();
+  assert(RP.moveActions(RP.routes[0])[0].params.speed === '90', 'undo restores the typed value');
 });
 
 check('checkpoint set on an element appears in the code', () => {

@@ -448,9 +448,32 @@ RP.updateSelectedMove = function(props) {
     delete props.checkpoint;
   }
   RP.setMoveProps(route.id, RP.selectedMoveId, props);
+  // A move switched to another movement keeps only the values that
+  // movement also has a parameter for.
+  if (props.move) {
+    var mv = RP.findMove(route, RP.selectedMoveId);
+    var key = RP.movementForAction(mv);
+    if (key) RP.pruneParamsTo(mv, key); else if (mv) mv.params = {};
+  }
   // Changing mode no longer touches the sketch. A wall align is a
   // statement about what the robot DOES at the end of this leg, not a
   // reason to move where the leg ends.
+  RP.refreshRouteUI();
+  return true;
+};
+
+// One parameter value on the selected action. '' (or null) clears it, so
+// the parameter's default applies again.
+RP.setSelectedParam = function(name, value) {
+  var route = RP.getActiveRoute();
+  var act = RP.getSelectedAction();
+  if (!route || !act) return false;
+  var cleared = value === '' || value == null;
+  var cur = act.params ? act.params[name] : undefined;
+  if (cleared ? cur === undefined : cur === value) return false;
+  RP.pushHistory('Edit ' + name);
+  if (!act.params) act.params = {};
+  if (cleared) delete act.params[name]; else act.params[name] = value;
   RP.refreshRouteUI();
   return true;
 };

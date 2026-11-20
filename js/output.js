@@ -12,21 +12,10 @@ RP.unitFactor = function(unit) {
   return RP.UNIT_FACTORS_MM[k] || 1;
 };
 
-// Per-style turn templates. `spin` is the plain turnTemplate every project
-// already has; the pivots are opt-in and fall back to it when left blank,
-// so adding styles cannot change existing output.
-RP.TURN_STYLE_TEMPLATE_KEYS = {
-  spin: 'turnTemplate',
-  pivot_left: 'turnPivotLeftTemplate',
-  pivot_right: 'turnPivotRightTemplate'
-};
-
-RP.turnTemplateFor = function(style) {
-  var key = RP.TURN_STYLE_TEMPLATE_KEYS[style || RP.DEFAULT_TURN_STYLE];
-  if (!key || !RP.codeConfig) return null;
-  var tmpl = RP.codeConfig[key];
-  return (tmpl && String(tmpl).trim()) ? tmpl : null;
-};
+// Which template variant a turn style renders with (see RP.MOVEMENTS.turn).
+// `spin` is the movement's own template; the pivots fall back to it when
+// left blank.
+RP.TURN_STYLE_VARIANTS = { spin: null, pivot_left: 'pivotLeft', pivot_right: 'pivotRight' };
 
 // Decimal places for every physical value written into generated code.
 //
@@ -57,26 +46,19 @@ RP.formatDeg = function(deg) {
   return s;
 };
 
-// Which codeConfig field holds this step kind's own default speed —
-// derived from RP.CODE_CONFIG_FIELDS (core.js) so a new per-kind speed
-// field only has to be added in one place. Blank (null) is the common
-// case — most projects don't bother overriding most kinds — so this only
-// ever narrows the fallback chain, never widens it.
-RP.STEP_KIND_SPEED_KEYS = {};
-RP.CODE_CONFIG_FIELDS.forEach(function(f) {
-  if (f.stepKind) RP.STEP_KIND_SPEED_KEYS[f.stepKind] = f.key;
-});
-
 // Compute ordered list of steps for the longest path through a route graph.
 //
 // Steps:
-//   { kind: 'turn',          deg }
-//   { kind: 'forward',       mm, reverse }
-//   { kind: 'wall_align',    reverse }
+//   { kind: 'turn',          deg, style }
+//   { kind: 'forward',       mm, offsetMm, reverse }
+//   { kind: 'arc',           angle, radiusMm, mm }
+//   { kind: 'wall_align',    reverse, expectedDistanceMm }
 //   { kind: 'teleport',      fromX, fromY, toX, toY, heading, name }
-//   { kind: 'linetrace',     mm, reverse }
-//   { kind: 'linetrace_junct', junctions, reverse }
+//   { kind: 'linetrace',     mm, offsetMm, reverse }
+//   { kind: 'linetrace_junct', reverse }
 //   { kind: 'checkpoint',    name }
+// Every step but a teleport also carries actionId and `params`, the
+// owning action's own parameter values (see params.js).
 RP.computeSteps = function(route) {
   if (!route || !RP.calibration) return [];
 
@@ -113,13 +95,11 @@ RP.computeSteps = function(route) {
       if (Math.abs(turnInit) > RP.turnEpsilonDeg()) {
         steps.push({ kind: 'turn', deg: turnInit, startLeg: true,
                      actionId: firstTurn ? firstTurn.id : null,
-                     speed: firstTurn ? firstTurn.speed : null,
-                     style: firstTurn ? firstTurn.style : RP.DEFAULT_TURN_STYLE,
-                     extraArgs: firstTurn ? firstTurn.extraArgs : '' });
+                     params: firstTurn ? firstTurn.params : {},
+                     style: firstTurn ? firstTurn.style : RP.DEFAULT_TURN_STYLE });
       }
       steps.push({ kind: 'forward', mm: mmFromStart, startLeg: true,
-                   actionId: el0.id, reverse: backward0, speed: el0.speed,
-                   extraArgs: el0.extraArgs });
+                   actionId: el0.id, reverse: backward0, params: el0.params });
       prevHeading = legHeading;
     } else {
       prevHeading = RP.robotConfig.startHeading;
@@ -131,7 +111,7 @@ RP.computeSteps = function(route) {
 
     if (it.kind === 'checkpoint') {
       steps.push({ kind: 'checkpoint', actionId: it.action.id, name: it.action.name || 'checkpoint',
-                   extraArgs: it.action.extraArgs });
+                   params: it.action.params });
       continue;
     }
 
@@ -144,7 +124,7 @@ RP.computeSteps = function(route) {
         var typedDeg = Number(t.angle);
         if (Math.abs(typedDeg) > RP.turnEpsilonDeg()) {
           steps.push({ kind: 'turn', deg: typedDeg, extra: t.angleMode === RP.TURN_FIXED,
-                       actionId: t.id, speed: t.speed, style: t.style, extraArgs: t.extraArgs });
+                       actionId: t.id, params: t.params, style: t.style });
           if (prevHeading !== null) prevHeading = ((prevHeading + typedDeg) % 360 + 360) % 360;
         }
         continue;
@@ -157,7 +137,7 @@ RP.computeSteps = function(route) {
       if (prevHeading === null || !next || next.entryHeading === null) continue;
       var deg = RP.turnAngle(prevHeading, next.entryHeading);
       if (Math.abs(deg) > RP.turnEpsilonDeg()) {
-        steps.push({ kind: 'turn', deg: deg, actionId: t.id, speed: t.speed, style: t.style, extraArgs: t.extraArgs });
+        steps.push({ kind: 'turn', deg: deg, actionId: t.id, params: t.params, style: t.style });
       }
       prevHeading = next.entryHeading;
       continue;
@@ -184,28 +164,27 @@ RP.computeSteps = function(route) {
         kind: 'arc',
         angle: nose ? Math.abs(dCw) : -Math.abs(dCw),
         radiusMm: (nose ? 1 : -1) * (dCw >= 0 ? 1 : -1) * Rmm,
-        mm: Rmm * Math.abs(dCw) * Math.PI / 180,
-        speed: el.speed
+        mm: Rmm * Math.abs(dCw) * Math.PI / 180
       });
     } else {
       var legMm = RP.dist(it.a.x, it.a.y, it.b.x, it.b.y) / ppm;
       var offsetMm = el.offset || 0;
       if (mode === RP.MOVE_LINETRACE_DIST) {
-        steps.push({ kind: 'linetrace', mm: legMm, offsetMm: offsetMm, reverse: backward, speed: el.speed });
+        steps.push({ kind: 'linetrace', mm: legMm, offsetMm: offsetMm, reverse: backward });
       } else if (mode === RP.MOVE_LINETRACE_JUNCT) {
-        steps.push({ kind: 'linetrace_junct', junctions: el.junctions || 1, reverse: backward, speed: el.speed });
+        steps.push({ kind: 'linetrace_junct', reverse: backward });
       } else if (mode === RP.MOVE_WALL_ALIGN) {
         // How long the leg is AS DRAWN — hand it out as expected_distance
         // so a real robot can slow down on approach instead of driving
         // blind at wall_align speed the whole leg. It is the user's own
         // number now: draw the line ending where the robot should stop.
-        steps.push({ kind: 'wall_align', reverse: backward, speed: el.speed, expectedDistanceMm: legMm });
+        steps.push({ kind: 'wall_align', reverse: backward, expectedDistanceMm: legMm });
       } else {
-        steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: backward, speed: el.speed });
+        steps.push({ kind: 'forward', mm: legMm, offsetMm: offsetMm, reverse: backward });
       }
     }
 
-    for (var b = before; b < steps.length; b++) { steps[b].actionId = el.id; steps[b].extraArgs = el.extraArgs; }
+    for (var b = before; b < steps.length; b++) { steps[b].actionId = el.id; steps[b].params = el.params; }
     prevHeading = it.exitHeading;
   }
 
@@ -249,6 +228,40 @@ RP.segmentStartPose = function(route, seg) {
   return null;
 };
 
+// One step's line of code: its movement's template, with the built-ins
+// this step measured and the parameter values of the action it came from.
+// len/num format a length (mm -> output unit) and a plain number.
+RP.renderStep = function(st, len, num) {
+  var key = st.kind;
+  var variant = null;
+  var b = {};
+  if (key === 'turn') {
+    variant = RP.TURN_STYLE_VARIANTS[st.style || RP.DEFAULT_TURN_STYLE] || null;
+    b.angle = num(st.deg);
+  } else if (key === 'arc') {
+    b.angle = num(st.angle);
+    b.radius = len(st.radiusMm);
+    b.distance = len(st.mm);
+  } else if (key === 'wall_align') {
+    b.reversed = RP.formatBool(!!st.reverse);
+    b.expected_distance = len(st.expectedDistanceMm || 0);
+  } else if (key === 'linetrace') {
+    b.distance = len(st.mm + (st.offsetMm || 0));
+    b.reversed = RP.formatBool(!!st.reverse);
+  } else if (key === 'linetrace_junct') {
+    b.reversed = RP.formatBool(!!st.reverse);
+  } else if (key === 'checkpoint') {
+    b.name = st.name || 'checkpoint';
+  } else if (key === 'forward') {
+    var mag = st.mm + (st.offsetMm || 0);
+    b.distance = len(st.reverse ? -mag : mag);
+    b.reversed = RP.formatBool(!!st.reverse);
+  } else {
+    return null;
+  }
+  return RP.renderTemplate(key, RP.templateFor(key, variant), b, st.params);
+};
+
 RP.generateCode = function(route) {
   if (!route || !RP.calibration) return '';
 
@@ -265,7 +278,6 @@ RP.generateCode = function(route) {
   }
   var moveCount = resolved.moves.length;
 
-  var speed = RP.codeConfig.defaultSpeed;
   var unit = RP.codeConfig.defaultUnit || 'mm';
   var uFactor = RP.unitFactor(unit);
   var steps = RP.computeSteps(route);
@@ -275,19 +287,8 @@ RP.generateCode = function(route) {
   var partial = !!keep;
   if (keep) steps = steps.filter(keep);
   var lines_out = [];
-  // An action's own typed speed always wins. Otherwise, this kind's own
-  // default (if the project bothered to set one) beats the plain global
-  // default — a wall approach and a straight-line drive rarely want the
-  // same number, but most kinds are happy sharing one.
-  function spd(st) {
-    if (st.speed != null && st.speed !== '') return st.speed;
-    var key = RP.STEP_KIND_SPEED_KEYS[st.kind];
-    var perKind = key ? RP.codeConfig[key] : null;
-    return (perKind != null && perKind !== '') ? perKind : speed;
-  }
-  // Raw, unescaped: the whole point is that the user typed exactly what
-  // they want spliced into their own template, comma and all.
-  function extra(st) { return st.extraArgs || ''; }
+  function num(v) { return Number(v).toFixed(RP.CODE_DECIMALS); }
+  function len(mm) { return num(mm / uFactor); }
 
   lines_out.push(cp + ' Route: ' + route.name);
   lines_out.push(cp + ' Path: ' + (moveCount + 1) + ' nodes, ' + moveCount + ' segments');
@@ -296,7 +297,7 @@ RP.generateCode = function(route) {
   for (var i = 0; i < steps.length; i++) {
     if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace' || steps[i].kind === 'arc') totalMm += steps[i].mm;
   }
-  lines_out.push(cp + ' Total distance: ' + (totalMm / uFactor).toFixed(RP.CODE_DECIMALS) + ' ' + unit);
+  lines_out.push(cp + ' Total distance: ' + len(totalMm) + ' ' + unit);
   if (partial) {
     // Running part of a route means the robot has to already BE at that
     // part. Saying which segments these are, and where the first one
@@ -344,67 +345,19 @@ RP.generateCode = function(route) {
         curSeg = ownerId;
       }
     }
-    if (st.kind === 'turn') {
-      // A spin and a one-wheel pivot are different manoeuvres, so each
-      // style can have its own template. Blank means "same as a spin",
-      // which is what every project that predates turn styles wants.
-      var styleTmpl = RP.turnTemplateFor ? RP.turnTemplateFor(st.style) : null;
-      var turnTmpl = styleTmpl || RP.codeConfig.turnTemplate || 'turn({angle}, {speed})';
-      lines_out.push(turnTmpl
-        .replace(/\{angle\}/g, st.deg.toFixed(RP.CODE_DECIMALS))
-        .replace(/\{speed\}/g, spd(st))
-        .replace(/\{radius\}/g, '0')
-        .replace(/\{distance\}/g, '0')
-        .replace(/\{extra_args\}/g, extra(st)));
-    } else if (st.kind === 'arc') {
-      var arcTmpl = RP.codeConfig.turnArcTemplate || 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})';
-      lines_out.push(arcTmpl
-        .replace(/\{angle\}/g, st.angle.toFixed(RP.CODE_DECIMALS))
-        .replace(/\{radius\}/g, (st.radiusMm / uFactor).toFixed(RP.CODE_DECIMALS))
-        .replace(/\{speed\}/g, spd(st))
-        .replace(/\{distance\}/g, ((st.mm) / uFactor).toFixed(RP.CODE_DECIMALS))
-        .replace(/\{extra_args\}/g, extra(st)));
-    } else if (st.kind === 'teleport') {
+    if (st.kind === 'teleport') {
       var dx2 = st.toX - st.fromX, dy2 = st.toY - st.fromY;
       var distMm2 = RP.calibration ? Math.hypot(dx2, dy2) / RP.calibration.pixelsPerMm : 0;
       lines_out.push('');
       lines_out.push(cp + ' TELEPORT: ' + st.name);
-      lines_out.push(cp + ' ' + (distMm2 / uFactor).toFixed(RP.CODE_DECIMALS) + ' ' + unit + ', heading ' + Math.round(st.heading || 0) + '°, from (' +
+      lines_out.push(cp + ' ' + len(distMm2) + ' ' + unit + ', heading ' + Math.round(st.heading || 0) + '°, from (' +
         st.fromX.toFixed(0) + ',' + st.fromY.toFixed(0) + ') to (' +
         st.toX.toFixed(0) + ',' + st.toY.toFixed(0) + ')');
       lines_out.push('');
-    } else if (st.kind === 'checkpoint') {
-      var cpTmpl = RP.codeConfig.checkpointTemplate || 'if callable({name}): {name}({extra_args})';
-      lines_out.push(cpTmpl
-        .replace(/\{name\}/g, st.name || 'checkpoint')
-        .replace(/\{extra_args\}/g, extra(st)));
-    } else if (st.kind === 'wall_align') {
-      lines_out.push((RP.codeConfig.wallAlignTemplate || 'wall_align({reversed}, {speed}, {expected_distance})')
-        .replace(/\{reversed\}/g, st.reverse ? 'True' : 'False')
-        .replace(/\{speed\}/g, spd(st))
-        .replace(/\{expected_distance\}/g, ((st.expectedDistanceMm || 0) / uFactor).toFixed(RP.CODE_DECIMALS))
-        .replace(/\{extra_args\}/g, extra(st)));
-    } else if (st.kind === 'linetrace') {
-      lines_out.push(RP.codeConfig.lineTraceDistTemplate
-        .replace(/\{distance\}/g, ((st.mm + (st.offsetMm || 0)) / uFactor).toFixed(RP.CODE_DECIMALS))
-        .replace(/\{speed\}/g, spd(st))
-        .replace(/\{angle\}/g, '0')
-        .replace(/\{extra_args\}/g, extra(st)));
-    } else if (st.kind === 'linetrace_junct') {
-      lines_out.push(RP.codeConfig.lineTraceJunctTemplate
-        .replace(/\{junctions\}/g, st.junctions)
-        .replace(/\{speed\}/g, spd(st))
-        .replace(/\{extra_args\}/g, extra(st)));
-    } else {
-      // forward
-      var mag = (st.mm + (st.offsetMm || 0)) / uFactor;
-      var distOut = (st.reverse ? -mag : mag).toFixed(RP.CODE_DECIMALS);
-      lines_out.push(RP.codeConfig.forwardTemplate
-        .replace(/\{distance\}/g, distOut)
-        .replace(/\{speed\}/g, spd(st))
-        .replace(/\{angle\}/g, '0')
-        .replace(/\{extra_args\}/g, extra(st)));
+      continue;
     }
+    var line = RP.renderStep(st, len, num);
+    if (line != null) lines_out.push(line);
   }
 
   return lines_out.join('\n');

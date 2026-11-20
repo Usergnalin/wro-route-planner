@@ -31,7 +31,7 @@ RP.MOVE_WALL_ALIGN      = 'wall_align';
 RP.MOVE_TELEPORT        = 'teleport';
 
 // Display names only. The KEYS are the stored move types and appear in
-// save files, generated code and RP.STEP_KIND_SPEED_KEYS, so `forward`
+// save files and RP.MOVE_TO_MOVEMENT (params.js), so `forward`
 // stays `forward` on disk however it is labelled here — a straight is
 // driven in either direction, so "Straight" is what it is, and "Forwards
 // / Backwards" is the separate Drive toggle's job to say.
@@ -540,6 +540,7 @@ RP.liftElementsToActions = function(route) {
     // correctly regardless, rather than assume.
     el.visible = el.hidden !== true;
     delete el.hidden;
+    RP.normalizeActionParams(el);   // speed/extraArgs/junctions -> params
     acts.push(el);
     if (cpName) acts.push(RP.makeCheckpointAction(null, cpName));
   }

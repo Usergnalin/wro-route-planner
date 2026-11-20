@@ -59,10 +59,10 @@ function legacyRoute(RP) {
 check('addMove references an entity and owns no coordinates', () => {
   const RP = fresh();
   const made = RP.addConstructionLine(0, 0, 100, 0);
-  const el = RP.addMove(RP.routes[0].id, made.line.id, { move: 'forward', speed: 300 });
+  const el = RP.addMove(RP.routes[0].id, made.line.id, { move: 'forward', params: { speed: '300' } });
   assert(el && el.entityId === made.line.id, 'element should reference the line');
   assert(!('x' in el) && !('y' in el), 'elements must not carry coordinates');
-  assert(el.speed === 300, 'movement params live on the element');
+  assert(el.params.speed === '300', 'movement params live on the element');
 });
 
 check('addMove rejects missing or non-line entities', () => {

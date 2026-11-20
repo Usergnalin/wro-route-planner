@@ -75,14 +75,19 @@ RP.makeTurnAction = function(pointId, opts) {
     pointId: pointId != null ? pointId : null,
     angleMode: opts.angleMode === RP.TURN_FIXED ? RP.TURN_FIXED : RP.TURN_AUTO,
     angle: opts.angle != null ? Number(opts.angle) : null,
-    speed: opts.speed != null ? opts.speed : null,
     style: opts.style || RP.DEFAULT_TURN_STYLE,
-    // Raw text spliced into {extra_args} in this action's code template,
-    // verbatim — the user's own comma and all, so it can be dropped into
-    // any position that template happens to put it in.
-    extraArgs: opts.extraArgs || ''
+    // This action's own parameter values, by name — see params.js.
+    params: paramsFrom(opts)
   };
 };
+
+// opts.params, plus the pre-parameter speed / extraArgs / junctions
+// options that old-format lifts and migrations still pass in.
+function paramsFrom(opts) {
+  var a = { params: opts.params ? JSON.parse(JSON.stringify(opts.params)) : {},
+            speed: opts.speed, extraArgs: opts.extraArgs, junctions: opts.junctions };
+  return RP.normalizeActionParams(a).params;
+}
 
 RP.makeMoveAction = function(entityId, entType, opts) {
   opts = opts || {};
@@ -94,9 +99,9 @@ RP.makeMoveAction = function(entityId, entType, opts) {
     move: opts.move || (entType === 'arc' ? RP.MOVE_ARC : RP.MOVE_FORWARD),
     flip: !!opts.flip,
     reverse: !!opts.reverse,
-    speed: opts.speed != null ? opts.speed : null,
+    // Built in rather than a parameter: it changes the distance the
+    // planner itself emits.
     offset: opts.offset || 0,
-    junctions: opts.junctions != null ? opts.junctions : null,
     teleportName: opts.teleportName || null,
     // Independent of the CONSTRUCTION line's own visible flag: hiding the
     // geometry and hiding the route's use of it are two different things
@@ -104,8 +109,7 @@ RP.makeMoveAction = function(entityId, entType, opts) {
     // reading the entity's. Same name/polarity as every other visible
     // flag in the app (route.visible, line.visible, ...).
     visible: opts.visible !== false,
-    // See makeTurnAction: raw text for this move's {extra_args}.
-    extraArgs: opts.extraArgs || ''
+    params: paramsFrom(opts)
   };
 };
 
@@ -119,8 +123,7 @@ RP.makeCheckpointAction = function(pointId, name) {
     type: RP.ACTION_CHECKPOINT,
     pointId: pointId != null ? pointId : null,
     name: name || 'checkpoint',
-    // See makeTurnAction: raw text for this checkpoint's {extra_args}.
-    extraArgs: ''
+    params: {}
   };
 };
 

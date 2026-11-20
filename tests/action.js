@@ -87,12 +87,12 @@ check('turn speed lives on the turn, not on the line after it', () => {
   const RP = fresh();
   const { route } = lRoute(RP);
   const corner = autos(route)[1];
-  RP.setActionProps(route.id, corner.id, { speed: 120 });
+  RP.setActionProps(route.id, corner.id, { params: { speed: '120' } });
 
   const turnSteps = RP.computeSteps(route).filter(s => s.kind === 'turn');
   assert(turnSteps.length === 1, 'one geometric turn at the corner');
   assertClose(turnSteps[0].deg, 90, 1e-9, 'right-angle corner');
-  assert(turnSteps[0].speed === 120, 'turn speed came from the turn action');
+  assert(turnSteps[0].params.speed === '120', 'turn speed came from the turn action');
 });
 
 check('turn style reaches the emitted step', () => {
@@ -106,13 +106,13 @@ check('turn style reaches the emitted step', () => {
 check('a fixed angle overrides the geometry', () => {
   const RP = fresh();
   const { route, e2 } = lRoute(RP);
-  const inserted = RP.insertFixedTurn(route.id, e2.id, { angle: 30, speed: 90 });
+  const inserted = RP.insertFixedTurn(route.id, e2.id, { angle: 30, params: { speed: '90' } });
   assert(inserted && inserted.angleMode === 'fixed', 'inserted a fixed turn');
 
   const ts = RP.computeSteps(route).filter(s => s.kind === 'turn');
   assert(ts.length === 2, 'the typed turn and the geometric one, got ' + ts.length);
   assertClose(ts[0].deg, 30, 1e-9, 'typed turn comes first');
-  assert(ts[0].speed === 90, 'typed turn keeps its own speed');
+  assert(ts[0].params.speed === '90', 'typed turn keeps its own speed');
   // The geometric turn is measured from where the typed one left off.
   assertClose(ts[1].deg, 60, 1e-9, '90° corner less the 30° already turned');
 });
@@ -131,12 +131,12 @@ check('a fixed turn stays in front of its move after a sync', () => {
 check('reordering a move carries its junction parameters', () => {
   const RP = fresh();
   const { route, e1, e2 } = lRoute(RP);
-  RP.setActionProps(route.id, autos(route)[1].id, { speed: 175, style: 'pivot_right' });
+  RP.setActionProps(route.id, autos(route)[1].id, { params: { speed: '175' }, style: 'pivot_right' });
 
   RP.reorderMove(route.id, e2.id, 0);
   assert(RP.moveActions(route)[0].id === e2.id, 'move actually reordered');
 
-  const carried = autos(route).filter(t => t.speed === 175);
+  const carried = autos(route).filter(t => t.params.speed === '175');
   assert(carried.length === 1, 'the 175 turn survived the reorder');
   assert(carried[0].style === 'pivot_right', 'and kept its style');
 });
@@ -144,8 +144,8 @@ check('reordering a move carries its junction parameters', () => {
 check('reversing the route negates typed turns and keeps auto speeds', () => {
   const RP = fresh();
   const { route, e2 } = lRoute(RP);
-  RP.insertFixedTurn(route.id, e2.id, { angle: 30, speed: 90 });
-  RP.setActionProps(route.id, autos(route)[1].id, { speed: 175 });
+  RP.insertFixedTurn(route.id, e2.id, { angle: 30, params: { speed: '90' } });
+  RP.setActionProps(route.id, autos(route)[1].id, { params: { speed: '175' } });
 
   RP.reverseRouteDirection(route);
 
@@ -153,7 +153,7 @@ check('reversing the route negates typed turns and keeps auto speeds', () => {
   const fixed = turns(route).filter(t => t.angleMode === 'fixed');
   assert(fixed.length === 1 && fixed[0].angle === -30,
     'a typed turn swings the other way when the route is walked backwards');
-  assert(autos(route).some(t => t.speed === 175), 'junction speed survived the reversal');
+  assert(autos(route).some(t => t.params.speed === '175'), 'junction speed survived the reversal');
 });
 
 check('removing a move takes its auto turn with it', () => {
@@ -189,8 +189,8 @@ check('RP.moveActions(route) aliases the live move actions', () => {
   const RP = fresh();
   const { route, e1 } = lRoute(RP);
   assert(RP.moveActions(route)[0] === e1, 'the view must hand back the real action, not a copy');
-  RP.moveActions(route)[0].speed = 321;
-  assert(RP.findAction(route, e1.id).speed === 321, 'writes reach the model');
+  RP.moveActions(route)[0].offset = 321;
+  assert(RP.findAction(route, e1.id).offset === 321, 'writes reach the model');
 });
 
 check('v4 element saves lift into actions with turn data preserved', () => {
@@ -223,10 +223,11 @@ check('v4 element saves lift into actions with turn data preserved', () => {
   assert(seq === 'auto,move,fixed,auto,move,fixed', 'got ' + seq);
 
   const auto2 = autos(route)[1];
-  assert(auto2.speed === 140, 'el.turnSpeed became the junction turn speed');
+  assert(auto2.params.speed === '140', 'el.turnSpeed became the junction turn speed');
   const fixedTurns = turns(route).filter(t => t.angleMode === 'fixed');
-  assert(fixedTurns[0].angle === 15 && fixedTurns[0].speed === 70, 'extra turn lifted');
-  assert(fixedTurns[1].angle === 180 && fixedTurns[1].speed === 60, 'end turn lifted');
+  assert(fixedTurns[0].angle === 15 && fixedTurns[0].params.speed === '70', 'extra turn lifted');
+  assert(fixedTurns[1].angle === 180 && fixedTurns[1].params.speed === '60', 'end turn lifted');
+  assert(route.actions.every(x => !('speed' in x)), 'no action keeps the old speed field');
 });
 
 check('a blank pivot template falls back to the spin template', () => {
@@ -235,7 +236,7 @@ check('a blank pivot template falls back to the spin template', () => {
   RP.setActionProps(route.id, autos(route)[1].id, { style: 'pivot_left' });
   const spin = RP.generateCode(route);
 
-  RP.codeConfig.turnPivotLeftTemplate = 'robot.pivot_left({angle}, {speed})';
+  RP.codeConfig.movements.turn.pivotLeft = 'robot.pivot_left({angle}, {speed})';
   const pivot = RP.generateCode(route);
 
   // Matched without pinning the decimal places: this is a test about WHICH
@@ -515,14 +516,15 @@ check('v4 lift translates the old hidden field to visible', () => {
   assert(!('hidden' in moves[0]), 'the old field name is gone, not just shadowed');
 });
 
-// ---- {extra_args}: raw user text spliced into an action's own template --
-check('extraArgs is blank by default on a fresh move, turn and checkpoint', () => {
+// ---- parameters ------------------------------------------------------
+check('fresh actions carry an empty params object and no legacy fields', () => {
   const RP = fresh();
   const { route, e1 } = lRoute(RP);
-  assert(e1.extraArgs === '', 'a fresh move starts with no extra args');
-  assert(autos(route)[0].extraArgs === '', 'a fresh auto turn starts with no extra args');
   const cp = RP.insertCheckpoint(route.id, e1.id, 'cp');
-  assert(cp.extraArgs === '', 'a fresh checkpoint starts with no extra args');
+  for (const a of [e1, autos(route)[0], cp]) {
+    assert(a.params && Object.keys(a.params).length === 0, 'expected {} params on ' + a.type);
+    assert(!('speed' in a) && !('extraArgs' in a) && !('junctions' in a), 'legacy field on ' + a.type);
+  }
 });
 
 check('a v4 lift with no extraArgs field does not crash codegen', () => {
@@ -540,112 +542,182 @@ check('a v4 lift with no extraArgs field does not crash codegen', () => {
   RP.nextActionId = 200;
   RP.migrateRoutesToActions();
   const code = RP.generateCode(route);
-  assert(!/\{extra_args\}/.test(code), 'a missing extraArgs field must fall back to blank, not leak the token');
+  assert(!/\{extra_args\}/.test(code), 'an empty parameter fills in nothing, not the token');
 });
 
-check('extraArgs on a forward move lands only on that move’s own line', () => {
+check('a parameter value lands only on its own action’s line', () => {
   const RP = fresh();
   const { route, e1 } = lRoute(RP);
-  RP.setMoveProps(route.id, e1.id, { extraArgs: ', blocking=True' });
-  const code = RP.generateCode(route);
-  const lines = code.split('\n').filter(l => l.indexOf('move_distance') >= 0);
+  RP.setMoveProps(route.id, e1.id, { params: { extra_args: ', blocking=True' } });
+  const lines = RP.generateCode(route).split('\n').filter(l => l.indexOf('move_distance') >= 0);
   assert(lines.length === 2, 'both legs still generate a move line, got ' + lines.length);
-  assert(lines[0].indexOf('blocking=True') >= 0, 'the first move carries its own extra args');
-  assert(lines[1].indexOf('blocking=True') < 0, 'the second move must not inherit the first’s extra args');
+  assert(lines[0].indexOf('blocking=True') >= 0, 'the first move carries its own value');
+  assert(lines[1].indexOf('blocking=True') < 0, 'the second move must not inherit it');
 });
 
-check('extraArgs on a turn lands only on that turn’s own line', () => {
-  const RP = fresh();
-  const { route } = lRoute(RP);
-  const corner = autos(route)[1];
-  RP.setActionProps(route.id, corner.id, { extraArgs: ', slow=True' });
-  const code = RP.generateCode(route);
-  const lines = code.split('\n').filter(l => l.indexOf('turn_in_place') >= 0);
-  assert(lines.length === 1, 'one geometric turn at the corner, got ' + lines.length);
-  assert(lines[0].indexOf('slow=True') >= 0, 'the corner turn carries its extra args, got:\n' + code);
-});
-
-check('extraArgs on a checkpoint lands inside its own call', () => {
+check('turns and checkpoints take parameter values too', () => {
   const RP = fresh();
   const { route, e1 } = lRoute(RP);
+  RP.setActionProps(route.id, autos(route)[1].id, { params: { extra_args: ', slow=True' } });
   const cp = RP.insertCheckpoint(route.id, e1.id, 'grab');
-  RP.setActionProps(route.id, cp.id, { extraArgs: "reason='junction'" });
+  RP.setActionProps(route.id, cp.id, { params: { extra_args: "reason='junction'" } });
   const code = RP.generateCode(route);
+  assert(code.split('\n').filter(l => l.indexOf('turn_in_place') >= 0)[0].indexOf('slow=True') >= 0,
+    'the corner turn carries its value, got:\n' + code);
   assert(/if callable\(grab\): grab\(reason='junction'\)/.test(code),
-    'expected the extra args inside the checkpoint call, got:\n' + code);
+    'expected the value inside the checkpoint call, got:\n' + code);
 });
 
-// ---- per-move-kind default speeds ---------------------------------------
-check('with no overrides, every kind falls back to the plain global default', () => {
+check('each movement has its own speed parameter with its own default', () => {
   const RP = fresh();
   const { route } = lRoute(RP);
-  RP.codeConfig.defaultSpeed = 175;
+  RP.findParam('forward', 'speed').default = '350';
   const code = RP.generateCode(route);
-  assert(code.indexOf('power=175') >= 0 && code.indexOf('power=200') < 0,
-    'both the move and the turn should use the global default, got:\n' + code);
+  assert(code.split('\n').filter(l => l.indexOf('move_distance') >= 0).every(l => l.indexOf('power=350') >= 0),
+    'forward moves use Forward’s default, got:\n' + code);
+  assert(code.split('\n').filter(l => l.indexOf('turn_in_place') >= 0).every(l => l.indexOf('power=200') >= 0),
+    'turns keep Turn’s own default, got:\n' + code);
 });
 
-check('a per-kind default speed is used when the action has no explicit speed', () => {
+check('an action’s own value beats the parameter default, printed as typed', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  RP.findParam('forward', 'speed').default = '350';
+  RP.setMoveProps(route.id, e1.id, { params: { speed: '77.50' } });
+  const lines = RP.generateCode(route).split('\n').filter(l => l.indexOf('move_distance') >= 0);
+  assert(lines[0].indexOf('power=77.50') >= 0, 'own value, verbatim, got ' + lines[0]);
+  assert(lines[1].indexOf('power=350') >= 0, 'the other move gets the default, got ' + lines[1]);
+});
+
+check('an empty default fills in nothing, and the template is otherwise untouched', () => {
   const RP = fresh();
   const { route } = lRoute(RP);
-  RP.codeConfig.defaultSpeed = 200;
-  RP.codeConfig.defaultSpeedForward = 350;
-  const code = RP.generateCode(route);
-  const moveLines = code.split('\n').filter(l => l.indexOf('move_distance') >= 0);
-  assert(moveLines.every(l => l.indexOf('power=350') >= 0),
-    'every forward move should pick up its kind default, got:\n' + code);
-  const turnLines = code.split('\n').filter(l => l.indexOf('turn_in_place') >= 0);
-  assert(turnLines.every(l => l.indexOf('power=200') >= 0),
-    'turns must not be affected by the forward-only override, got:\n' + code);
+  RP.codeConfig.movements.forward.template = 'drive({distance}, accel={accel});';
+  RP.addParam('forward', { name: 'accel', type: 'number', default: '' });
+  const lines = RP.generateCode(route).split('\n').filter(l => l.indexOf('drive(') >= 0);
+  assert(lines[0] === 'drive(50.000, accel=);', 'strict template, nothing added or removed, got ' + lines[0]);
 });
 
-check('an action’s own explicit speed still beats its kind’s default', () => {
+check('bool parameters and {reversed} follow the project’s bool style', () => {
   const RP = fresh();
-  const { route, e1, e2 } = lRoute(RP);
-  RP.codeConfig.defaultSpeedForward = 350;
-  RP.setMoveProps(route.id, e1.id, { speed: 77 });
-  const code = RP.generateCode(route);
-  const moveLines = code.split('\n').filter(l => l.indexOf('move_distance') >= 0);
-  assert(moveLines[0].indexOf('power=77') >= 0, 'the explicit speed must win over the kind default, got:\n' + code);
-  assert(moveLines[1].indexOf('power=350') >= 0, 'the other move still gets the kind default, got:\n' + code);
+  const { route, e1 } = lRoute(RP);
+  RP.codeConfig.boolStyle = 'true/false';
+  RP.codeConfig.movements.forward.template = 'drive({distance}, {reversed}, {brake});';
+  RP.addParam('forward', { name: 'brake', type: 'bool', default: false });
+  RP.setMoveProps(route.id, e1.id, { params: { brake: true } });
+  const lines = RP.generateCode(route).split('\n').filter(l => l.indexOf('drive(') >= 0);
+  assert(lines[0] === 'drive(50.000, false, true);', 'got ' + lines[0]);
+  assert(lines[1] === 'drive(40.000, false, false);', 'got ' + lines[1]);
+  RP.codeConfig.boolStyle = '1/0';
+  assert(RP.generateCode(route).indexOf('drive(50.000, 0, 1);') >= 0, '1/0 style');
 });
 
-check('different kinds use independent defaults, not each other’s', () => {
+check('{{name}} is a literal, and braces that are not placeholders pass through', () => {
   const RP = fresh();
   const { route } = lRoute(RP);
-  RP.codeConfig.defaultSpeedForward = 111;
-  RP.codeConfig.defaultSpeedTurn = 222;
-  const code = RP.generateCode(route);
-  assert(code.split('\n').filter(l => l.indexOf('move_distance') >= 0).every(l => l.indexOf('power=111') >= 0),
-    'forward moves should use defaultSpeedForward, got:\n' + code);
-  assert(code.split('\n').filter(l => l.indexOf('turn_in_place') >= 0).every(l => l.indexOf('power=222') >= 0),
-    'turns should use defaultSpeedTurn, got:\n' + code);
+  RP.codeConfig.movements.forward.template = 'drive(Cfg{{speed}}, {1, 2}, {speed});';
+  const line = RP.generateCode(route).split('\n').filter(l => l.indexOf('drive(') >= 0)[0];
+  assert(line === 'drive(Cfg{speed}, {1, 2}, 200);', 'got ' + line);
+  assert(RP.templateProblems().length === 0, 'an escaped name is not a problem');
 });
 
-check('per-kind speeds default to null once ensured, so old save files are unaffected', () => {
+check('an unknown placeholder is left as typed and reported', () => {
   const RP = fresh();
-  // ensureCodeConfig backfills fields an old save file never had — the
-  // same path a v4/v5 project takes on open, and the one generateCode
-  // itself calls before every run.
+  const { route } = lRoute(RP);
+  RP.codeConfig.movements.forward.template = 'drive({distance}, {sped});';
+  const line = RP.generateCode(route).split('\n').filter(l => l.indexOf('drive(') >= 0)[0];
+  assert(line === 'drive(50.000, {sped});', 'got ' + line);
+  const probs = RP.templateProblems();
+  assert(probs.length === 1 && probs[0].name === 'sped' && probs[0].movement === 'forward',
+    'got ' + JSON.stringify(probs));
+});
+
+check('a built-in belongs to its movement only', () => {
+  const RP = fresh();
+  RP.codeConfig.movements.turn.template = 'turn({angle}, {radius});';
+  const probs = RP.templateProblems();
+  assert(probs.some(p => p.movement === 'turn' && p.name === 'radius'),
+    'radius is measured for arcs, not turns: ' + JSON.stringify(probs));
+});
+
+check('parameter names are validated', () => {
+  const RP = fresh();
+  assert(RP.addParam('forward', { name: 'radius', type: 'number' }), 'a built-in name is refused');
+  assert(RP.addParam('forward', { name: 'speed', type: 'number' }), 'a duplicate is refused');
+  assert(RP.addParam('forward', { name: '2fast', type: 'number' }), 'a leading digit is refused');
+  assert(RP.addParam('forward', { name: 'accel_2', type: 'number' }) === null, 'a good name is accepted');
+  assert(RP.addParam('turn', { name: 'accel_2', type: 'number' }) === null, 'names are per movement');
+});
+
+check('renaming a parameter rewrites its templates and every action value', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  RP.codeConfig.movements.turn.pivotLeft = 'pivot({angle}, {speed}, {{speed}})';
+  RP.setMoveProps(route.id, e1.id, { params: { speed: '55' } });
+  RP.setActionProps(route.id, autos(route)[1].id, { params: { speed: '66' } });
+  assert(RP.renameParam('forward', 'speed', 'power') === null, 'rename accepted');
+  assert(RP.codeConfig.movements.forward.template.indexOf('{power}') >= 0, 'forward template rewritten');
+  assert(e1.params.power === '55' && !('speed' in e1.params), 'move value moved to the new name');
+  assert(autos(route)[1].params.speed === '66', 'another movement’s speed is a different parameter');
+  assert(RP.codeConfig.movements.turn.pivotLeft === 'pivot({angle}, {speed}, {{speed}})', 'turn untouched');
+  RP.renameParam('turn', 'speed', 'spd');
+  assert(RP.codeConfig.movements.turn.pivotLeft === 'pivot({angle}, {spd}, {{speed}})',
+    'every variant rewritten, escapes kept: ' + RP.codeConfig.movements.turn.pivotLeft);
+  assert(RP.templateProblems().length === 0, 'nothing left dangling');
+});
+
+check('removing a parameter drops its values and reports its placeholders', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  RP.setMoveProps(route.id, e1.id, { params: { extra_args: ', x=1' } });
+  assert(RP.removeParam('forward', 'extra_args'), 'removed');
+  assert(!('extra_args' in e1.params), 'the action value went with it');
+  assert(RP.templateProblems().some(p => p.movement === 'forward' && p.name === 'extra_args'),
+    'the placeholder still in the template is reported');
+});
+
+check('changing a parameter’s type resets values typed for the old type', () => {
+  const RP = fresh();
+  const { route, e1 } = lRoute(RP);
+  RP.setMoveProps(route.id, e1.id, { params: { speed: '55' } });
+  RP.setParamType('forward', 'speed', 'bool');
+  assert(!('speed' in e1.params), 'value cleared');
+  assert(RP.findParam('forward', 'speed').default === false, 'bool default');
+});
+
+check('old flat code configs become per-movement parameters', () => {
+  const RP = fresh();
+  RP.codeConfig = {
+    commentPrefix: '//', defaultUnit: 'cm', defaultSpeed: 175, defaultSpeedForward: 350,
+    forwardTemplate: 'fwd({distance}, {speed}, {mode})',
+    turnTemplate: 'turn({angle}, {speed})', turnPivotLeftTemplate: '', turnPivotRightTemplate: '',
+    lineTraceJunctTemplate: 'lt({junctions}, {speed})'
+  };
   RP.ensureCodeConfig();
-  const keys = ['defaultSpeedForward', 'defaultSpeedTurn', 'defaultSpeedArc',
-                'defaultSpeedWallAlign', 'defaultSpeedLineTraceDist', 'defaultSpeedLineTraceJunct'];
-  for (const k of keys) assert(RP.codeConfig[k] === null, k + ' should default to null, got ' + RP.codeConfig[k]);
+  const c = RP.codeConfig;
+  assert(c.commentPrefix === '//' && c.defaultUnit === 'cm' && c.boolStyle === 'True/False', 'project fields kept');
+  assert(c.movements.forward.template === 'fwd({distance}, {speed}, {mode})', 'template kept');
+  assert(RP.findParam('forward', 'speed').default === '350', 'per-kind speed became Forward’s default');
+  assert(RP.findParam('turn', 'speed').default === '175', 'global speed became Turn’s default');
+  assert(RP.findParam('forward', 'mode').type === 'text', 'other placeholders become text parameters');
+  assert(RP.findParam('linetrace_junct', 'junctions').default === '1', 'junctions default 1');
+  assert(c.movements.arc.template.indexOf('turn_arc') >= 0, 'a movement the old save never had is backfilled');
+  assert(!('defaultSpeed' in c) && !('forwardTemplate' in c), 'old keys are gone');
 });
 
 check('a straight move is LABELLED "Straight" but still STORED as "forward"', () => {
   const RP = fresh();
-  // The label is display-only. The key is what save files, generated code
-  // and RP.STEP_KIND_SPEED_KEYS all key off, so renaming the label must
-  // not have touched it.
+  // The label is display-only. The key is what save files and the
+  // movement lookup (RP.MOVE_TO_MOVEMENT) key off, so renaming the label
+  // must not have touched it.
   assert(RP.MOVE_LABELS.forward === 'Straight',
     'expected the display label "Straight", got ' + RP.MOVE_LABELS.forward);
   const { route, e1 } = lRoute(RP);
   const move = RP.findMove(route, e1.id);
   assert(move.move === 'forward',
     'the stored move type must stay "forward", got ' + move.move);
-  assert(RP.STEP_KIND_SPEED_KEYS.forward === 'defaultSpeedForward',
-    'the per-kind speed lookup still keys off the stored type');
+  assert(RP.MOVE_TO_MOVEMENT.forward === 'forward',
+    'the movement lookup still keys off the stored type');
   assert(RP.generateCode(route).indexOf('move_distance') >= 0,
     'codegen still resolves the forward template');
 });
