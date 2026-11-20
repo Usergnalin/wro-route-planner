@@ -1,3 +1,80 @@
+# Changes — 2026-11-20 (2)
+
+## Parameters
+
+The code templates had one fixed `{speed}` and a free-text
+`{extra_args}`. That fit the 2026 robot and nothing else. Now every
+movement owns its template and its own parameters, and each action sets
+its own values.
+
+### Model
+
+- `RP.MOVEMENTS` (core.js): forward, turn (with pivot variants), arc,
+  wall align, line trace · distance, line trace · junctions, checkpoint.
+  Each has templates, built-ins, and `params: [{ name, type, default }]`.
+  Types are number, text, true/false and choice.
+- Actions carry `params: { name: value }`. A missing value means the
+  default. Numbers and text are stored exactly as typed, so `80.0` prints
+  as `80.0`.
+- **Strict templates.** Nothing is added or removed, and an empty value
+  fills in nothing. That is deliberate: argument syntax differs between
+  languages, and guessing it is how generated code goes wrong.
+- **Built-ins can't be shadowed.** Distance, angle, radius, reversed,
+  expected distance and name are measured, not typed. Junction count
+  became a parameter, because the planner never used it.
+- **True/false spelling is one project setting.** It covers `{reversed}`
+  too, which used to be hard-coded to Python's `True`/`False`.
+- **Unknown placeholders are visible.** They are printed as typed and
+  listed above the generated code. `{{name}}` is a literal `{name}`.
+
+### Old projects
+
+Old projects load unchanged. Each old flat template becomes that
+movement's template. `{speed}` becomes a parameter whose default is the
+old per-kind speed, or else the old default speed. `{extra_args}` and
+`{junctions}` become parameters. Actions' `speed` / `extraArgs` /
+`junctions` move into `params`.
+
+Both saved projects and all seven golden fixtures produce byte-identical
+code compared with `main`.
+
+### UI
+
+- Robot & Code is now **Robot | Code & parameters**. The Code tab has a
+  General page and a page per movement.
+- **Template editor**, Postman-style:
+  - `{` auto-closes and lists what can go there.
+  - Typing narrows the list; Tab or Enter inserts the token.
+  - A new name can be created from the list.
+  - Tokens are coloured: parameter blue, built-in green, unknown red.
+- **Parameter table:** rename (rewrites the templates and every action's
+  value), change type (resets values typed for the old type), set the
+  default, set choice options, delete.
+- **Warnings in the editor.** A parameter that isn't in any of its
+  movement's templates is flagged, because a value typed for it would go
+  nowhere. Movements get a dot in the list: red for a problem, amber for
+  an unused parameter.
+- **Route panel:** one row per parameter, with the default in grey, a
+  reset button, a true/false toggle and a choice dropdown. Invalid
+  numbers are refused.
+
+### Fixed along the way
+
+Undo and redo didn't refresh the route panel, so it kept showing the
+values from before the undo.
+
+### Checked
+
+- All test suites pass. The speed and extra-args tests were rewritten
+  against parameters, and new ones cover rendering, escapes, bool styles,
+  unknown placeholders, built-in scoping, name validation, rename, delete,
+  type change, migration, type switching and undo.
+- A 35-step headless-Chromium run drives the real editor: autocomplete,
+  Tab, Escape, Backspace on a token, creating from the list, renaming,
+  route-panel values, reset, undo, invalid input, warnings and the jump
+  links.
+- The earlier 52-step UI regression run still passes.
+
 # Changes — 2026-11-20
 
 ## A modern interface, modelled on Immich

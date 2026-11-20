@@ -84,7 +84,7 @@ Projects are ordinary `.json` files — **File → Save Project** / **Open Proje
 5. **Set robot config** — chassis dimensions, wheelbase, start position, and start heading
 6. **Generate output:**
    - **Human-readable step-by-step instructions** (e.g. "Turn right 90°", "Forward 450 mm")
-   - **Code template output** — customizable code generation with user-defined templates for `move()`, `turn_right()`, `turn_left()`, comment prefix, default speed, and unit (mm/cm/m/in)
+   - **Code template output** — one strict template per movement (forward, turn, arc, wall align, line traces, checkpoint), each with its own parameters (speed, acceleration, flags — whatever your robot API takes) whose values you set per action in Route mode
    - Total distance summary
 7. **Save/Open** projects as `.json` files (mat image + routes + calibration + config, all in one)
 8. **Full undo/redo** (80 levels) for all edits
@@ -107,16 +107,18 @@ wro-route-planner/
 │   ├── output.js       # Instruction generation + code template output
 │   │                     (single computeSteps() source for both)
 │   ├── persist.js      # save/open project as .json, image loading
-│   ├── config.js       # Robot config panel, code template config UI, calibration
+│   ├── config.js       # Robot config panel, project-wide code settings, config migration
 │   │                     prompt, recalibration
 │   ├── events.js       # All mouse/touch/keyboard/button event handlers
 │   ├── main.js         # Bootstrap — ResizeObserver, initial state, init call
 │   ├── sketch/         # Geometry + constraint solver (no DOM)
-│   ├── model/          # Construction layer, routes, actions, resolver
+│   ├── model/          # Construction layer, routes, actions, resolver,
+│   │                     params.js (templates, parameters, rendering, migration)
 │   ├── sim/            # Pose track and collision sweep (no DOM)
 │   └── ui/
 │       ├── icons.js    # Inlined Material Design Icons + RP.icon / setLabel / setEye / setTone
 │       ├── chrome.js   # Click-to-open menus, dialog tabs, resizable bottom dock
+│       ├── params-ui.js # Template editor, parameter tables, route-panel parameter rows
 │       ├── sketch-ui.js, route-ui.js, sim-ui.js   # Mode panels
 ├── build.js            # Dependency-free build: inlines everything into
 │                         dist/wro-planner.html for carrying around
@@ -129,7 +131,7 @@ wro-route-planner/
 
 ```
 core.js → ui/icons.js → ui/chrome.js → sketch/* → render.js → routes.js → model/* → output.js
-        → sim/* → persist.js → config.js → ui/*-ui.js → events.js → main.js
+        → sim/* → persist.js → config.js → ui/sketch-ui, route-ui, params-ui, sim-ui → events.js → main.js
 ```
 
 All modules extend the shared `window.RP` namespace. `core.js` initializes the namespace and global state; `main.js` kicks off the app.
@@ -160,7 +162,11 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - **The robot's extents are measured from the drawn body** — `RP.robotExtentsMm()` is what the collision sweep uses, and it is reported in Robot & Code so the drive axis can be checked against the drawing.
 - **The solver stops when iterating stops paying, not at a fixed tolerance** — `tol` is an absolute residual, but coordinates are not: a mat-sized sketch runs to six figures of pixels, where 1e-9 is finer than a double can represent, so a perfectly-solved sketch could never trip it and re-ran its whole iteration budget on every solve. `RP.Sketch.solve` therefore also exits when the residual is already under `conflictTol` and a further iteration cannot improve it by 10%, and caps the damped-retry search at `RP.Sketch.MAX_LM_RETRIES` (each retry is a full O(n³) factorisation, and damping only ever shrinks the step). Genuine conflicts are unaffected — the diminishing-returns exit only applies below `conflictTol`.
 - **Auto-tangency seeds the geometry before constraining it** — `tangent_at`'s residual `(p−c)·û` says nothing about how long the line is, so the solver reaching tangency by swinging the far end changes the line's length as an unopposed side effect. `RP.seedTangentLine` (`js/model/construction.js`) rotates a freshly-drawn line about the arc end it joins first, setting the angle exactly and leaving the length alone. It is only a starting guess; the constraint still goes on afterwards and the solver still has the last word.
-- **Code-config fields are table-driven** — `RP.CODE_CONFIG_FIELDS` (`js/core.js`) is the one place that lists every field in the Robot & Code panel's template/speed section: its `<input id>`, its value type, and its default. Defaults, old-save backfilling, panel read/write, per-kind speed lookup, and DOM listener wiring all walk this table instead of naming each field by hand in five separate places. Adding a field is one row here plus one `<input>` in `index.html` — nothing else to remember or keep in sync.
+- **Code config is two tables** — `RP.CODE_CONFIG_FIELDS` (`js/core.js`) lists the project-wide fields (comment prefix, unit, true/false spelling) and `RP.MOVEMENTS` lists each movement's templates and built-ins. Defaults, old-save backfilling, the editor and codegen all walk these instead of naming fields by hand.
+- **Parameters belong to a movement, not to the project** — the only reason for a shared parameter list would be one value used by many movements, but every movement's template is written by hand anyway, so a separate list would just be a second place to keep in sync. Per movement, Forward's `speed` and Turn's `speed` are simply two parameters with their own defaults, and renaming one can never break another movement's template.
+- **Templates are strict** — the user's text, with each `{placeholder}` filled in and nothing added or removed: no commas, quoting or argument syntax is assumed, because every language and robot library spells those differently. An empty value fills in nothing. A placeholder that is neither a built-in nor a parameter of that movement is left in the output as typed and listed above the generated code, never silently dropped. `{{name}}` is a literal `{name}` (for a C++ brace initialiser); other braces are never placeholders.
+- **Built-ins are measured and cannot be shadowed** — `{distance}`, `{angle}`, `{radius}`, `{reversed}`, `{expected_distance}` and `{name}` come from the drawing (or the checkpoint), and a parameter may not take those names: a typed "radius" would let the code disagree with the arc that was drawn. Junction count is an ordinary parameter, because the planner never used it.
+- **A template's value is plain text; tokens are only how the editor shows it** — the editor serializes back to `{name}` text, and the one tokenizer (`RP.parseTemplate`) is shared by the editor and codegen, so the editor can never show a token the output would not fill in. The `{…}` being typed stays plain text until it is picked or left, because with an auto-closed brace `{s}` is already a complete placeholder after one letter.
 - **The chrome follows Immich, the canvas does not** — panels, menus and controls take their colours from tokens in `style.css` (Immich's dark palette and `#adcbfa` accent), but canvas colours stay in `render.js`, chosen for legibility over a mat photo. Restyling the panels must never make a route harder to see.
 - **JS never writes colours or widths** — a status line gets a meaning (`RP.setTone(el, 'bad')`), a row gets a class (`is-off`, `tone-warn`), and the stylesheet decides what that looks like. A caption that changes at runtime goes through `RP.setLabel(el, icon, text)`; setting `textContent` would wipe the icon.
 - **Menus open on click, never on hover** — hover dropdowns opened whenever the pointer crossed the top bar on its way to the canvas, and could not be opened on a touch screen at all. An open menu swallows Escape in the capture phase, so closing it does not also clear the selection.
@@ -257,23 +263,31 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 ### Output
 - [x] Step-by-step turn/forward instructions
 - [x] Auto-generated code with customizable templates
-- [x] Template placeholders: `{distance}`, `{angle}`, `{speed}`, `{reversed}`,
-      `{junctions}`, `{radius}`, `{name}`, `{expected_distance}` (wall align
-      only — the solved leg length, so a real robot can slow down on
-      approach instead of driving blind), `{extra_args}` (per-action, see
-      below)
-- [x] Configurable: comment prefix, forward/turn template, default speed, output unit
+- [x] One strict template per movement (turns have optional pivot-left /
+      pivot-right variants that fall back to the plain turn)
+- [x] Built-in placeholders measured from the drawing: `{distance}`,
+      `{angle}`, `{radius}`, `{reversed}`, `{name}`, `{expected_distance}`
+      (wall align — the leg length as drawn, so a real robot can slow down
+      on approach instead of driving blind)
+- [x] **Parameters per movement** — number, text, true/false or choice, each
+      with a default (empty = fill in nothing). Created, renamed, retyped and
+      deleted next to the template; renaming rewrites the template and every
+      action's value
+- [x] **Postman-style template editor** — type `{` for a list of that
+      movement's built-ins and parameters, narrowed as you type; Tab/Enter
+      inserts a token, and a new name can be created straight from the list
+- [x] True/false spelled per project: `True/False`, `true/false`, `1/0`,
+      `TRUE/FALSE`
+- [x] Configurable: comment prefix, output unit
 - [x] 3 decimal places on every emitted distance and angle, and residual turns
       emitted rather than rounded away — so the angles the robot integrates
       always sum to the geometry they came from
-- [x] Per-move-kind default speeds (Robot & Code panel) — forward, turn,
-      arc, wall align, and both line-trace modes can each override the
-      plain default speed; blank falls back to it, and an action's own
-      Speed field (Route mode) always wins over both
-- [x] Extra args per action — every move, turn and checkpoint has its own
-      free-text field (Route mode's detail panel) spliced verbatim into
-      `{extra_args}` in that action's template, for whatever a project's
-      robot API needs that no built-in placeholder covers
+- [x] Parameter values per action in Route mode — the default shows as grey
+      text, a value you type wins, and one click resets it. True/false is a
+      two-button toggle, choices a dropdown. The action list shows the values
+      an action set itself
+- [x] Unknown placeholders are listed above the generated code; click one to
+      jump to that movement's template
 - [x] Unit conversion (mm, cm, m, in)
 - [x] One-click copy (Instructions / Code)
 - [x] Total distance summary
@@ -290,7 +304,7 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - [x] Right sidebar shows only what is selected, as cards
 - [x] Collapsible bottom panels (Geometry & groups / Constraints / Generated code) in a dock
       whose height is dragged from its top edge
-- [x] Robot & Code dialog split into Robot / Code templates / Speeds tabs
+- [x] Robot & Code dialog split into Robot / Code & parameters tabs
 - [x] Snap indicator crosshair
 - [x] Construction line drawing preview
 - [x] Route continuation magnet circle on last waypoint
