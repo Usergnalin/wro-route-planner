@@ -422,3 +422,89 @@ canvas{display:block;width:100%;height:100%}
   :root{--left-w:196px;--right-w:228px}
   .brand span,#btn-instr-toggle span{display:none}
 }
+
+/* ======================================================================
+   PARAMETERS & TEMPLATES (js/ui/params-ui.js)
+   ====================================================================== */
+/* Tokens: a placeholder is one atomic box. Blue = parameter, grey-green =
+   built-in (measured, read-only), red = resolves to nothing. */
+.tok{display:inline-flex;align-items:center;height:20px;padding:0 7px;margin:0 1px;border-radius:var(--r-xs);
+  font-family:var(--mono);font-size:11.5px;font-weight:600;white-space:nowrap;vertical-align:1px;user-select:all;cursor:default}
+.tok-param{background:var(--primary-soft-2);color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary-line)}
+.tok-builtin{background:rgba(127,220,156,.12);color:var(--ok);box-shadow:inset 0 0 0 1px rgba(127,220,156,.35)}
+.tok-unknown{background:var(--bad-soft);color:var(--bad);box-shadow:inset 0 0 0 1px rgba(255,123,123,.55);text-decoration:wavy underline}
+
+.tmpl-row{margin:8px 0 10px}
+.tmpl-label{font-size:12.5px;color:var(--fg-2);margin-bottom:4px}
+.tmpl-label small{color:var(--faint);font-size:11px;margin-left:6px}
+.tmpl-editor{min-height:36px;padding:7px 10px;background:var(--card);border:1px solid var(--border-strong);border-radius:var(--r-sm);
+  font-family:var(--mono);font-size:12.5px;line-height:22px;color:var(--fg);white-space:pre-wrap;word-break:break-all;outline:none;cursor:text}
+.tmpl-editor:hover{border-color:#464656}
+.tmpl-editor:focus{border-color:var(--primary-line);background:var(--card-2)}
+.tmpl-editor.is-empty::before{content:attr(data-placeholder);color:var(--faint);pointer-events:none}
+
+.tok-pop{position:fixed;z-index:10000;min-width:260px;max-width:420px;max-height:240px;overflow-y:auto}
+.tok-pop-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r-xs);cursor:pointer}
+.tok-pop-item .ic{width:15px;height:15px;color:var(--primary)}
+.tok-pop-item.active,.tok-pop-item:hover{background:var(--card-3)}
+.tok-pop-note{color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.builtin-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:6px 0 2px;font-size:12px}
+.builtin-row .kv-k{margin-right:4px}
+.hint.inline{margin:0 0 0 4px!important}
+
+/* Code tab: movements on the left, the chosen one on the right. */
+.code-layout:not(.hidden){display:grid;grid-template-columns:190px 1fr;gap:18px;min-height:100%}
+#movement-nav{display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--border);padding-right:10px}
+.mv-nav-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border:none;border-radius:var(--pill);background:transparent;
+  color:var(--fg-2);font-size:13px;text-align:left}
+.mv-nav-item>span:first-of-type{flex:1}
+.mv-nav-item .ic{width:16px;height:16px;color:var(--muted)}
+.mv-nav-item:hover{background:var(--card)}
+.mv-nav-item.active{background:var(--primary-soft-2);color:var(--primary)}
+.mv-nav-sep{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:12px 10px 4px}
+.mv-dot{width:7px;height:7px;border-radius:50%;background:var(--bad);display:none;flex:0 0 7px}
+.mv-nav-item.has-problem .mv-dot{display:block}
+.mv-nav-item.has-warning .mv-dot{display:block;background:var(--warn)}
+#movement-page{min-width:0}
+#movement-page select{padding:7px 10px;font-size:12.5px;border-radius:var(--r-sm)}
+
+/* Parameter table */
+.param-head,.param-row{display:grid;grid-template-columns:minmax(120px,1.2fr) 130px minmax(110px,1fr) 30px;gap:6px;align-items:center}
+.param-head{font-size:11px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;padding:0 2px 4px}
+.param-row{padding:4px 0;border-top:1px solid var(--border)}
+#robot-overlay .param-row input[type="text"]{width:100%;text-align:left;padding:6px 9px}
+#robot-overlay .param-row .param-name{font-family:var(--mono)}
+.param-row select{width:100%}
+.param-options{grid-column:1 / -1;display:flex!important;flex-direction:row!important;align-items:center!important;gap:8px;margin:2px 0!important}
+.param-options span{white-space:nowrap;color:var(--muted)}
+.param-warn,.param-err{grid-column:1 / -1;display:none;font-size:11.5px;color:var(--warn)}
+.param-err{color:var(--bad)}
+.param-row.is-unused .param-warn,.param-row.has-err .param-err{display:block}
+.param-row.is-unused .param-name{color:var(--warn)}
+#param-add{margin-top:10px}
+input.invalid,select.invalid{border-color:var(--bad)!important;background:var(--bad-soft)!important}
+
+/* Parameter rows in the route panel */
+.ap-params{margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
+.ap-params-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;font-size:11px;font-weight:700;
+  color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.link-btn{display:inline-flex;align-items:center;gap:4px;border:none;background:none;color:var(--primary);font-size:11.5px;font-weight:500;
+  text-transform:none;letter-spacing:0;padding:2px 4px;border-radius:var(--r-xs)}
+.link-btn .ic{width:14px;height:14px}
+.link-btn:hover{background:var(--primary-soft)}
+.ap-row.param>span:first-child{font-family:var(--mono);font-size:11.5px}
+.ap-row.param.is-own>span:first-child{color:var(--fg)}
+.ap-row.param input[type="text"]{width:96px}
+.ap-row.param select{width:96px}
+.ap-row.param select.inherited{color:var(--faint)}
+.ap-row.param .reset{width:22px;height:22px}
+.ap-row.param .reset:disabled{opacity:0;pointer-events:none}
+.seg-btn.inherited{color:var(--fg-2);box-shadow:inset 0 0 0 1px var(--border-strong)}
+
+/* Template problems over the generated code */
+#code-warnings{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+.code-warn{display:flex;align-items:center;gap:6px;width:100%;padding:5px 9px;border:none;border-radius:var(--r-xs);background:var(--bad-soft);
+  color:var(--bad);font-size:12px;text-align:left}
+.code-warn .ic{width:15px;height:15px}
+.code-warn:hover{background:rgba(255,100,100,.2)}

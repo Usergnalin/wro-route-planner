@@ -365,6 +365,7 @@ RP.generateCode = function(route) {
 
 RP.updateInstructions = function() {
   if (!RP.dom.codeOutput) return;
+  if (RP.updateCodeWarnings) RP.updateCodeWarnings();
   if (!RP.instructionsVisible) {
     RP.dom.codeOutput.textContent = '';
     return;

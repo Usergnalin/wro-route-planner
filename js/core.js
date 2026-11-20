@@ -579,6 +579,9 @@ RP.restoreState = function(s) {
   RP.updateSideRouteList();
   RP.updateRobotUI();
   RP.updateCodeConfigUI();
+  // The action list and the selected action's panel are built from the
+  // routes just replaced; without this they kept showing pre-undo values.
+  if (RP.editMode === 'route' && RP.refreshRouteUI) RP.refreshRouteUI();
 };
 
 RP.pushHistory = function(desc) {

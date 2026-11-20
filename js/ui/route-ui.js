@@ -634,7 +634,7 @@ RP.updateActionList = function() {
       // here the moment it matters or is selected.
       if (RP.isTurnAction(act) && act.angleMode === RP.TURN_AUTO &&
           RP.selectedActionId !== act.id &&
-          act.angle == null && act.speed == null &&
+          act.angle == null && !RP.ownParamSummary(act).length &&
           (!act.style || act.style === RP.DEFAULT_TURN_STYLE) &&
           RP.turnAngleFor(emitted, act) == null) {
         return;
@@ -686,7 +686,7 @@ RP.updateActionList = function() {
         var legMm = RP.moveLengthMm(act);
         if (legMm != null) bits.push(Math.round(legMm) + ' mm');
         if (act.reverse) bits.push('rev');
-        if (act.speed != null) bits.push(act.speed);
+        bits = bits.concat(RP.ownParamSummary(act));
         if (act.visible === false) bits.push('hidden');
         lbl.textContent = bits.join(' · ');
         if (act.visible === false) lbl.classList.add('is-off');
@@ -706,7 +706,7 @@ RP.updateActionList = function() {
         } else {
           var parts = [RP.formatDeg(deg) + '°'];
           if (isTyped) parts.push('typed');
-          if (act.speed != null) parts.push('spd ' + act.speed);
+          parts = parts.concat(RP.ownParamSummary(act));
           if (act.style && act.style !== RP.DEFAULT_TURN_STYLE) parts.push(act.style.replace('_', ' '));
           lbl.textContent = parts.join(' · ');
         }
@@ -835,9 +835,6 @@ RP.renderTurnParams = function(host, act) {
     html += '<label class="ap-row"><span>Degrees</span><input type="number" id="ap-t-angle" step="1" ' +
             'value="' + (act.angle != null ? act.angle : 0) + '"></label>';
   }
-  html += '<label class="ap-row"><span>Speed</span><input type="number" id="ap-t-speed" min="1" ' +
-          'placeholder="default" value="' + (act.speed != null ? act.speed : '') + '"></label>';
-
   html += '<label class="ap-row"><span>Style</span><select id="ap-t-style">';
   for (var i = 0; i < RP.TURN_STYLES.length; i++) {
     var st = RP.TURN_STYLES[i];
@@ -846,11 +843,9 @@ RP.renderTurnParams = function(host, act) {
   }
   html += '</select></label>';
   html += '<div class="sidebar-hint">Each style has its own code template ' +
-          '(blank pivot templates fall back to the plain turn).</div>';
+          '(a blank pivot template falls back to Turn in place).</div>';
 
-  html += '<label class="ap-row"><span>Extra args</span><input type="text" id="ap-t-extra" ' +
-          'placeholder="e.g. , blocking=True" value="' + (act.extraArgs || '') + '"></label>';
-  html += '<div class="sidebar-hint">Spliced verbatim into {extra_args} in this turn’s code template.</div>';
+  html += RP.paramRowsHTML(act);
 
   if (!isAuto) {
     html += '<div class="ap-actions">' +
@@ -873,16 +868,10 @@ RP.renderTurnParams = function(host, act) {
     var v = parseFloat(this.value);
     RP.updateSelectedAction({ angle: isFinite(v) ? v : 0 });
   });
-  elpOn('ap-t-speed', 'change', function() {
-    var v = parseFloat(this.value);
-    RP.updateSelectedAction({ speed: isFinite(v) && v > 0 ? v : null });
-  });
   elpOn('ap-t-style', 'change', function() {
     RP.updateSelectedAction({ style: this.value });
   });
-  elpOn('ap-t-extra', 'change', function() {
-    RP.updateSelectedAction({ extraArgs: this.value });
-  });
+  RP.wireParamRows(host, act);
   elpOn('ap-t-del', 'click', function() { RP.removeSelectedAction(); });
 };
 
@@ -893,17 +882,13 @@ RP.renderCheckpointParams = function(host, act) {
     'value="' + (act.name || '') + '"></label>' +
     '<div class="sidebar-hint">Emitted where it sits in the list, using the ' +
     'checkpoint template.</div>' +
-    '<label class="ap-row"><span>Extra args</span><input type="text" id="ap-c-extra" ' +
-    'placeholder="e.g. reason=\'junction\'" value="' + (act.extraArgs || '') + '"></label>' +
-    '<div class="sidebar-hint">Spliced verbatim into {extra_args} in the checkpoint template.</div>' +
+    RP.paramRowsHTML(act) +
     '<div class="ap-actions">' +
     '<button id="ap-c-del" class="sidebar-small-btn danger">' + RP.icon('trash') + 'Remove</button></div>';
   elpOn('ap-c-name', 'change', function() {
     RP.updateSelectedAction({ name: this.value || 'checkpoint' });
   });
-  elpOn('ap-c-extra', 'change', function() {
-    RP.updateSelectedAction({ extraArgs: this.value });
-  });
+  RP.wireParamRows(host, act);
   elpOn('ap-c-del', 'click', function() { RP.removeSelectedAction(); });
 };
 
@@ -936,16 +921,9 @@ RP.renderMoveParams = function(host, el) {
           '<button type="button" id="ap-visible" class="drive-toggle' + (el.visible === false ? ' muted' : '') + '" ' +
           'title="Click to hide/show this move\u2019s line on the canvas">' +
           (el.visible === false ? RP.icon('eye-off') + 'Hidden' : RP.icon('eye') + 'Shown') + '</button></label>';
-  html += '<label class="ap-row"><span>Speed</span><input type="number" id="ap-speed" min="1" ' +
-          'placeholder="default" value="' + (el.speed != null ? el.speed : '') + '"></label>';
-
   if (el.move === 'forward' || el.move === 'linetrace_dist') {
     html += '<label class="ap-row"><span>Offset (mm)</span><input type="number" id="ap-offset" ' +
             'value="' + (el.offset || 0) + '"></label>';
-  }
-  if (el.move === 'linetrace_junct') {
-    html += '<label class="ap-row"><span>Junctions</span><input type="number" id="ap-junctions" min="1" ' +
-            'value="' + (el.junctions || 1) + '"></label>';
   }
   if (el.move === 'wall_align') {
     // Naming the wall matters now that nothing snaps to it: this is the
@@ -964,9 +942,7 @@ RP.renderMoveParams = function(host, el) {
   var cpAct = RP.checkpointAfterMove(route, el.id);
   html += '<label class="ap-row"><span>Checkpoint</span><input type="text" id="ap-checkpoint" ' +
           'placeholder="none" value="' + (cpAct ? cpAct.name : '') + '"></label>';
-  html += '<label class="ap-row"><span>Extra args</span><input type="text" id="ap-extra" ' +
-          'placeholder="e.g. , blocking=True" value="' + (el.extraArgs || '') + '"></label>';
-  html += '<div class="sidebar-hint">Spliced verbatim into {extra_args} in this move’s code template.</div>';
+  html += RP.paramRowsHTML(el);
   html += '<div class="ap-actions">' +
           '<button id="ap-up" class="sidebar-small-btn square" title="Move earlier in the route">' + RP.icon('arrow-up') + '</button>' +
           '<button id="ap-down" class="sidebar-small-btn square" title="Move later in the route">' + RP.icon('arrow-down') + '</button>' +
@@ -978,17 +954,9 @@ RP.renderMoveParams = function(host, el) {
   elpOn('ap-visible', 'click', function() {
     RP.updateSelectedMove({ visible: el.visible === false });
   });
-  elpOn('ap-speed', 'change', function() {
-    var v = parseFloat(this.value);
-    RP.updateSelectedMove({ speed: isFinite(v) && v > 0 ? v : null });
-  });
   elpOn('ap-offset', 'change', function() {
     var v = parseFloat(this.value);
     RP.updateSelectedMove({ offset: isFinite(v) ? v : 0 });
-  });
-  elpOn('ap-junctions', 'change', function() {
-    var v = parseInt(this.value, 10);
-    RP.updateSelectedMove({ junctions: isFinite(v) && v > 0 ? v : 1 });
   });
   elpOn('ap-teleport', 'change', function() {
     RP.updateSelectedMove({ teleportName: this.value || null });
@@ -996,9 +964,7 @@ RP.renderMoveParams = function(host, el) {
   elpOn('ap-checkpoint', 'change', function() {
     RP.updateSelectedMove({ checkpoint: this.value || null });
   });
-  elpOn('ap-extra', 'change', function() {
-    RP.updateSelectedMove({ extraArgs: this.value });
-  });
+  RP.wireParamRows(host, el);
   elpOn('ap-up', 'click', function() { RP.reorderSelectedMove(-1); });
   elpOn('ap-down', 'click', function() { RP.reorderSelectedMove(1); });
   elpOn('ap-del', 'click', function() { RP.removeSelectedMove(); });

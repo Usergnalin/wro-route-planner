@@ -205,6 +205,7 @@
       <div class="side-panel-header" onclick="togglePanel(this.parentElement)"><i data-icon="code"></i><span class="sp-title">Generated code</span>
         <button id="btn-copy-code" class="pill-btn small" onclick="event.stopPropagation()"><i data-icon="copy"></i><span>Copy</span></button><i data-icon="chevron-down"></i></div>
       <div class="side-panel-body">
+        <div id="code-warnings" class="hidden"></div>
         <pre id="code-output"></pre>
       </div>
     </section>
@@ -218,8 +219,7 @@
     <h3 id="robot-overlay-title">Robot &amp; code</h3>
     <div class="modal-tabs" role="tablist">
       <button class="modal-tab active" data-tab-target="robot" role="tab" aria-selected="true"><i data-icon="robot"></i><span>Robot</span></button>
-      <button class="modal-tab" data-tab-target="templates" role="tab" aria-selected="false"><i data-icon="code"></i><span>Code templates</span></button>
-      <button class="modal-tab" data-tab-target="speeds" role="tab" aria-selected="false"><i data-icon="drive"></i><span>Speeds</span></button>
+      <button class="modal-tab" data-tab-target="code" role="tab" aria-selected="false"><i data-icon="code"></i><span>Code &amp; parameters</span></button>
     </div>
     <button id="btn-robot-close" class="icon-btn" title="Close (Esc)" aria-label="Close"><i data-icon="close"></i></button>
   </div>
@@ -243,37 +243,10 @@
     <div class="hint">Positional uncertainty gained per mm driven, reset per-axis by wall aligns and line traces. 0 turns the model off. Measure it on your own robot — a guessed number would inflate every warning.</div>
   </div>
 
-  <div data-tab-pane="templates" class="hidden">
-    <div class="tmpl-grid">
-    <label><span>Comment prefix</span><input type="text" id="code-comment" value="#"></label>
-    <label><span>Unit</span><input type="text" id="code-unit" value="mm"></label>
-    <label><span>Forward</span><input type="text" id="code-forward" value="robot.move_distance({distance}, power={speed}{extra_args})"></label>
-    <label><span>Turn <small>+CW / −CCW</small></span><input type="text" id="code-turn" value="robot.turn_in_place({angle}, power={speed}{extra_args})"></label>
-    <label><span>Turn · pivot left <small>blank = same as Turn</small></span><input type="text" id="code-turn-pivot-l" value="" placeholder="robot.pivot_left({angle}, {speed})"></label>
-    <label><span>Turn · pivot right <small>blank = same as Turn</small></span><input type="text" id="code-turn-pivot-r" value="" placeholder="robot.pivot_right({angle}, {speed})"></label>
-    <label><span>Arc <small>angle +fwd/−back, radius +right/−left</small></span><input type="text" id="code-turn-arc" value="robot.turn_arc(angle={angle}, speed={speed}, radius={radius})"></label>
-    <label><span>Wall align</span><input type="text" id="code-wall-align" value="robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})"></label>
-    <label><span>Line trace · distance</span><input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed}{extra_args})"></label>
-    <label><span>Line trace · junctions</span><input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed}{extra_args})"></label>
-    <label><span>Checkpoint</span><input type="text" id="code-checkpoint" value="if callable({name}): {name}({extra_args})"></label>
-    </div>
-    <div class="hint">Placeholders: <code>{distance}</code> <code>{angle}</code> <code>{speed}</code> <code>{reversed}</code> <code>{junctions}</code> <code>{radius}</code> <code>{name}</code> <code>{expected_distance}</code> (wall align only) <code>{extra_args}</code> (per action, typed on the action itself in Route mode). Leave a pivot template blank to fall back to the plain turn.</div>
-  </div>
-
-  <div data-tab-pane="speeds" class="hidden">
-    <div class="tmpl-grid">
-    <label><span>Default speed</span><input type="number" id="code-speed" value="200" min="1"></label>
-    </div>
-    <h4 class="modal-section">Per move type</h4>
-    <div class="tmpl-grid">
-    <label><span>Forward</span><input type="number" id="code-speed-forward" placeholder="Default speed" min="1"></label>
-    <label><span>Turn</span><input type="number" id="code-speed-turn" placeholder="Default speed" min="1"></label>
-    <label><span>Arc</span><input type="number" id="code-speed-arc" placeholder="Default speed" min="1"></label>
-    <label><span>Wall align</span><input type="number" id="code-speed-wall-align" placeholder="Default speed" min="1"></label>
-    <label><span>Line trace · distance</span><input type="number" id="code-speed-lt-dist" placeholder="Default speed" min="1"></label>
-    <label><span>Line trace · junctions</span><input type="number" id="code-speed-lt-junct" placeholder="Default speed" min="1"></label>
-    </div>
-    <div class="hint">Blank uses the default speed. An action's own Speed field (Route mode) always wins over both.</div>
+  <!-- Built by js/ui/params-ui.js: General, then one page per movement. -->
+  <div data-tab-pane="code" class="hidden code-layout">
+    <nav id="movement-nav" aria-label="Movements"></nav>
+    <div id="movement-page"></div>
   </div>
 
   </div>
@@ -313,6 +286,7 @@
 <script src="js/config.js"></script>
 <script src="js/ui/sketch-ui.js"></script>
 <script src="js/ui/route-ui.js"></script>
+<script src="js/ui/params-ui.js"></script>
 <script src="js/ui/sim-ui.js"></script>
 <script src="js/events.js"></script>
 <script src="js/main.js"></script>
