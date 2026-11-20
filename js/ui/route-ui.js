@@ -465,23 +465,23 @@ RP.updateRouteModePanel = function() {
   if (statusEl) {
     if (!route) {
       statusEl.textContent = 'No route selected';
-      statusEl.style.color = '#888';
+      RP.setTone(statusEl, 'muted');
     } else {
       var res = RP.resolveRoute(route);
       if (res.ok) {
         statusEl.textContent = res.moves.length + ' move' +
           (res.moves.length === 1 ? '' : 's') + ' · connected';
-        statusEl.style.color = '#66ccff';
+        RP.setTone(statusEl, 'info');
       } else if (res.code === 'EMPTY') {
         statusEl.textContent = 'Empty — click geometry to add a move';
-        statusEl.style.color = '#888';
+        RP.setTone(statusEl, 'muted');
       } else {
         // resolveRoute stops at the first break; say how many there are in
         // total, so fixing one does not come as a surprise a minute later.
         var nb = RP.routeBreaks ? RP.routeBreaks(route).length : 0;
         statusEl.textContent = res.message +
           (nb > 1 ? '  (' + nb + ' breaks in this route)' : '');
-        statusEl.style.color = '#ff4444';
+        RP.setTone(statusEl, 'bad');
       }
     }
   }
@@ -512,7 +512,7 @@ function renderSegmentRow(list, route, marker) {
 
   var eye = document.createElement('button');
   eye.className = 'layer-vis-btn';
-  eye.textContent = seg.visible ? '●' : '○';
+  RP.setEye(eye, seg.visible);
   eye.title = seg.visible ? 'Hide this segment on the canvas' : 'Show this segment';
   eye.onclick = function(e) {
     e.stopPropagation();
@@ -525,8 +525,8 @@ function renderSegmentRow(list, route, marker) {
   // currently running is completely ordinary.
   var inc = document.createElement('button');
   inc.className = 'layer-vis-btn';
-  inc.textContent = seg.included ? '☑' : '☐';
-  inc.style.color = seg.included ? '#7c7' : '#a66';
+  inc.innerHTML = RP.icon(seg.included ? 'check-box' : 'check-box-off');
+  inc.classList.add(seg.included ? 'is-in' : 'is-out');
   inc.title = seg.included
     ? 'In the generated code — click to leave it out'
     : 'Left out of the generated code — click to put it back';
@@ -541,8 +541,8 @@ function renderSegmentRow(list, route, marker) {
   lbl.className = 'layer-item-label';
   lbl.textContent = seg.name + '  (' + seg.moves.length + ')';
   lbl.title = 'Double-click to rename';
-  if (!seg.visible) lbl.style.color = '#777';
-  if (!seg.included) lbl.style.textDecoration = 'line-through';
+  if (!seg.visible) lbl.classList.add('is-off');
+  if (!seg.included) lbl.classList.add('is-struck');
   lbl.ondblclick = function() {
     var name = prompt('Segment name:', seg.name);
     if (name === null) return;
@@ -559,7 +559,7 @@ function renderSegmentRow(list, route, marker) {
   if (seg.id != null) {
     var del = document.createElement('button');
     del.className = 'layer-del-btn';
-    del.textContent = '✕';
+    del.innerHTML = RP.icon('close');
     del.title = 'Remove this boundary — the actions merge into the segment above';
     del.onclick = function(e) {
       e.stopPropagation();
@@ -631,7 +631,7 @@ RP.updateActionList = function() {
       if (brk) {
         var brow = document.createElement('div');
         brow.className = 'layer-group-title break-row';
-        brow.textContent = '⚡ Route breaks here — ' + RP.describeBreak(brk);
+        brow.innerHTML = RP.icon('break') + RP.escapeHtml('Route breaks here — ' + RP.describeBreak(brk));
         brow.title = 'Move ' + brk.index + ' ends ' + brk.gapMm.toFixed(1) +
                      ' mm from where the next one starts. Join the two ' +
                      'endpoints in Sketch mode to close it.';
@@ -666,7 +666,7 @@ RP.updateActionList = function() {
         if (act.speed != null) bits.push(act.speed);
         if (act.visible === false) bits.push('hidden');
         lbl.textContent = bits.join(' · ');
-        if (act.visible === false) lbl.style.color = '#777';
+        if (act.visible === false) lbl.classList.add('is-off');
       } else if (RP.isTurnAction(act)) {
         var deg = RP.turnAngleFor(emitted, act);
         // "Typed" means the angle was typed, not that the action is a
@@ -674,12 +674,12 @@ RP.updateActionList = function() {
         // the canvas already marks it with an asterisk.
         var isTyped = act.angle != null;
         glyph.textContent = RP.TURN_GLYPH(deg);
-        glyph.style.color = isTyped ? '#ff9944' : '#66ccff';
+        glyph.classList.add(isTyped ? 'tone-warn' : 'tone-info');
         if (deg == null) {
           // Not a failure: a straight junction needs no turn, and a
           // heading after a teleport is unknowable.
           lbl.textContent = 'no turn';
-          lbl.style.color = '#666';
+          lbl.classList.add('is-off');
         } else {
           var parts = [RP.formatDeg(deg) + '°'];
           if (isTyped) parts.push('typed');
@@ -688,9 +688,10 @@ RP.updateActionList = function() {
           lbl.textContent = parts.join(' · ');
         }
       } else {
-        glyph.textContent = '🏁';
+        glyph.innerHTML = RP.icon('checkpoint');
+        glyph.classList.add('tone-checkpoint');
         lbl.textContent = act.name || 'checkpoint';
-        lbl.style.color = '#ff99ff';
+        lbl.classList.add('is-checkpoint');
       }
       lbl.title = lbl.textContent;
       lbl.onclick = function() {
@@ -713,7 +714,7 @@ RP.updateActionList = function() {
       if (isMove) {
         var eye = document.createElement('button');
         eye.className = 'layer-vis-btn';
-        eye.textContent = act.visible === false ? '○' : '●';
+        RP.setEye(eye, act.visible !== false);
         eye.title = act.visible === false ? 'Show this move\u2019s line' : 'Hide this move\u2019s line';
         eye.onclick = function(e) {
           e.stopPropagation();
@@ -731,7 +732,7 @@ RP.updateActionList = function() {
       if (deletable) {
         var del = document.createElement('button');
         del.className = 'layer-del-btn';
-        del.textContent = '✕';
+        del.innerHTML = RP.icon('close');
         del.title = isMove ? 'Remove from route (geometry is kept)' : 'Remove this action';
         del.onclick = function(e) {
           e.stopPropagation();
@@ -745,12 +746,9 @@ RP.updateActionList = function() {
   }
 };
 
-var INPUT_CSS = 'width:70px;background:#3a3a3a;border:1px solid #555;color:#ddd;' +
-                'padding:2px 4px;border-radius:3px;font-size:11px;text-align:right';
-// Dropdowns hold words, not numbers, so they need more room than the
-// number fields — at 70px "Pivot left" rendered as "Pivot on ⌄".
-var SELECT_CSS = 'width:112px;background:#3a3a3a;border:1px solid #555;color:#ddd;' +
-                 'padding:2px 4px;border-radius:3px;font-size:11px';
+// Field widths live in style.css (.ap-row input / select). Dropdowns hold
+// words, not numbers, so they are wider than the number fields — at 70px
+// "Pivot left" rendered as "Pivot on ⌄".
 
 function elpOn(id, evt, fn) {
   var node = document.getElementById(id);
@@ -796,7 +794,7 @@ RP.renderTurnParams = function(host, act) {
       : 'A turn of 0° emits nothing.';
   } else {
     html += '<b>' + RP.formatDeg(deg) + '°</b> ' + (deg >= 0 ? 'clockwise' : 'anticlockwise');
-    html += '<br><span style="color:#888">' +
+    html += '<br><span class="ap-sub">' +
             (derived ? 'derived from the geometry either side' : 'typed, overriding the geometry') +
             '</span>';
   }
@@ -812,12 +810,12 @@ RP.renderTurnParams = function(host, act) {
   }
   if (!derived || !isAuto) {
     html += '<label class="ap-row"><span>Degrees</span><input type="number" id="ap-t-angle" step="1" ' +
-            'value="' + (act.angle != null ? act.angle : 0) + '" style="' + INPUT_CSS + '"></label>';
+            'value="' + (act.angle != null ? act.angle : 0) + '"></label>';
   }
   html += '<label class="ap-row"><span>Speed</span><input type="number" id="ap-t-speed" min="1" ' +
-          'placeholder="default" value="' + (act.speed != null ? act.speed : '') + '" style="' + INPUT_CSS + '"></label>';
+          'placeholder="default" value="' + (act.speed != null ? act.speed : '') + '"></label>';
 
-  html += '<label class="ap-row"><span>Style</span><select id="ap-t-style" style="' + SELECT_CSS + '">';
+  html += '<label class="ap-row"><span>Style</span><select id="ap-t-style">';
   for (var i = 0; i < RP.TURN_STYLES.length; i++) {
     var st = RP.TURN_STYLES[i];
     html += '<option value="' + st + '"' + ((act.style || RP.DEFAULT_TURN_STYLE) === st ? ' selected' : '') + '>' +
@@ -828,12 +826,12 @@ RP.renderTurnParams = function(host, act) {
           '(blank pivot templates fall back to the plain turn).</div>';
 
   html += '<label class="ap-row"><span>Extra args</span><input type="text" id="ap-t-extra" ' +
-          'placeholder="e.g. , blocking=True" value="' + (act.extraArgs || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>';
+          'placeholder="e.g. , blocking=True" value="' + (act.extraArgs || '') + '"></label>';
   html += '<div class="sidebar-hint">Spliced verbatim into {extra_args} in this turn’s code template.</div>';
 
   if (!isAuto) {
-    html += '<div style="display:flex;gap:3px;margin-top:6px">' +
-            '<button id="ap-t-del" class="sidebar-small-btn">🗑 Remove turn</button></div>';
+    html += '<div class="ap-actions">' +
+            '<button id="ap-t-del" class="sidebar-small-btn danger">' + RP.icon('trash') + 'Remove turn</button></div>';
   }
   host.innerHTML = html;
 
@@ -869,14 +867,14 @@ RP.renderTurnParams = function(host, act) {
 RP.renderCheckpointParams = function(host, act) {
   host.innerHTML =
     '<label class="ap-row"><span>Name</span><input type="text" id="ap-c-name" ' +
-    'value="' + (act.name || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>' +
+    'value="' + (act.name || '') + '"></label>' +
     '<div class="sidebar-hint">Emitted where it sits in the list, using the ' +
     'checkpoint template.</div>' +
     '<label class="ap-row"><span>Extra args</span><input type="text" id="ap-c-extra" ' +
-    'placeholder="e.g. reason=\'junction\'" value="' + (act.extraArgs || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>' +
+    'placeholder="e.g. reason=\'junction\'" value="' + (act.extraArgs || '') + '"></label>' +
     '<div class="sidebar-hint">Spliced verbatim into {extra_args} in the checkpoint template.</div>' +
-    '<div style="display:flex;gap:3px;margin-top:6px">' +
-    '<button id="ap-c-del" class="sidebar-small-btn">🗑 Remove</button></div>';
+    '<div class="ap-actions">' +
+    '<button id="ap-c-del" class="sidebar-small-btn danger">' + RP.icon('trash') + 'Remove</button></div>';
   elpOn('ap-c-name', 'change', function() {
     RP.updateSelectedAction({ name: this.value || 'checkpoint' });
   });
@@ -893,7 +891,7 @@ RP.renderMoveParams = function(host, el) {
   var ent = sk ? sk.entities[el.entityId] : null;
   var moves = RP.movesForEntity(ent ? ent.type : 'line');
 
-  var html = '<label class="ap-row"><span>Move</span><select id="ap-move" style="' + SELECT_CSS + '">';
+  var html = '<label class="ap-row"><span>Move</span><select id="ap-move">';
   for (var i = 0; i < moves.length; i++) {
     html += '<option value="' + moves[i] + '"' + (el.move === moves[i] ? ' selected' : '') + '>' +
             (RP.MOVE_LABELS[moves[i]] || moves[i]) + '</option>';
@@ -907,24 +905,24 @@ RP.renderMoveParams = function(host, el) {
   html += '<label class="ap-row"><span>Drive</span>' +
           '<button type="button" id="ap-drive" class="drive-toggle' + (el.reverse ? ' rev' : '') + '" ' +
           'title="Click to drive the other way along this leg">' +
-          (el.reverse ? '◀ Backwards' : '▶ Forwards') + '</button></label>';
+          (el.reverse ? RP.icon('backward') + 'Backwards' : RP.icon('forward') + 'Forwards') + '</button></label>';
   // Independent of the construction line's own show/hide — this is
   // whether the ROUTE draws its use of it, for getting an overlapping
   // move out of the way on canvas without touching the geometry itself.
   html += '<label class="ap-row"><span>On canvas</span>' +
-          '<button type="button" id="ap-visible" class="drive-toggle' + (el.visible === false ? ' rev' : '') + '" ' +
+          '<button type="button" id="ap-visible" class="drive-toggle' + (el.visible === false ? ' muted' : '') + '" ' +
           'title="Click to hide/show this move\u2019s line on the canvas">' +
-          (el.visible === false ? '🙈 Hidden' : '👁 Shown') + '</button></label>';
+          (el.visible === false ? RP.icon('eye-off') + 'Hidden' : RP.icon('eye') + 'Shown') + '</button></label>';
   html += '<label class="ap-row"><span>Speed</span><input type="number" id="ap-speed" min="1" ' +
-          'placeholder="default" value="' + (el.speed != null ? el.speed : '') + '" style="' + INPUT_CSS + '"></label>';
+          'placeholder="default" value="' + (el.speed != null ? el.speed : '') + '"></label>';
 
   if (el.move === 'forward' || el.move === 'linetrace_dist') {
     html += '<label class="ap-row"><span>Offset (mm)</span><input type="number" id="ap-offset" ' +
-            'value="' + (el.offset || 0) + '" style="' + INPUT_CSS + '"></label>';
+            'value="' + (el.offset || 0) + '"></label>';
   }
   if (el.move === 'linetrace_junct') {
     html += '<label class="ap-row"><span>Junctions</span><input type="number" id="ap-junctions" min="1" ' +
-            'value="' + (el.junctions || 1) + '" style="' + INPUT_CSS + '"></label>';
+            'value="' + (el.junctions || 1) + '"></label>';
   }
   if (el.move === 'wall_align') {
     // Naming the wall matters now that nothing snaps to it: this is the
@@ -938,18 +936,18 @@ RP.renderMoveParams = function(host, el) {
   }
   if (el.move === 'teleport') {
     html += '<label class="ap-row"><span>Name</span><input type="text" id="ap-teleport" ' +
-            'value="' + (el.teleportName || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>';
+            'value="' + (el.teleportName || '') + '"></label>';
   }
   var cpAct = RP.checkpointAfterMove(route, el.id);
   html += '<label class="ap-row"><span>Checkpoint</span><input type="text" id="ap-checkpoint" ' +
-          'placeholder="none" value="' + (cpAct ? cpAct.name : '') + '" style="' + INPUT_CSS + ';text-align:left"></label>';
+          'placeholder="none" value="' + (cpAct ? cpAct.name : '') + '"></label>';
   html += '<label class="ap-row"><span>Extra args</span><input type="text" id="ap-extra" ' +
-          'placeholder="e.g. , blocking=True" value="' + (el.extraArgs || '') + '" style="' + INPUT_CSS + ';text-align:left"></label>';
+          'placeholder="e.g. , blocking=True" value="' + (el.extraArgs || '') + '"></label>';
   html += '<div class="sidebar-hint">Spliced verbatim into {extra_args} in this move’s code template.</div>';
-  html += '<div style="display:flex;gap:3px;margin-top:6px">' +
-          '<button id="ap-up" class="sidebar-small-btn">↑</button>' +
-          '<button id="ap-down" class="sidebar-small-btn">↓</button>' +
-          '<button id="ap-del" class="sidebar-small-btn">🗑 Remove</button></div>';
+  html += '<div class="ap-actions">' +
+          '<button id="ap-up" class="sidebar-small-btn square" title="Move earlier in the route">' + RP.icon('arrow-up') + '</button>' +
+          '<button id="ap-down" class="sidebar-small-btn square" title="Move later in the route">' + RP.icon('arrow-down') + '</button>' +
+          '<button id="ap-del" class="sidebar-small-btn danger">' + RP.icon('trash') + 'Remove</button></div>';
   host.innerHTML = html;
 
   elpOn('ap-move', 'change', function() { RP.updateSelectedMove({ move: this.value }); });

@@ -8,85 +8,81 @@
 </head>
 <body>
 
-<!-- ========== TAB BAR ========== -->
-<div id="top-bar">
-  <div class="tab" id="tab-file">
-    <span class="tab-label">File ▾</span>
-    <div class="tab-dropdown">
-      <div id="file-input-wrap"><button>🖼️ Open Image</button><input type="file" id="file-input" accept="image/*"></div>
-      <button id="btn-save-project">💾 Save Project</button>
-      <button id="btn-open-project">📂 Open Project</button>
+<!-- ========== TOP BAR ========== -->
+<header id="top-bar">
+  <div class="brand"><i data-icon="logo"></i><span>Route Planner</span></div>
+
+  <nav class="menubar">
+    <div class="menu" id="menu-file">
+      <button class="menu-trigger" aria-haspopup="true" aria-expanded="false">File<i data-icon="chevron-down"></i></button>
+      <div class="menu-pop" role="menu">
+        <div id="file-input-wrap" class="menu-item"><i data-icon="image"></i><span>Open image…</span><input type="file" id="file-input" accept="image/*"></div>
+        <button id="btn-open-project" class="menu-item"><i data-icon="open"></i><span>Open project…</span></button>
+        <button id="btn-save-project" class="menu-item"><i data-icon="save"></i><span>Save project</span></button>
+        <div class="menu-sep"></div>
+        <button id="btn-clear-all" class="menu-item danger"><i data-icon="clear"></i><span>Clear everything…</span></button>
+      </div>
     </div>
+  </nav>
+
+  <div class="tb-group">
+    <button id="btn-undo" class="icon-btn" title="Undo (Ctrl+Z)" aria-label="Undo"><i data-icon="undo"></i></button>
+    <button id="btn-redo" class="icon-btn" title="Redo (Ctrl+Y)" aria-label="Redo"><i data-icon="redo"></i></button>
   </div>
-  <div class="tab" id="tab-insert">
-    <span class="tab-label">Insert ▾</span>
-    <div class="tab-dropdown">
-      <button id="btn-tool-construction" class="tool-btn active" data-tool="construction">📏 Construction Line</button>
-      <button id="btn-tool-point" class="tool-btn" data-tool="point">⦁ Point</button>
-      <button id="btn-tool-select" class="tool-btn" data-tool="select">🖱️ Select</button>
-      <button id="btn-tool-constrain" class="tool-btn" data-tool="constrain">📐 Constrain</button>
-      <div class="dropdown-sep"></div>
-      <button id="btn-snap" class="active">🧲 Snap</button>
-    </div>
+
+  <div id="mode-switch" class="segmented" role="tablist">
+    <button id="btn-mode-sketch" class="mode-btn active" title="Draw and constrain geometry (1 · Tab to flip)"><i data-icon="sketch"></i><span>Sketch</span></button>
+    <button id="btn-mode-route" class="mode-btn" title="Assign robot moves to existing geometry (2 · Tab to flip)"><i data-icon="route"></i><span>Route</span></button>
   </div>
-  <div class="tab" id="tab-route">
-    <span class="tab-label">Route ▾</span>
-    <div class="tab-dropdown">
-      <button id="btn-undo" title="Undo (Ctrl+Z)">↩ Undo</button>
-      <button id="btn-redo" title="Redo (Ctrl+Y)">↪ Redo</button>
-      <div class="dropdown-sep"></div>
-      <button id="btn-clear-all">🗑️ Clear All</button>
-    </div>
-  </div>
-  <div id="mode-switch">
-    <button id="btn-mode-sketch" class="mode-btn active" title="Draw and constrain geometry (1 · Tab to flip)">📐 Sketch</button>
-    <button id="btn-mode-route" class="mode-btn" title="Assign robot moves to existing geometry (2 · Tab to flip)">🤖 Route</button>
-  </div>
+
   <div id="top-bar-right">
-    <button id="btn-robot-config" title="Robot config and code templates">🤖 Robot &amp; Code</button>
-    <button id="btn-zoom-in" title="Zoom in">🔍+</button>
-    <button id="btn-zoom-out" title="Zoom out">🔍−</button>
-    <button id="btn-fit" title="Fit to view">Fit</button>
-    <span id="calib-status"></span>
-    <span id="image-info">No image</span>
+    <span id="calib-status" class="chip"></span>
+    <span id="image-info" class="tb-meta">No image</span>
+    <div class="tb-group">
+      <button id="btn-zoom-out" class="icon-btn" title="Zoom out" aria-label="Zoom out"><i data-icon="zoom-out"></i></button>
+      <button id="btn-zoom-in" class="icon-btn" title="Zoom in" aria-label="Zoom in"><i data-icon="zoom-in"></i></button>
+      <button id="btn-fit" class="icon-btn" title="Fit to view (F)" aria-label="Fit to view"><i data-icon="fit"></i></button>
+    </div>
+    <button id="btn-instr-toggle" class="pill-btn active" title="Show or hide the generated code panel"><i data-icon="code"></i><span>Code</span></button>
+    <button id="btn-robot-config" class="pill-btn primary" title="Robot config and code templates"><i data-icon="settings"></i><span>Robot &amp; Code</span></button>
   </div>
-</div>
+</header>
 
 <!-- ========== MAIN AREA ========== -->
 <div id="main-area">
-  <!-- Left sidebar: Tools + Layers -->
-  <div id="left-sidebar">
-    <div class="sidebar-section" id="doc-section">
+  <!-- Left sidebar: what you are drawing, and with what -->
+  <aside id="left-sidebar">
+    <section class="sidebar-section" id="doc-section">
       <div class="sidebar-title">Drawing</div>
-      <div class="tool-group">
-        <button id="btn-doc-mat" class="tool-btn sidebar-tool-btn active" data-doc="mat">🗺️ Mat</button>
-        <button id="btn-doc-robot" class="tool-btn sidebar-tool-btn" data-doc="robot">🤖 Robot</button>
+      <div class="segmented full">
+        <button id="btn-doc-mat" class="tool-btn active" data-doc="mat"><i data-icon="mat"></i><span>Mat</span></button>
+        <button id="btn-doc-robot" class="tool-btn" data-doc="robot"><i data-icon="robot"></i><span>Robot</span></button>
       </div>
       <div class="sidebar-hint" id="doc-hint">Field geometry, routes and obstacles</div>
-    </div>
-    <div class="sidebar-section" id="tool-section">
+    </section>
+    <section class="sidebar-section" id="tool-section">
       <div class="sidebar-title">Tool</div>
       <div class="tool-group">
-        <button id="btn-sidebar-construction" class="tool-btn sidebar-tool-btn active" data-tool="construction">📏 Line</button>
-        <button id="btn-sidebar-arc" class="tool-btn sidebar-tool-btn" data-tool="arc">◠ Arc</button>
-        <button id="btn-sidebar-point" class="tool-btn sidebar-tool-btn" data-tool="point">⦁ Point</button>
-        <button id="btn-sidebar-select" class="tool-btn sidebar-tool-btn" data-tool="select">🖱️ Select</button>
-        <button id="btn-sidebar-constrain" class="tool-btn sidebar-tool-btn" data-tool="constrain">📐 Constrain</button>
+        <button id="btn-sidebar-construction" class="tool-btn sidebar-tool-btn active" data-tool="construction"><i data-icon="line"></i><span>Line</span></button>
+        <button id="btn-sidebar-arc" class="tool-btn sidebar-tool-btn" data-tool="arc"><i data-icon="arc"></i><span>Arc</span></button>
+        <button id="btn-sidebar-point" class="tool-btn sidebar-tool-btn" data-tool="point"><i data-icon="point"></i><span>Point</span></button>
+        <button id="btn-sidebar-select" class="tool-btn sidebar-tool-btn" data-tool="select"><i data-icon="select"></i><span>Select</span></button>
+        <button id="btn-sidebar-constrain" class="tool-btn sidebar-tool-btn wide" data-tool="constrain"><i data-icon="constrain"></i><span>Constrain</span></button>
       </div>
       <div class="sidebar-hint" id="sidebar-tool-hint">Drag to draw a line</div>
-    </div>
-    <div class="sidebar-section" id="field-section">
-      <div class="sidebar-title">Field</div>
-      <button id="btn-field-boundary" class="sidebar-small-btn">⬜ Add field walls</button>
+    </section>
+    <section class="sidebar-section" id="snap-section">
+      <button id="btn-sidebar-snap" class="switch-row active" aria-pressed="true" title="Ctrl = temporarily off">
+        <i data-icon="snap"></i><span>Snap</span><span class="switch" aria-hidden="true"></span>
+      </button>
+      <div class="sidebar-hint">Hold Ctrl to turn it off while drawing</div>
+    </section>
+    <section class="sidebar-section" id="field-section">
+      <button id="btn-field-boundary" class="sidebar-small-btn"><i data-icon="walls"></i><span>Add field walls</span></button>
       <div class="sidebar-hint">Fixed geometry that wall aligns stand off from</div>
-    </div>
-    <div class="sidebar-section" id="snap-section">
-      <div class="sidebar-title">Snap</div>
-      <button id="btn-sidebar-snap" class="active sidebar-small-btn">🧲 Snap On</button>
-      <div class="sidebar-hint">Ctrl = temporary off</div>
-    </div>
+    </section>
     <!-- Constraints (sketch mode) -->
-    <div class="sidebar-section" id="constraint-section" style="display:none">
+    <section class="sidebar-section" id="constraint-section" style="display:none">
       <div class="sidebar-title">Constraints</div>
       <div id="constraint-dof" class="constraint-dof">Empty</div>
       <div id="constraint-selection" class="sidebar-hint">Nothing selected</div>
@@ -100,177 +96,193 @@
         <button class="constraint-btn" data-constraint="tangent"       title="Tangent (T) — select a line and an arc"></button>
         <button class="constraint-btn" data-constraint="equal"         title="Equal (E) — select 2 lines, or 2 arcs"></button>
       </div>
-      <button id="btn-auto-constrain" class="sidebar-small-btn active">✓ Auto-constrain</button>
-    </div>
+      <button id="btn-auto-constrain" class="switch-row active" aria-pressed="true" title="Turn what you snap to while drawing into constraints (coincident, tangent, horizontal/vertical)"><i data-icon="constrain"></i><span>Auto-constrain</span><span class="switch" aria-hidden="true"></span></button>
+    </section>
 
     <!-- Route elements (route mode) -->
-    <div class="sidebar-section" id="route-mode-section" style="display:none">
+    <section class="sidebar-section" id="route-mode-section" style="display:none">
       <div class="sidebar-title">Route</div>
       <div id="route-mode-status" class="constraint-dof">—</div>
       <div class="sidebar-hint">Click a line to add a move · click a corner to edit its turn</div>
-      <div id="action-list" style="margin-top:6px"></div>
-      <div style="display:flex;gap:3px;margin-top:6px">
+      <div id="action-list"></div>
+      <div class="action-bar">
         <button id="btn-add-turn" class="sidebar-small-btn"
-                title="Insert an extra turn before the selected action">↻ Turn</button>
+                title="Insert an extra turn before the selected action"><i data-icon="turn"></i><span>Turn</span></button>
         <button id="btn-add-checkpoint" class="sidebar-small-btn"
-                title="Insert a checkpoint before the selected action">🏁 Checkpoint</button>
+                title="Insert a checkpoint before the selected action"><i data-icon="checkpoint"></i><span>Checkpoint</span></button>
         <button id="btn-add-segment" class="sidebar-small-btn"
-                title="Start a new segment at the selected action">✂ Split</button>
+                title="Start a new segment at the selected action"><i data-icon="split"></i><span>Split</span></button>
+        <button id="btn-reverse-route" class="sidebar-small-btn"
+                title="Walk the whole route the other way"><i data-icon="reverse"></i><span>Reverse</span></button>
       </div>
-      <button id="btn-reverse-route" class="sidebar-small-btn" style="margin-top:4px"
-              title="Walk the whole route the other way">⇄ Reverse route</button>
+    </section>
+  </aside>
+
+  <!-- Canvas, with a status bar under it -->
+  <main id="canvas-col">
+    <div id="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div class="zoom-hint" id="zoom-hint">Scroll to zoom · Drag to pan · Arrow keys to pan · 1 Sketch / 2 Route · Tab to flip</div>
     </div>
+    <!-- Readouts that used to fill the right sidebar. They are glanced at,
+         not worked in, so they live in one line under the canvas and the
+         sidebar is left for whatever is selected. -->
+    <footer id="status-bar">
+      <span class="sb-item" title="Active tool"><span class="sb-k">Tool</span><span id="info-tool">Construction</span></span>
+      <span class="sb-item" title="Snap"><span class="sb-k">Snap</span><span id="info-snap">On</span></span>
+      <span class="sb-item sb-num" title="Cursor position"><span class="sb-k">Hover</span><span id="info-hover">-</span></span>
+      <span class="sb-item sb-num" title="Last click"><span class="sb-k">Click</span><span id="info-click">-</span></span>
+      <span class="sb-spacer"></span>
+      <span class="sb-item"><span class="sb-k">Lines</span><span id="info-lines">0</span></span>
+      <span class="sb-item"><span class="sb-k">Elements</span><span id="info-routes">0</span></span>
+      <span class="sb-item"><span class="sb-k">Sketch</span><span id="info-dof">-</span></span>
+      <span class="sb-item"><span class="sb-k">Scale</span><span id="info-calib-status">Not set</span></span>
+    </footer>
+  </main>
 
-  </div>
-
-  <!-- Canvas -->
-  <div id="canvas-wrap">
-    <canvas id="canvas"></canvas>
-    <div class="zoom-hint" id="zoom-hint">Scroll to zoom · Drag to pan · Arrow keys to pan · 1 Sketch / 2 Route · Tab to flip</div>
-  </div>
-
-  <!-- Right sidebar: Info -->
-  <div id="right-sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-title">Selection Info</div>
-      <div id="info-panel">
-        <div class="info-row"><span class="info-label">Tool:</span><span class="info-value" id="info-tool">Construction</span></div>
-        <div class="info-row"><span class="info-label">Snap:</span><span class="info-value" id="info-snap">On</span></div>
-        <hr style="border-color:#444;margin:4px 0">
-        <div class="info-row"><span class="info-label">Hover:</span><span class="info-value" id="info-hover">-</span></div>
-        <div class="info-row"><span class="info-label">Click:</span><span class="info-value" id="info-click">-</span></div>
-        <hr style="border-color:#444;margin:4px 0">
-        <div class="info-row"><span class="info-label">Lines:</span><span class="info-value" id="info-lines">0</span></div>
-        <div class="info-row"><span class="info-label">Elements:</span><span class="info-value" id="info-routes">0</span></div>
-        <div class="info-row"><span class="info-label">Sketch:</span><span class="info-value" id="info-dof">-</span></div>
-      </div>
-    </div>
-
+  <!-- Right sidebar: whatever is selected -->
+  <aside id="right-sidebar">
     <!-- Collision simulation (route mode) -->
-    <div class="sidebar-section" id="sim-section" style="display:none">
+    <section class="sidebar-section card" id="sim-section" style="display:none">
       <div class="sidebar-title">Simulation</div>
       <div id="sim-status" class="constraint-dof">—</div>
       <div id="sim-hits"></div>
       <div class="sidebar-hint" id="sim-hint"></div>
-    </div>
+    </section>
 
     <!-- Selected route element (route mode) -->
-    <div class="sidebar-section" id="action-params-section" style="display:none">
+    <section class="sidebar-section card" id="action-params-section" style="display:none">
       <div class="sidebar-title" id="action-params-title">Selected Action</div>
       <div id="action-params"></div>
-    </div>
+    </section>
 
     <!-- Selected geometry (sketch mode) -->
-    <div class="sidebar-section" id="geometry-detail-section" style="display:none">
+    <section class="sidebar-section card" id="geometry-detail-section" style="display:none">
       <div class="sidebar-title">Selected Geometry</div>
       <div id="geometry-detail"></div>
-    </div>
+    </section>
 
     <!-- Selected constraint (sketch mode) -->
-    <div class="sidebar-section" id="constraint-detail-section" style="display:none">
+    <section class="sidebar-section card" id="constraint-detail-section" style="display:none">
       <div class="sidebar-title">Selected Constraint</div>
       <div id="constraint-detail"></div>
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-title">Calibration</div>
-      <div id="info-calib-status">Not set</div>
-    </div>
-  </div>
+    </section>
+    <div class="sidebar-empty" id="right-empty">Select something on the canvas to see its details here.</div>
+  </aside>
 </div>
 
-<!-- ========== BOTTOM PANELS ========== -->
+<!-- ========== BOTTOM DOCK ========== -->
 <div id="bottom-panels">
-  <button id="btn-instr-toggle" class="active">📋 Route Instructions</button>
+  <div id="dock-resize" title="Drag to resize"></div>
   <div id="side-panels">
     <!-- ---- SKETCH MODE ---- -->
-    <div class="side-panel" id="panel-geometry">
-      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">📏 Construction Lines <span>▼</span></div>
+    <section class="side-panel" id="panel-geometry">
+      <div class="side-panel-header" onclick="togglePanel(this.parentElement)"><i data-icon="layers"></i><span class="sp-title">Geometry &amp; groups</span><i data-icon="chevron-down"></i></div>
       <div class="side-panel-body">
         <div id="layer-list"></div>
       </div>
-    </div>
+    </section>
 
-    <div class="side-panel" id="panel-constraints">
-      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">📐 Constraints <span>▼</span></div>
+    <section class="side-panel" id="panel-constraints">
+      <div class="side-panel-header" onclick="togglePanel(this.parentElement)"><i data-icon="constrain"></i><span class="sp-title">Constraints</span><i data-icon="chevron-down"></i></div>
       <div class="side-panel-body">
         <div id="constraint-list"></div>
       </div>
-    </div>
+    </section>
 
     <!-- ---- ROUTE MODE ---- -->
-    <div id="instr-panel" class="side-panel">
-      <div class="side-panel-header" onclick="togglePanel(this.parentElement)">📋 Generated Code <span>▼</span></div>
+    <section id="instr-panel" class="side-panel">
+      <div class="side-panel-header" onclick="togglePanel(this.parentElement)"><i data-icon="code"></i><span class="sp-title">Generated code</span>
+        <button id="btn-copy-code" class="pill-btn small" onclick="event.stopPropagation()"><i data-icon="copy"></i><span>Copy</span></button><i data-icon="chevron-down"></i></div>
       <div class="side-panel-body">
         <pre id="code-output"></pre>
-        <div class="btn-row">
-          <button id="btn-copy-code">📋 Copy Code</button>
-        </div>
       </div>
-    </div>
-
+    </section>
   </div>
 </div>
 
-<!-- Robot config overlay -->
+<!-- Robot config dialog -->
 <div id="robot-backdrop"></div>
-<div id="robot-overlay" role="dialog" aria-labelledby="robot-overlay-title">
+<div id="robot-overlay" role="dialog" aria-labelledby="robot-overlay-title" data-tabs>
   <div class="modal-head">
-    <h3 id="robot-overlay-title">🤖 Robot &amp; Code Configuration</h3>
-    <button id="btn-robot-close" class="modal-close" title="Close (Esc)">✕</button>
+    <h3 id="robot-overlay-title">Robot &amp; code</h3>
+    <div class="modal-tabs" role="tablist">
+      <button class="modal-tab active" data-tab-target="robot" role="tab" aria-selected="true"><i data-icon="robot"></i><span>Robot</span></button>
+      <button class="modal-tab" data-tab-target="templates" role="tab" aria-selected="false"><i data-icon="code"></i><span>Code templates</span></button>
+      <button class="modal-tab" data-tab-target="speeds" role="tab" aria-selected="false"><i data-icon="drive"></i><span>Speeds</span></button>
+    </div>
+    <button id="btn-robot-close" class="icon-btn" title="Close (Esc)" aria-label="Close"><i data-icon="close"></i></button>
   </div>
   <div class="modal-body">
-  <h4 class="modal-section">Chassis &amp; start</h4>
-  <div id="robot-derived" class="hint" style="display:none"></div>
-  <label>Drift (mm per mm driven) <input type="number" id="robot-drift" value="0" min="0" max="1" step="0.005"></label>
-  <div class="hint">Positional uncertainty gained per mm driven, reset per-axis by wall aligns and line traces. 0 turns the model off. Measure it on your own robot — a guessed number would inflate every warning.</div>
-  <hr style="border-color:#444;margin:8px 0">
-  <p style="font-size:12px;color:#888">Start Position: <span id="robot-start-label">not set</span></p>
-  <p style="font-size:12px;color:#888">Start Heading: <span id="robot-heading-label">0°</span></p>
-  <button id="btn-set-start">📍 Click on map to set</button>
-  <button id="btn-clear-start">🗑️ Clear start</button>
-  <div class="hint">Click on canvas to place start marker, then drag to set heading.</div>
 
-  <h4 class="modal-section">Code templates</h4>
-  <div class="tmpl-grid">
-  <label>Comment Prefix <input type="text" id="code-comment" value="#"></label>
-  <label>Forward Template <input type="text" id="code-forward" value="robot.move_distance({distance}, power={speed}{extra_args})"></label>
-  <label>Turn <small style="color:#888">(+CW / -CCW)</small> <input type="text" id="code-turn" value="robot.turn_in_place({angle}, power={speed}{extra_args})"></label>
-  <label>Turn · pivot left <small style="color:#888">(blank = same as Turn)</small> <input type="text" id="code-turn-pivot-l" value="" placeholder="robot.pivot_left({angle}, {speed})"></label>
-  <label>Turn · pivot right <small style="color:#888">(blank = same as Turn)</small> <input type="text" id="code-turn-pivot-r" value="" placeholder="robot.pivot_right({angle}, {speed})"></label>
-  <label>Arc <small style="color:#888">(angle +fwd/-back, radius +right/-left)</small> <input type="text" id="code-turn-arc" value="robot.turn_arc(angle={angle}, speed={speed}, radius={radius})"></label>
-  <label>Wall Align <input type="text" id="code-wall-align" value="robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})"></label>
-  <label>Line Trace Dist <input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed}{extra_args})"></label>
-  <label>Line Trace Junct <input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed}{extra_args})"></label>
-  <label>Checkpoint <input type="text" id="code-checkpoint" value="if callable({name}): {name}({extra_args})"></label>
-  <label>Default Speed <input type="number" id="code-speed" value="200" min="1"></label>
-  <label>Unit <input type="text" id="code-unit" value="mm"></label>
-  </div>
-  <div class="hint">Placeholders: {distance}, {angle}, {speed}, {reversed}, {junctions}, {radius}, {name}, {expected_distance} (wall align only), {extra_args} (per-action, typed on the action itself in Route mode). Leave a pivot template blank to fall back to the plain turn.</div>
+  <div data-tab-pane="robot">
+    <h4 class="modal-section">Start pose</h4>
+    <div class="kv-grid">
+      <span class="kv-k">Position</span><span id="robot-start-label" class="kv-v">not set</span>
+      <span class="kv-k">Heading</span><span id="robot-heading-label" class="kv-v">0°</span>
+    </div>
+    <div class="btn-row">
+      <button id="btn-set-start" class="pill-btn primary"><i data-icon="map-marker"></i><span>Click on map to set</span></button>
+      <button id="btn-clear-start" class="pill-btn"><i data-icon="map-marker-off"></i><span>Clear start</span></button>
+    </div>
+    <div class="hint">Click on the canvas to place the start marker, then drag to set the heading.</div>
 
-  <h4 class="modal-section">Default speeds per move</h4>
-  <div class="tmpl-grid">
-  <label>Forward <input type="number" id="code-speed-forward" placeholder="Default Speed" min="1"></label>
-  <label>Turn <input type="number" id="code-speed-turn" placeholder="Default Speed" min="1"></label>
-  <label>Arc <input type="number" id="code-speed-arc" placeholder="Default Speed" min="1"></label>
-  <label>Wall Align <input type="number" id="code-speed-wall-align" placeholder="Default Speed" min="1"></label>
-  <label>Line Trace Dist <input type="number" id="code-speed-lt-dist" placeholder="Default Speed" min="1"></label>
-  <label>Line Trace Junct <input type="number" id="code-speed-lt-junct" placeholder="Default Speed" min="1"></label>
+    <h4 class="modal-section">Body &amp; drift</h4>
+    <div id="robot-derived" class="hint" style="display:none"></div>
+    <label class="field-row">Drift (mm per mm driven) <input type="number" id="robot-drift" value="0" min="0" max="1" step="0.005"></label>
+    <div class="hint">Positional uncertainty gained per mm driven, reset per-axis by wall aligns and line traces. 0 turns the model off. Measure it on your own robot — a guessed number would inflate every warning.</div>
   </div>
-  <div class="hint">Blank uses Default Speed above. An action's own Speed field (Route mode) always wins over both.</div>
+
+  <div data-tab-pane="templates" class="hidden">
+    <div class="tmpl-grid">
+    <label><span>Comment prefix</span><input type="text" id="code-comment" value="#"></label>
+    <label><span>Unit</span><input type="text" id="code-unit" value="mm"></label>
+    <label><span>Forward</span><input type="text" id="code-forward" value="robot.move_distance({distance}, power={speed}{extra_args})"></label>
+    <label><span>Turn <small>+CW / −CCW</small></span><input type="text" id="code-turn" value="robot.turn_in_place({angle}, power={speed}{extra_args})"></label>
+    <label><span>Turn · pivot left <small>blank = same as Turn</small></span><input type="text" id="code-turn-pivot-l" value="" placeholder="robot.pivot_left({angle}, {speed})"></label>
+    <label><span>Turn · pivot right <small>blank = same as Turn</small></span><input type="text" id="code-turn-pivot-r" value="" placeholder="robot.pivot_right({angle}, {speed})"></label>
+    <label><span>Arc <small>angle +fwd/−back, radius +right/−left</small></span><input type="text" id="code-turn-arc" value="robot.turn_arc(angle={angle}, speed={speed}, radius={radius})"></label>
+    <label><span>Wall align</span><input type="text" id="code-wall-align" value="robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})"></label>
+    <label><span>Line trace · distance</span><input type="text" id="code-lt-dist" value="line_trace_distance({distance}, {speed}{extra_args})"></label>
+    <label><span>Line trace · junctions</span><input type="text" id="code-lt-junct" value="line_trace_until_junctions({junctions}, {speed}{extra_args})"></label>
+    <label><span>Checkpoint</span><input type="text" id="code-checkpoint" value="if callable({name}): {name}({extra_args})"></label>
+    </div>
+    <div class="hint">Placeholders: <code>{distance}</code> <code>{angle}</code> <code>{speed}</code> <code>{reversed}</code> <code>{junctions}</code> <code>{radius}</code> <code>{name}</code> <code>{expected_distance}</code> (wall align only) <code>{extra_args}</code> (per action, typed on the action itself in Route mode). Leave a pivot template blank to fall back to the plain turn.</div>
+  </div>
+
+  <div data-tab-pane="speeds" class="hidden">
+    <div class="tmpl-grid">
+    <label><span>Default speed</span><input type="number" id="code-speed" value="200" min="1"></label>
+    </div>
+    <h4 class="modal-section">Per move type</h4>
+    <div class="tmpl-grid">
+    <label><span>Forward</span><input type="number" id="code-speed-forward" placeholder="Default speed" min="1"></label>
+    <label><span>Turn</span><input type="number" id="code-speed-turn" placeholder="Default speed" min="1"></label>
+    <label><span>Arc</span><input type="number" id="code-speed-arc" placeholder="Default speed" min="1"></label>
+    <label><span>Wall align</span><input type="number" id="code-speed-wall-align" placeholder="Default speed" min="1"></label>
+    <label><span>Line trace · distance</span><input type="number" id="code-speed-lt-dist" placeholder="Default speed" min="1"></label>
+    <label><span>Line trace · junctions</span><input type="number" id="code-speed-lt-junct" placeholder="Default speed" min="1"></label>
+    </div>
+    <div class="hint">Blank uses the default speed. An action's own Speed field (Route mode) always wins over both.</div>
+  </div>
+
   </div>
 </div>
 
 <!-- Context menu -->
-<div id="ctx-menu" style="display:none">
+<div id="ctx-menu" class="popover" style="display:none">
   <div id="ctx-menu-title"></div>
-  <button id="ctx-menu-hide">🙈 Hide</button>
-  <button id="ctx-menu-group">📁 Group…</button>
-  <button id="ctx-menu-obstacle">🚧 Mark as obstacle</button>
-  <button id="ctx-menu-drive">🧭 Set as drive axis</button>
-  <button id="ctx-menu-delete">🗑 Delete</button>
+  <button id="ctx-menu-hide" class="menu-item"><i data-icon="eye-off"></i><span>Hide</span></button>
+  <button id="ctx-menu-group" class="menu-item"><i data-icon="folder-move"></i><span>Group…</span></button>
+  <button id="ctx-menu-obstacle" class="menu-item"><i data-icon="obstacle"></i><span>Mark as obstacle</span></button>
+  <button id="ctx-menu-drive" class="menu-item"><i data-icon="drive"></i><span>Set as drive axis</span></button>
+  <button id="ctx-menu-delete" class="menu-item danger"><i data-icon="trash"></i><span>Delete</span></button>
 </div>
 
 <script src="js/core.js"></script>
+<!-- Presentation: inlined icon set, menus/tabs/dock -->
+<script src="js/ui/icons.js"></script>
+<script src="js/ui/chrome.js"></script>
 <!-- Sketch layer: geometry + constraint solver (see docs/sketch-refactor-plan.md) -->
 <script src="js/sketch/linalg.js"></script>
 <script src="js/sketch/sketch.js"></script>

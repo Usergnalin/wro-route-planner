@@ -1,239 +1,418 @@
+/* ======================================================================
+   WRO Route Planner — dark theme, modelled on Immich's.
+
+   Every colour, radius and size the chrome uses is a token here, so the
+   look can be adjusted in one place. Canvas colours are NOT tokens: they
+   are drawn over a mat photograph, live in render.js, and are chosen for
+   legibility on the photo rather than to match the panels.
+   ====================================================================== */
+:root{
+  --bg:#0b0b0e;            /* behind everything */
+  --surface:#111115;       /* bars and sidebars */
+  --card:#1a1a20;          /* cards, inputs, list rows on hover */
+  --card-2:#22222a;        /* hover on a card */
+  --card-3:#2c2c36;        /* pressed / emphasised */
+  --border:#24242c;
+  --border-strong:#353542;
+  --canvas:#050507;
+
+  --fg:#e6e7eb;
+  --fg-2:#b6b9c3;
+  --muted:#8b909c;
+  --faint:#636874;
+
+  --primary:#adcbfa;                  /* Immich's dark-mode primary */
+  --primary-ink:#0d1d38;              /* text on a primary fill */
+  --primary-soft:rgba(173,203,250,.13);
+  --primary-soft-2:rgba(173,203,250,.22);
+  --primary-line:rgba(173,203,250,.45);
+
+  --ok:#7fdc9c;
+  --warn:#f5c26b;
+  --bad:#ff7b7b;
+  --bad-soft:rgba(255,100,100,.12);
+  --info:#8fd3ff;
+  --checkpoint:#f2a6f2;
+
+  --r-lg:16px; --r:12px; --r-sm:8px; --r-xs:6px; --pill:999px;
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Code","Fira Code",Menlo,Consolas,monospace;
+
+  --topbar-h:48px;
+  --left-w:240px;
+  --right-w:252px;
+}
+
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#1a1a1a;color:#ccc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:13px;line-height:1.35;
+  height:100vh;display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.4}
+:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+code{font-family:var(--mono);font-size:.92em;background:var(--card-2);padding:0 4px;border-radius:4px;color:var(--fg-2)}
+
+.ic{width:18px;height:18px;flex-shrink:0;fill:currentColor;display:inline-block;vertical-align:middle}
+.hidden{display:none!important}
+
+/* Thin, dark scrollbars everywhere — the browser default is a bright
+   slab next to a dark panel. */
+*{scrollbar-width:thin;scrollbar-color:#3a3a46 transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#33333e;border-radius:10px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#474756;background-clip:padding-box;border:2px solid transparent}
+::-webkit-scrollbar-track{background:transparent}
 
 /* ======================================================================
-   TOP BAR - Hover-expandable tabs
+   SHARED CONTROLS
    ====================================================================== */
-#top-bar{display:flex;align-items:center;background:#222;border-bottom:1px solid #444;flex-shrink:0;height:36px;gap:0;z-index:200}
-.tab{position:relative;height:100%}
-.tab-label{display:flex;align-items:center;padding:0 16px;height:100%;cursor:pointer;font-size:13px;color:#aaa;user-select:none;white-space:nowrap;border-right:1px solid #333}
-.tab:hover .tab-label{background:#3a3a3a;color:#fff}
-.tab-dropdown{display:none;position:absolute;top:100%;left:0;background:#2a2a2a;border:1px solid #555;border-top:none;border-radius:0 0 6px 6px;padding:6px;z-index:300;min-width:180px;box-shadow:0 4px 12px rgba(0,0,0,.4)}
-.tab:hover .tab-dropdown{display:flex;flex-direction:column;gap:2px}
-.tab-dropdown button,.tab-dropdown #file-input-wrap button{background:#3a3a3a;border:1px solid #555;color:#ddd;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;text-align:left;transition:background .15s;white-space:nowrap}
-.tab-dropdown button:hover{background:#4a4a4a}
-.tab-dropdown button.active{background:#2a6f97;border-color:#3a8fc7}
-.dropdown-sep{height:1px;background:#444;margin:3px 0}
-#file-input-wrap{position:relative;overflow:hidden}
-#file-input-wrap input[type="file"]{position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;cursor:pointer}
-#top-bar-right{display:flex;align-items:center;gap:4px;margin-left:auto;padding:0 8px}
-#top-bar-right button{background:#3a3a3a;border:1px solid #555;color:#ddd;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:12px;transition:background .15s}
-#top-bar-right button:hover{background:#4a4a4a}
-#image-info{color:#888;font-size:11px;margin-left:8px;white-space:nowrap}
-#calib-status{color:#4a4;font-size:11px}
+/* Round icon-only button (top bar, dialog close). */
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;
+  border-radius:var(--pill);border:none;background:transparent;color:var(--fg-2);transition:background .15s,color .15s}
+.icon-btn:hover:not(:disabled){background:var(--card-2);color:var(--fg)}
+.icon-btn .ic{width:20px;height:20px}
+
+/* Pill button with icon + caption. .primary is the filled accent. */
+.pill-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px 0 11px;border-radius:var(--pill);
+  border:1px solid var(--border-strong);background:transparent;color:var(--fg-2);font-size:13px;font-weight:500;white-space:nowrap;
+  transition:background .15s,color .15s,border-color .15s}
+.pill-btn:hover:not(:disabled){background:var(--card-2);color:var(--fg)}
+.pill-btn.active{background:var(--primary-soft);border-color:transparent;color:var(--primary)}
+.pill-btn.primary{background:var(--primary);border-color:var(--primary);color:var(--primary-ink)}
+.pill-btn.primary:hover:not(:disabled){background:#c4d9fc;color:var(--primary-ink)}
+.pill-btn.small{height:26px;padding:0 10px 0 8px;font-size:12px;gap:4px}
+.pill-btn.small .ic{width:15px;height:15px}
+
+/* Segmented control: a track with one lit option. */
+.segmented{display:flex;gap:2px;padding:3px;background:var(--card);border-radius:var(--pill);border:1px solid var(--border)}
+.segmented>button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;background:transparent;
+  color:var(--muted);padding:5px 14px;border-radius:var(--pill);font-weight:600;font-size:13px;transition:background .15s,color .15s}
+.segmented>button .ic{width:17px;height:17px}
+.segmented>button:hover:not(:disabled){color:var(--fg)}
+.segmented>button.active{background:var(--primary-soft-2);color:var(--primary)}
+.segmented.full{width:100%}
+.segmented.full>button{flex:1;padding:5px 8px}
+
+/* On/off switch row (Snap, Auto-constrain). The caption never changes;
+   the switch says which state it is in. */
+.switch-row{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border:none;border-radius:var(--r-sm);
+  background:transparent;color:var(--fg-2);text-align:left;font-size:13px}
+.switch-row:hover{background:var(--card)}
+.switch-row>span:not(.switch){flex:1}
+.switch-row .ic{color:var(--muted)}
+.switch-row.active .ic{color:var(--primary)}
+.switch{position:relative;width:32px;height:18px;border-radius:var(--pill);background:var(--card-3);flex-shrink:0;transition:background .15s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}
+.switch-row.active .switch{background:var(--primary)}
+.switch-row.active .switch::after{transform:translateX(14px);background:var(--primary-ink)}
+
+.chip{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:var(--pill);
+  background:rgba(127,220,156,.12);color:var(--ok);font-size:12px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.chip:empty{display:none}
+
+/* Text inputs and selects, wherever they appear. */
+input[type="text"],input[type="number"],select{background:var(--card);border:1px solid var(--border-strong);color:var(--fg);
+  border-radius:var(--r-xs);padding:4px 8px;font-size:12px;transition:border-color .15s,background .15s}
+input[type="text"]:hover,input[type="number"]:hover,select:hover{border-color:#464656}
+input[type="text"]:focus,input[type="number"]:focus,select:focus{outline:none;border-color:var(--primary-line);background:var(--card-2)}
+input::placeholder{color:var(--faint)}
+select{cursor:pointer}
+select option{background:var(--card);color:var(--fg)}
+input[type="checkbox"]{accent-color:var(--primary)}
+
+/* ======================================================================
+   TOP BAR
+   ====================================================================== */
+#top-bar{display:flex;align-items:center;gap:10px;height:var(--topbar-h);padding:0 10px 0 14px;
+  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;z-index:200}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;color:var(--fg);white-space:nowrap;margin-right:6px}
+.brand .ic{width:24px;height:24px;color:var(--primary)}
+.menubar{display:flex;align-items:center;gap:2px}
+.tb-group{display:flex;align-items:center;gap:0}
+.tb-meta{color:var(--muted);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+#mode-switch{margin:0 6px}
+#top-bar-right{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0}
+#top-bar-right .tb-group{border-left:1px solid var(--border);border-right:1px solid var(--border);padding:0 4px}
+
+/* Click-to-open menus (see chrome.js). */
+.menu{position:relative}
+.menu-trigger{display:inline-flex;align-items:center;gap:2px;height:32px;padding:0 8px 0 12px;border:none;border-radius:var(--pill);
+  background:transparent;color:var(--fg-2);font-weight:500}
+.menu-trigger .ic{width:16px;height:16px;color:var(--muted);transition:transform .15s}
+.menu-trigger:hover,.menu.open .menu-trigger{background:var(--card-2);color:var(--fg)}
+.menu.open .menu-trigger .ic{transform:rotate(180deg)}
+.menu-pop{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:300;min-width:220px}
+.menu.open .menu-pop{display:block}
+.menu-pop,.popover{background:#1d1d24;border:1px solid var(--border-strong);border-radius:var(--r);padding:6px;
+  box-shadow:0 12px 32px rgba(0,0,0,.55)}
+.menu-item{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:none;border-radius:var(--r-sm);
+  background:transparent;color:var(--fg);font-size:13px;text-align:left;white-space:nowrap;cursor:pointer}
+.menu-item .ic{color:var(--muted)}
+.menu-item:hover:not(:disabled){background:var(--card-3)}
+.menu-item.danger,.menu-item.danger .ic{color:var(--bad)}
+.menu-item.danger:hover{background:var(--bad-soft)}
+.menu-sep{height:1px;background:var(--border-strong);margin:5px 4px}
+#file-input-wrap{overflow:hidden}
+#file-input-wrap input[type="file"]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 
 /* ======================================================================
    MAIN AREA
    ====================================================================== */
-#main-area{display:flex;flex:1;overflow:hidden}
+#main-area{display:flex;flex:1;overflow:hidden;min-height:0}
 
-/* ======================================================================
-   LEFT SIDEBAR
-   ====================================================================== */
-#left-sidebar{width:175px;background:#242424;border-right:1px solid #444;flex-shrink:0;overflow:hidden;padding:8px;display:flex;flex-direction:column;gap:10px;font-size:12px}
-.layers-section{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
-#layer-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:1px}
-/* Route mode's action list is the sole visible sidebar section (see
-   RP.setEditMode), so it fills the leftover height the same way
-   .layers-section/#layer-list does — long routes scroll instead of
-   running the Turn/Checkpoint/Reverse buttons off the bottom. */
-#route-mode-section{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
-#action-list{overflow-y:auto;flex:1;min-height:0}
-.layer-group-title{color:#555;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:4px 2px 2px;border-top:1px solid #333;margin-top:2px}
-.layer-group-title:first-child{border-top:none;margin-top:0}
-.layer-item{display:flex;align-items:center;gap:4px;padding:2px 3px;border-radius:3px;cursor:pointer}
-.layer-item:hover{background:#333}
-.layer-item.active{background:#1a4a6a}
-.layer-vis-btn{background:none;border:none;cursor:pointer;font-size:11px;padding:0 2px;flex-shrink:0;line-height:1;color:#888}
-.layer-vis-btn:hover{color:#ddd}
-.layer-item-label{font-size:10px;color:#bbb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;cursor:pointer}
-.layer-item.active .layer-item-label{color:#fff}
-.sidebar-title{color:#888;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
-.sidebar-hint{color:#666;font-size:10px;margin-top:2px}
-.tool-group{display:flex;flex-wrap:wrap;gap:4px}
-.sidebar-tool-btn{flex:0 0 calc(50% - 2px);background:#3a3a3a;border:1px solid #555;color:#ddd;padding:6px 4px;border-radius:4px;cursor:pointer;font-size:11px;text-align:center;transition:background .15s}
-.sidebar-tool-btn:hover{background:#4a4a4a}
-.sidebar-tool-btn.active{background:#2a6f97;border-color:#3a8fc7}
-.sidebar-small-btn{width:100%;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:11px;text-align:center;transition:background .15s}
-.sidebar-small-btn:hover{background:#4a4a4a}
-.sidebar-small-btn.active{background:#2a6f97;border-color:#3a8fc7}
-#route-section select{width:100%;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:4px 6px;border-radius:4px;font-size:11px;cursor:pointer}
-#route-section select option{background:#2a2a2a;color:#ddd}
+/* Sidebars */
+#left-sidebar,#right-sidebar{background:var(--surface);flex-shrink:0;display:flex;flex-direction:column;gap:14px;padding:12px}
+#left-sidebar{width:var(--left-w);border-right:1px solid var(--border);overflow:hidden}
+#right-sidebar{width:var(--right-w);border-left:1px solid var(--border);overflow-y:auto;gap:10px}
+.sidebar-section{display:flex;flex-direction:column;gap:6px;min-width:0}
+.sidebar-section.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;gap:6px}
+.sidebar-title{color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.sidebar-hint{color:var(--faint);font-size:11.5px;line-height:1.4}
+.sidebar-hint b{color:var(--fg-2)}
+.sidebar-empty{color:var(--faint);font-size:12px;text-align:center;padding:24px 10px;line-height:1.5}
+/* The placeholder only shows while no card in the sidebar is. */
+#right-sidebar:has(.card:not([style*="none"])) .sidebar-empty{display:none}
 
-/* ======================================================================
-   CANVAS
-   ====================================================================== */
-#canvas-wrap{flex:1;overflow:hidden;position:relative;background:#111;cursor:grab}
+/* Tool grid: two per row, Constrain spans both. */
+.tool-group{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.tool-btn.wide{grid-column:span 2}
+.sidebar-tool-btn{display:flex;align-items:center;gap:7px;padding:7px 10px;border:none;border-radius:var(--pill);
+  background:transparent;color:var(--fg-2);font-size:13px;font-weight:500;transition:background .15s,color .15s}
+.sidebar-tool-btn .ic{color:var(--muted)}
+.sidebar-tool-btn:hover{background:var(--card)}
+.sidebar-tool-btn.active{background:var(--primary-soft-2);color:var(--primary)}
+.sidebar-tool-btn.active .ic{color:var(--primary)}
+
+/* Secondary, full-width sidebar button. Also used by generated panels. */
+.sidebar-small-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:6px 10px;
+  border:1px solid var(--border-strong);border-radius:var(--pill);background:transparent;color:var(--fg-2);font-size:12px;font-weight:500;
+  white-space:nowrap;transition:background .15s,color .15s}
+.sidebar-small-btn .ic{width:16px;height:16px;color:var(--muted)}
+.sidebar-small-btn:hover:not(:disabled){background:var(--card-2);color:var(--fg)}
+.sidebar-small-btn.active{background:var(--primary-soft);border-color:transparent;color:var(--primary)}
+.sidebar-small-btn.danger{color:var(--bad)}
+.sidebar-small-btn.danger .ic{color:var(--bad)}
+.sidebar-small-btn.danger:hover{background:var(--bad-soft)}
+.btn-row{display:flex;gap:6px;margin-top:8px}
+.btn-row>button{flex:1 1 auto;justify-content:center}
+
+/* Route mode's action list is the sole visible left section (see
+   RP.setEditMode), so it fills the leftover height and scrolls — the
+   buttons under it stay on screen however long the route is. */
+#route-mode-section{flex:1;min-height:0}
+#action-list{overflow-y:auto;flex:1;min-height:0;margin:2px -6px 0;padding:0 2px}
+.action-bar{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding-top:6px;border-top:1px solid var(--border)}
+.action-bar .sidebar-small-btn{padding:6px 6px}
+
+/* Canvas column */
+#canvas-col{flex:1;display:flex;flex-direction:column;min-width:0}
+#canvas-wrap{flex:1;overflow:hidden;position:relative;background:var(--canvas);cursor:grab;min-height:0}
 #canvas-wrap.dragging{cursor:grabbing}
 #canvas-wrap.drawing-route{cursor:crosshair}
 canvas{display:block;width:100%;height:100%}
-.zoom-hint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);color:#666;font-size:12px;pointer-events:none;opacity:1;transition:opacity .5s}
+.zoom-hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:var(--fg-2);font-size:12px;pointer-events:none;
+  background:rgba(17,17,21,.85);padding:5px 12px;border-radius:var(--pill);border:1px solid var(--border);white-space:nowrap;
+  opacity:1;transition:opacity .5s}
 .zoom-hint.hidden{opacity:0}
 
-/* ======================================================================
-   RIGHT SIDEBAR - Info
-   ====================================================================== */
-#right-sidebar{width:180px;background:#242424;border-left:1px solid #444;flex-shrink:0;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:10px;font-size:12px}
-.info-row{display:flex;justify-content:space-between;align-items:center;margin:2px 0}
-.info-label{color:#888;font-size:11px}
-.info-value{color:#ddd;font-size:11px;text-align:right}
-#info-calib-status{color:#888;font-size:11px;margin-top:2px}
+/* Status bar: glanceable readouts. */
+#status-bar{display:flex;align-items:center;gap:16px;height:26px;padding:0 12px;background:var(--surface);
+  border-top:1px solid var(--border);font-size:11.5px;color:var(--fg-2);white-space:nowrap;overflow:hidden;flex-shrink:0}
+.sb-item{display:inline-flex;gap:6px;align-items:baseline;min-width:0}
+.sb-k{color:var(--faint);font-weight:600}
+.sb-num span:last-child{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums}
+.sb-spacer{flex:1}
 
 /* ======================================================================
-   BOTTOM PANELS
+   LISTS — geometry, constraints, actions, collisions
    ====================================================================== */
-#bottom-panels{background:#222;border-top:1px solid #444;flex-shrink:0}
-#bottom-panels>button{background:none;border:none;color:#aaa;padding:4px 14px;cursor:pointer;font-size:12px;border-bottom:2px solid transparent}
-#bottom-panels>button.active{color:#fff;border-bottom-color:#2a6f97}
-#bottom-panels>button:hover{color:#ddd}
-#side-panels{display:flex;height:180px;background:#252525}
-.side-panel{border-right:1px solid #444;flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
-.side-panel:last-child{border-right:none}
-.side-panel .side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:4px 10px;background:#2e2e2e;cursor:pointer;user-select:none;font-weight:600;font-size:12px;flex-shrink:0}
-.side-panel .side-panel-header:hover{background:#333}
-.side-panel-body{padding:6px 10px;overflow-y:auto;flex:1;font-size:12px}
-.side-panel.collapsed .side-panel-body{display:none}
+#layer-list{display:flex;flex-direction:column;gap:1px}
+.layer-group-title{display:flex;align-items:center;gap:4px;color:var(--faint);font-size:10.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;padding:8px 6px 3px;margin-top:4px;border-top:1px solid var(--border)}
+.layer-group-title:first-child{border-top:none;margin-top:0;padding-top:2px}
+.layer-item{display:flex;align-items:center;gap:6px;min-height:26px;padding:2px 6px;border-radius:var(--r-sm);cursor:pointer;transition:background .1s}
+.layer-item:hover{background:var(--card-2)}
+.layer-item.active{background:var(--primary-soft-2)}
+.layer-item-label{font-size:12px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;cursor:pointer;min-width:0}
+.layer-item.active .layer-item-label{color:var(--fg)}
+.layer-item-label.is-off{color:var(--faint)}
+.layer-item-label.is-struck{text-decoration:line-through}
+.layer-item-label.is-link{color:var(--primary)}
+.layer-item-label.is-checkpoint{color:var(--checkpoint)}
+.layer-item-label.is-warn{color:var(--warn)}
+.layer-item-label .ic{width:14px;height:14px;margin:-2px 4px 0 0}
 
-/* Instruction / Code panel tabs */
-.tab-bar{display:flex;border-bottom:1px solid #444;margin-bottom:4px}
-.tab-btn{flex:1;padding:3px 8px;background:#2e2e2e;border:1px solid #444;border-bottom:none;color:#888;cursor:pointer;font-size:11px;border-radius:3px 3px 0 0;transition:background .15s,color .15s}
-.tab-btn:hover{background:#3a3a3a}
-.tab-btn.active{background:#3a3a3a;color:#fff;border-color:#555}
-.tab-content{display:block}
-.tab-content.hidden{display:none}
-#instr-list{list-style:none;padding:0;margin:2px 0;max-height:100px;overflow-y:auto;font-family:'SF Mono','Fira Code','Cascadia Code',monospace;font-size:11px;line-height:1.5}
-#instr-list li{padding:1px 4px;border-bottom:1px solid #333}
-#instr-list li:last-child{border-bottom:none}
-#instr-list .action{color:#f90;font-weight:600}
-#instr-list .forward{color:#6af}
-#instr-list .forward.reverse{color:#fa6;font-style:italic}
-#instr-list .teleport{color:#fa0;font-style:italic;border-bottom:1px dashed #fa0}
-#instr-list .checkpoint{color:#f8f;font-weight:700;background:rgba(255,128,255,0.08);padding:2px 6px;border-radius:3px}
-#instr-list .linetrace{color:#4f8;font-weight:600}
-#instr-list .linetrace-junct{color:#4f8;font-weight:600;font-style:italic}
-#instr-list .turn{color:#fa6}
-#instr-total{color:#888;font-size:11px;margin:2px 0}
-#code-output{background:#1a1a1a;border:1px solid #444;border-radius:3px;padding:6px;font-family:'SF Mono','Fira Code','Cascadia Code',monospace;font-size:10px;line-height:1.4;max-height:140px;overflow:auto;white-space:pre;color:#ccc;margin:2px 0;tab-size:2}
-#code-output .comment{color:#6a6}
-#code-output .keyword{color:#fa6}
-#code-output .number{color:#6af}
-.btn-row{display:flex;gap:4px;margin-top:4px}
-.btn-row button{flex:1;font-size:10px;padding:3px 6px;background:#3a3a3a;border:1px solid #555;color:#ddd;border-radius:3px;cursor:pointer}
-.btn-row button:hover{background:#4a4a4a}
+/* Small square icon buttons inside rows: eye, include, delete, flip. */
+.layer-vis-btn,.layer-del-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;flex-shrink:0;
+  border:none;border-radius:var(--r-xs);background:transparent;color:var(--muted);padding:0}
+.layer-vis-btn .ic,.layer-del-btn .ic{width:15px;height:15px}
+.layer-vis-btn:hover:not(:disabled){background:var(--card-3);color:var(--fg)}
+.layer-vis-btn.is-off{color:var(--faint)}
+.layer-vis-btn.is-in{color:var(--ok)}
+.layer-vis-btn.is-out{color:var(--bad)}
+/* Row actions (delete, flip) float over the end of the label on hover
+   rather than reserving a column — that column is what made long move
+   labels truncate in the 240px sidebar. Eyes stay inline: they are state. */
+.layer-item,.action-sub,.seg-row{position:relative}
+.layer-del-btn{position:absolute;right:4px;top:50%;margin-top:-11px;opacity:0;pointer-events:none;
+  background:var(--card-3);box-shadow:-8px 0 8px var(--card-2);transition:opacity .1s}
+.layer-del-btn.is-flip{right:30px}
+.layer-item:hover .layer-del-btn,.action-sub:hover .layer-del-btn,.seg-row:hover .layer-del-btn,.layer-del-btn:focus-visible{opacity:1;pointer-events:auto}
+.layer-del-btn:hover{background:var(--bad-soft);color:var(--bad)}
+.layer-del-btn.is-flip{color:var(--primary)}
+.layer-del-btn.is-flip:hover{background:var(--primary-soft);color:var(--primary)}
 
-/* Route management */
-.route-item{padding:3px 6px;margin:1px 0;border-radius:3px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:11px}
-.route-item:hover{background:#3a3a3a}
-.route-item.active{background:#2a6f97}
-.route-item .del-btn{cursor:pointer;color:#c66;padding:0 4px;border:none;background:none;font-size:12px}
+/* Row glyph column: move number, turn arrow, constraint icon. */
+.constraint-glyph{font-size:12px;font-weight:700;color:var(--warn);min-width:18px;text-align:center;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.constraint-glyph .ic{width:15px;height:15px}
+.constraint-glyph.tone-info{color:var(--info)}
+.constraint-glyph.tone-warn{color:var(--warn)}
+.constraint-glyph.tone-bad{color:var(--bad)}
+.constraint-glyph.tone-checkpoint{color:var(--checkpoint)}
+.layer-item.active .constraint-glyph{color:var(--primary)}
 
-/* Layer list delete button */
-.layer-del-btn{background:none;border:none;cursor:pointer;font-size:10px;color:#955;padding:0 2px;flex-shrink:0;line-height:1;opacity:0.6}
-.layer-del-btn:hover{color:#f66;opacity:1}
-.layer-item:hover .layer-del-btn{opacity:1}
-
-.action-sub{display:flex;align-items:center;gap:4px;padding:1px 3px 1px 14px;border-radius:3px;cursor:default}
-.action-sub:hover{background:#2d2d2d}
-.action-sub .layer-item-label{font-size:10px;color:#9b9b9b}
-.action-sub.active{background:#2a4a5a}
-.action-sub.active .layer-item-label{color:#cfe8ff}
-.ap-readout{font-size:11px;color:#ccc;line-height:1.5;background:#333;border:1px solid #454545;border-radius:3px;padding:4px 6px;margin-bottom:6px}
-
-/* Canvas right-click context menu */
-#ctx-menu{position:fixed;z-index:9999;background:#2a2a2a;border:1px solid #555;border-radius:5px;padding:4px;box-shadow:0 4px 16px rgba(0,0,0,.5);min-width:140px}
-#ctx-menu-title{font-size:10px;color:#888;padding:3px 8px 5px;border-bottom:1px solid #444;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
-#ctx-menu button{display:block;width:100%;background:none;border:none;color:#ddd;padding:5px 10px;text-align:left;cursor:pointer;font-size:12px;border-radius:3px}
-#ctx-menu button:hover{background:#c0392b;color:#fff}
-
-/* Robot config overlay */
-/* Robot / code config modal. Centred and fixed rather than pinned to the
-   right edge, where it used to sit half off-screen on narrow windows. */
-#robot-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:400}
-#robot-backdrop.visible{display:block}
-#robot-overlay{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  background:#2a2a2a;border:1px solid #555;border-radius:8px;z-index:401;
-  width:min(760px,92vw);max-height:88vh;box-shadow:0 12px 48px rgba(0,0,0,.6);
-  flex-direction:column;overflow:hidden}
-#robot-overlay.visible{display:flex}
-.modal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
-  padding:12px 16px;background:#232323;border-bottom:1px solid #444;flex-shrink:0}
-.modal-head h3{margin:0;color:#eee;font-size:15px}
-.modal-close{width:26px;height:26px;flex-shrink:0;padding:0;line-height:1;
-  background:#3a3a3a;border:1px solid #555;color:#bbb;border-radius:4px;cursor:pointer;font-size:13px}
-.modal-close:hover{background:#c0392b;border-color:#e74c3c;color:#fff}
-.modal-body{padding:14px 16px 18px;overflow-y:auto}
-.modal-section{margin:14px 0 6px;color:#8fc9ee;font-size:11px;font-weight:600;
-  text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #3d3d3d;padding-bottom:4px}
-.modal-section:first-child{margin-top:0}
-/* Templates are the long tail of this dialog; two columns keeps it from
-   turning into a scroll marathon. */
-.tmpl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:2px 18px}
-#robot-overlay label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;font-size:12px;color:#ccc}
-#robot-overlay .tmpl-grid label{flex-direction:column;align-items:stretch;gap:3px;margin:5px 0}
-#robot-overlay input[type="number"],#robot-overlay input[type="text"]{width:220px;background:#3a3a3a;border:1px solid #555;color:#ddd;padding:4px 8px;border-radius:3px;text-align:right;font-size:12px}
-#robot-overlay .tmpl-grid input{width:100%;box-sizing:border-box}
-#robot-overlay input[type="text"]{text-align:left;font-family:'SF Mono','Fira Code',monospace;font-size:11px}
-#robot-overlay input:focus{outline:none;border-color:#3a8fc7;background:#404040}
-#robot-overlay .hint{color:#888;font-size:11px;margin-top:8px;line-height:1.5}
-#robot-overlay .modal-body>button{margin-top:6px;width:100%;padding:6px;background:#3a3a3a;border:1px solid #555;color:#ddd;border-radius:4px;cursor:pointer;font-size:12px}
-#robot-overlay .modal-body>button:hover{background:#4a4a4a}
-#btn-robot-config.active{background:#2a6f97;border-color:#3a8fc7;color:#fff}
-
-/* Sketch / Route mode switch */
-#mode-switch{display:flex;gap:2px;margin-left:12px;background:#1e1e1e;padding:2px;border-radius:5px}
-.mode-btn{background:transparent;border:1px solid transparent;color:#888;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s,color .15s}
-.mode-btn:hover{color:#ddd}
-.mode-btn.active{background:#2a6f97;border-color:#3a8fc7;color:#fff}
-
-/* Segmented two-state control (e.g. drive forwards / backwards) */
-.seg-toggle{display:flex;gap:2px;flex-shrink:0}
-.seg-btn{background:#3a3a3a;border:1px solid #555;color:#999;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:10px;white-space:nowrap}
-.seg-btn:hover{background:#4a4a4a;color:#ddd}
-.seg-btn.active{background:#2a6f97;border-color:#3a8fc7;color:#fff}
-
-/* Element parameter rows */
-.ap-row{display:flex;justify-content:space-between;align-items:center;margin:3px 0;font-size:11px;color:#bbb;gap:6px}
-.ap-row span{flex:1;min-width:0}
-/* .ap-row span sets flex:1 on everything, which made the toggle share width
-   equally with its label and clip its second button off the sidebar. */
-.ap-row .seg-toggle{flex:0 0 auto}
-/* Two states, so one button. Tinted to match the segment on the canvas:
-   blue driving forwards, orange driving backwards. */
-.drive-toggle{flex:0 0 auto;background:#2a6f97;border:1px solid #3a8fc7;color:#fff;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px;white-space:nowrap;transition:background .15s}
-.drive-toggle:hover{background:#3a8fc7}
-.drive-toggle.rev{background:#a35427;border-color:#ff8844}
-.drive-toggle.rev:hover{background:#c4652f}
-.ap-row input[type="checkbox"]{width:auto;accent-color:#2a6f97}
-
-/* Constraint palette */
-.constraint-dof{font-size:11px;font-weight:600;margin-bottom:2px}
-.constraint-palette{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin:6px 0}
-.constraint-btn{background:#3a3a3a;border:1px solid #555;color:#666;padding:6px 0;border-radius:4px;font-size:13px;cursor:not-allowed;transition:background .15s,color .15s}
-.constraint-btn.enabled{color:#ddd;cursor:pointer}
-.constraint-btn.enabled:hover{background:#2a6f97;border-color:#3a8fc7;color:#fff}
-.constraint-glyph{font-size:12px;color:#ffd166;width:16px;text-align:center;flex-shrink:0;display:flex;align-items:center;justify-content:center}
-.cicon{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;vertical-align:middle}
-.constraint-btn .cicon{width:15px;height:15px}
-.layer-item.active .constraint-glyph{color:#ffee44}
-
-/* Misc */
-.hidden{display:none!important}
+/* Actions under a move (turns, checkpoints) are indented. */
+.action-sub{display:flex;align-items:center;gap:6px;min-height:22px;padding:1px 6px 1px 20px;border-radius:var(--r-sm);cursor:default}
+.action-sub:hover{background:var(--card-2)}
+.action-sub .layer-item-label{font-size:11.5px;color:var(--muted)}
+.action-sub.active{background:var(--primary-soft)}
+.action-sub.active .layer-item-label{color:var(--fg)}
 
 /* Segment header rows in the action list: two switches, then the name. */
-.seg-row{display:flex;align-items:center;gap:4px;padding:3px 2px 2px;margin-top:4px;border-top:1px solid #3a3a3a}
-.seg-row .layer-item-label{font-size:10px;color:#9cf;text-transform:none;letter-spacing:0}
+.seg-row{padding:6px 4px 2px;margin-top:6px;text-transform:none;letter-spacing:0;font-size:12px}
+.seg-row .layer-item-label{font-size:12px;font-weight:700;color:var(--primary)}
 
 /* A break in the route: the two moves either side, and the row that says
-   so. Red rather than the usual group-header grey — this is the one thing
-   in the list that means the route will not generate. */
-.break-row {
-  color: #ff6666;
-  background: rgba(255, 68, 68, 0.12);
-  border-left: 3px solid #ff4444;
-  cursor: pointer;
-  font-weight: bold;
-}
-.break-row:hover { background: rgba(255, 68, 68, 0.2); }
-.layer-item.at-break, .action-sub.at-break {
-  border-left: 3px solid #ff4444;
+   so. Red rather than header grey — this is the one thing in the list
+   that means the route will not generate. */
+.break-row{color:var(--bad);background:var(--bad-soft);border:none;border-left:3px solid var(--bad);border-radius:var(--r-xs);
+  cursor:pointer;font-weight:700;text-transform:none;letter-spacing:0;font-size:11.5px;padding:5px 8px;margin:4px 0}
+.break-row:hover{background:rgba(255,100,100,.2)}
+.break-row .ic{width:15px;height:15px}
+.layer-item.at-break,.action-sub.at-break{box-shadow:inset 3px 0 0 var(--bad)}
+
+/* ======================================================================
+   SELECTION DETAIL (right sidebar)
+   ====================================================================== */
+.ap-row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:2px 0;font-size:12px;color:var(--fg-2);min-height:28px}
+.ap-row>span:first-child{flex:1;min-width:0}
+.ap-row .seg-toggle{flex:0 0 auto}
+.ap-row input[type="number"]{width:84px;text-align:right}
+.ap-row input[type="text"]{width:124px}
+.ap-row select{width:124px}
+.ap-row input[type="checkbox"]{width:auto}
+.ap-readout{font-size:12px;color:var(--fg-2);line-height:1.5;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 9px;margin-bottom:4px}
+.ap-readout b{color:var(--fg);font-size:14px}
+.ap-sub{color:var(--muted)}
+.ap-actions{display:flex;gap:4px;margin-top:8px}
+.ap-actions .sidebar-small-btn{width:auto;flex:1}
+.ap-actions .sidebar-small-btn.square{flex:0 0 34px;padding:6px 0}
+
+/* Two-state segmented control (Derived / Typed). */
+.seg-toggle{display:flex;gap:2px;padding:2px;background:var(--bg);border-radius:var(--pill);border:1px solid var(--border)}
+.seg-btn{background:transparent;border:none;color:var(--muted);padding:3px 10px;border-radius:var(--pill);font-size:11.5px;font-weight:600;white-space:nowrap}
+.seg-btn:hover{color:var(--fg)}
+.seg-btn.active{background:var(--primary-soft-2);color:var(--primary)}
+
+/* Two states, so one button. Tinted to match the segment on the canvas:
+   blue driving forwards, orange driving backwards. */
+.drive-toggle{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;background:rgba(80,160,255,.16);border:1px solid rgba(80,160,255,.4);
+  color:#9cc9ff;padding:3px 10px 3px 8px;border-radius:var(--pill);font-size:11.5px;font-weight:600;white-space:nowrap;transition:background .15s}
+.drive-toggle .ic{width:14px;height:14px}
+.drive-toggle:hover{background:rgba(80,160,255,.28)}
+.drive-toggle.rev{background:rgba(255,136,68,.16);border-color:rgba(255,136,68,.45);color:#ffaa77}
+.drive-toggle.rev:hover{background:rgba(255,136,68,.28)}
+.drive-toggle.muted{background:var(--card-2);border-color:var(--border-strong);color:var(--muted)}
+.drive-toggle.muted:hover{background:var(--card-3)}
+
+/* Status lines: solver DOF, route connectivity, sim result. */
+.constraint-dof{font-size:12.5px;font-weight:700}
+[data-tone="ok"]{color:var(--ok)}
+[data-tone="info"]{color:var(--info)}
+[data-tone="warn"]{color:var(--warn)}
+[data-tone="bad"]{color:var(--bad)}
+[data-tone="muted"]{color:var(--muted)}
+
+/* Constraint palette */
+.constraint-palette{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:2px 0}
+.constraint-btn{display:flex;align-items:center;justify-content:center;height:34px;background:var(--card);border:1px solid var(--border);
+  color:var(--faint);border-radius:var(--r-sm);cursor:not-allowed;transition:background .15s,color .15s,border-color .15s}
+.constraint-btn.enabled{color:var(--fg);cursor:pointer;border-color:var(--border-strong)}
+.constraint-btn.enabled:hover{background:var(--primary-soft-2);border-color:var(--primary-line);color:var(--primary)}
+.cicon{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;vertical-align:middle}
+.constraint-btn .cicon{width:17px;height:17px}
+
+/* ======================================================================
+   BOTTOM DOCK
+   ====================================================================== */
+#bottom-panels{position:relative;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0}
+#dock-resize{position:absolute;left:0;right:0;top:-4px;height:8px;cursor:ns-resize;z-index:5}
+#dock-resize::after{content:"";position:absolute;left:50%;top:2px;width:44px;height:4px;margin-left:-22px;border-radius:4px;background:transparent;transition:background .15s}
+#dock-resize:hover::after,#dock-resize.dragging::after{background:var(--primary-line)}
+#side-panels{--dock-h:clamp(110px,22vh,240px);display:flex;gap:8px;padding:8px}
+.side-panel{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.side-panel-header{display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;height:36px;cursor:pointer;user-select:none;flex-shrink:0;
+  font-weight:600;font-size:13px;color:var(--fg)}
+.side-panel-header>.ic{width:17px;height:17px;color:var(--muted)}
+.side-panel-header>.ic:first-child{color:var(--primary)}
+.side-panel-header>.ic:last-child{transition:transform .15s;margin:0 4px}
+.side-panel-header:hover{background:var(--card-2)}
+.sp-title{flex:1}
+.side-panel-body{height:var(--dock-h);padding:2px 8px 8px;overflow-y:auto;font-size:12px}
+.side-panel.collapsed .side-panel-body{display:none}
+.side-panel.collapsed .side-panel-header>.ic:last-child{transform:rotate(-90deg)}
+/* A collapsed panel only needs its header; let the others keep the height. */
+#side-panels{align-items:flex-start}
+
+#code-output{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;font-family:var(--mono);
+  font-size:11.5px;line-height:1.5;min-height:100%;white-space:pre;color:var(--fg-2);tab-size:2;overflow:visible}
+
+/* ======================================================================
+   CONTEXT MENU
+   ====================================================================== */
+#ctx-menu{position:fixed;z-index:9999;min-width:200px}
+#ctx-menu-title{font-size:11px;font-weight:700;color:var(--muted);padding:4px 10px 6px;margin-bottom:4px;border-bottom:1px solid var(--border-strong);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;text-transform:uppercase;letter-spacing:.05em}
+
+/* ======================================================================
+   ROBOT & CODE DIALOG
+   ====================================================================== */
+#robot-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;backdrop-filter:blur(2px)}
+#robot-backdrop.visible{display:block}
+#robot-overlay{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:401;
+  background:#16161b;border:1px solid var(--border-strong);border-radius:24px;width:min(780px,94vw);height:min(560px,90vh);
+  box-shadow:0 24px 64px rgba(0,0,0,.65);flex-direction:column;overflow:hidden}
+#robot-overlay.visible{display:flex}
+.modal-head{display:flex;align-items:center;gap:14px;padding:14px 14px 0 22px;flex-shrink:0;flex-wrap:wrap}
+.modal-head h3{font-size:17px;font-weight:700;color:var(--fg)}
+.modal-tabs{display:flex;gap:2px;flex:1}
+.modal-tab{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:none;border-radius:var(--pill);background:transparent;
+  color:var(--muted);font-weight:600}
+.modal-tab .ic{width:17px;height:17px}
+.modal-tab:hover{color:var(--fg);background:var(--card)}
+.modal-tab.active{background:var(--primary-soft-2);color:var(--primary)}
+.modal-body{padding:14px 22px 22px;overflow-y:auto;flex:1;margin-top:12px;border-top:1px solid var(--border)}
+.modal-section{margin:18px 0 8px;color:var(--fg-2);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+[data-tab-pane]>.modal-section:first-child{margin-top:4px}
+.kv-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px}
+.kv-k{color:var(--muted)}
+.kv-v{color:var(--fg);font-variant-numeric:tabular-nums}
+/* Templates are the long tail of this dialog; two columns keep it short. */
+.tmpl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:4px 18px}
+#robot-overlay label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;font-size:12.5px;color:var(--fg-2)}
+#robot-overlay .tmpl-grid label{flex-direction:column;align-items:stretch;gap:4px;margin:6px 0}
+#robot-overlay label small{color:var(--faint);font-size:11px;font-weight:400;margin-left:6px}
+#robot-overlay input[type="number"],#robot-overlay input[type="text"]{width:200px;padding:7px 10px;font-size:12.5px;border-radius:var(--r-sm);text-align:right}
+#robot-overlay .tmpl-grid input{width:100%}
+#robot-overlay input[type="text"]{text-align:left;font-family:var(--mono);font-size:12px}
+#robot-overlay .hint{color:var(--faint);font-size:12px;margin-top:8px;line-height:1.55}
+#btn-robot-config.active{box-shadow:0 0 0 2px var(--primary-line)}
+
+/* Narrow windows: give the canvas the room. Decorative captions go first;
+   the mode switch keeps its words. */
+@media (max-width:1180px){
+  :root{--left-w:196px;--right-w:228px}
+  .brand span,#btn-instr-toggle span{display:none}
 }

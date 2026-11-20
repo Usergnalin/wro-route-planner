@@ -651,7 +651,7 @@ RP.updateInfoPanel = function() {
   if (dofEl && RP.sketchStatusInfo) {
     var si = RP.sketchStatusInfo();
     dofEl.textContent = si.text;
-    dofEl.style.color = si.color;
+    RP.setTone(dofEl, si.tone);
   }
   // One route, so the useful count is how many moves it has.
   var theRoute = RP.getActiveRoute ? RP.getActiveRoute() : null;
@@ -685,7 +685,6 @@ RP.setRobotOverlay = function(open) {
 // togglePanel - exposed globally for onclick in HTML
 // ======================================================================
 window.togglePanel = function(el) {
+  // The chevron in the header turns via CSS off this class.
   el.classList.toggle('collapsed');
-  var arrow = el.querySelector('span');
-  if (arrow) arrow.textContent = el.classList.contains('collapsed') ? '\u25b6' : '\u25bc';
 };

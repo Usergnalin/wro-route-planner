@@ -722,7 +722,7 @@ RP.render = function() {
   // --- Update status ---
   var info = RP.imgNaturalW ? (RP.imgNaturalW + '×' + RP.imgNaturalH + '  ·  ' + Math.round(RP.scale * 100) + '%') : 'No image';
   RP.dom.imageInfo.textContent = info;
-  RP.dom.calibStatus.textContent = RP.calibration ? '✅ ' + RP.calibration.pixelsPerMm.toFixed(4) + ' px/mm' : '';
+  RP.dom.calibStatus.textContent = RP.calibration ? RP.calibration.pixelsPerMm.toFixed(4) + ' px/mm' : '';
 
   RP.updateInstructions();
   RP.updateInfoPanel();

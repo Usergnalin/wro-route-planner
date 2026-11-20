@@ -235,7 +235,7 @@ RP.updateLayerList = function() {
 
         var eye = document.createElement('button');
         eye.className = 'layer-vis-btn';
-        eye.textContent = route.visible ? '●' : '○';
+        RP.setEye(eye, route.visible);
         eye.title = route.visible ? 'Hide' : 'Show';
         eye.onclick = function(e) {
           e.stopPropagation();
@@ -292,9 +292,8 @@ RP.updateLayerList = function() {
     var addRow = document.createElement('div');
     addRow.className = 'layer-item';
     var addBtn = document.createElement('span');
-    addBtn.className = 'layer-item-label';
-    addBtn.textContent = '＋ New group';
-    addBtn.style.color = '#8bd';
+    addBtn.className = 'layer-item-label is-link';
+    addBtn.innerHTML = RP.icon('plus') + 'New group';
     addBtn.onclick = function() {
       var name = prompt('New group name:', '');
       if (name === null) return;
@@ -313,7 +312,7 @@ RP.updateLayerList = function() {
 
         var eye = document.createElement('button');
         eye.className = 'layer-vis-btn';
-        eye.textContent = grp.visible === false ? '○' : '●';
+        RP.setEye(eye, grp.visible !== false);
         eye.title = grp.visible === false ? 'Show group' : 'Hide group';
         eye.onclick = function(e) {
           e.stopPropagation();
@@ -331,11 +330,12 @@ RP.updateLayerList = function() {
         // The marker matters more than it looks: without it the classic
         // mistake is drawing ten lines into the wrong group and only
         // finding out when you hide it.
-        lbl.textContent = (isCurrent ? '✎ ' : '') + grp.name + '  (' + count + ')';
+        lbl.innerHTML = (isCurrent ? RP.icon('pencil') : '') +
+                        RP.escapeHtml(grp.name + '  (' + count + ')');
         lbl.title = isCurrent
           ? 'New geometry is drawn into this group'
           : 'Click to draw into this group · double-click to rename';
-        if (grp.visible === false) lbl.style.color = '#777';
+        if (grp.visible === false) lbl.classList.add('is-off');
         // Setting the current group is the FREQUENT action, so it gets the
         // plain click; renaming is rare and moves to double-click.
         lbl.onclick = function() {
@@ -359,7 +359,7 @@ RP.updateLayerList = function() {
         if (!grp.isDefault) {
           var del = document.createElement('button');
           del.className = 'layer-del-btn';
-          del.textContent = '✕';
+          del.innerHTML = RP.icon('close');
           del.title = 'Delete the group — its geometry is kept and moves to Default';
           del.onclick = function(e) {
             e.stopPropagation();
@@ -396,7 +396,7 @@ RP.updateLayerList = function() {
 
         var eye = document.createElement('button');
         eye.className = 'layer-vis-btn';
-        eye.textContent = line.visible === false ? '○' : '●';
+        RP.setEye(eye, line.visible !== false);
         if (hiddenByGroup) {
           var hidingGroup = RP.findGroup(line.group);
           eye.disabled = true;
@@ -418,7 +418,7 @@ RP.updateLayerList = function() {
         var grpName = line.group != null ? (RP.findGroup(line.group) || {}).name : null;
         lbl.textContent = name + (line.label ? '  ' + line.label : '') +
                           (grpName ? '  [' + grpName + ']' : '');
-        if (line.visible === false) lbl.style.color = '#777';
+        if (line.visible === false) lbl.classList.add('is-off');
         lbl.title = lbl.textContent;
         lbl.onclick = function() {
           RP.selectedLineId = (RP.selectedLineId === line.id) ? null : line.id;
@@ -434,7 +434,7 @@ RP.updateLayerList = function() {
 
         var del = document.createElement('button');
         del.className = 'layer-del-btn';
-        del.textContent = '✕';
+        del.innerHTML = RP.icon('close');
         del.title = 'Delete line';
         del.onclick = function(e) {
           e.stopPropagation();
@@ -445,10 +445,9 @@ RP.updateLayerList = function() {
         div.appendChild(lbl);
         if (isArc) {
           var flip = document.createElement('button');
-          flip.className = 'layer-del-btn';
-          flip.textContent = '⇄';
+          flip.className = 'layer-del-btn is-flip';
+          flip.innerHTML = RP.icon('reverse');
           flip.title = 'Flip to the other side (the other arc through these points)';
-          flip.style.color = '#8bd';
           flip.onclick = function(e) {
             e.stopPropagation();
             RP.pushHistory('Flip arc');
@@ -466,7 +465,7 @@ RP.updateLayerList = function() {
 
   if (geometry.length === 0 && RP.routes.length === 0) {
     var empty = document.createElement('div');
-    empty.style.cssText = 'color:#555;font-size:10px;padding:4px 2px';
+    empty.className = 'sidebar-hint';
     empty.textContent = 'No layers yet';
     el.appendChild(empty);
   }

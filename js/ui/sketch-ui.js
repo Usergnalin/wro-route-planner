@@ -14,11 +14,12 @@ var RP = window.RP || {};
 RP.sketchSelection = [];
 
 RP.SKETCH_STATUS = {
-  empty:     { color: '#44ff44', text: 'Empty' },
-  under:     { color: '#44ff44', text: 'Under-constrained' },
-  full:      { color: '#66ccff', text: 'Fully constrained' },
-  redundant: { color: '#ffaa44', text: 'Redundant constraints' },
-  conflict:  { color: '#ff4444', text: 'Conflicting constraints' }
+  // color is for the canvas; tone is the panel's name for the same meaning.
+  empty:     { color: '#44ff44', tone: 'ok',   text: 'Empty' },
+  under:     { color: '#44ff44', tone: 'ok',   text: 'Under-constrained' },
+  full:      { color: '#66ccff', tone: 'info', text: 'Fully constrained' },
+  redundant: { color: '#ffaa44', tone: 'warn', text: 'Redundant constraints' },
+  conflict:  { color: '#ff4444', tone: 'bad',  text: 'Conflicting constraints' }
 };
 
 RP.sketchStatusInfo = function() {
@@ -27,7 +28,7 @@ RP.sketchStatusInfo = function() {
   var info = RP.SKETCH_STATUS[st] || RP.SKETCH_STATUS.empty;
   var text = info.text;
   if (st === 'under' && sk) text += ' (' + sk.dof + ' DOF)';
-  return { status: st, color: info.color, text: text };
+  return { status: st, color: info.color, tone: info.tone, text: text };
 };
 
 RP.sketchStatusColor = function() {
@@ -697,7 +698,7 @@ RP.updateGeometryDetail = function() {
           '<div class="ap-row"><span>Reach behind</span><span>' + ext.rear.toFixed(1) + ' mm</span></div>' +
           '<div class="ap-row"><span>Body</span><span>' + ext.length.toFixed(1) + ' × ' + ext.width.toFixed(1) + ' mm</span></div>'
         : '') +
-      '<button id="geo-flip-drive" class="sidebar-small-btn" style="margin-top:6px">⇄ Reverse forward direction</button>' +
+      '<div class="ap-actions"><button id="geo-flip-drive" class="sidebar-small-btn">' + RP.icon('reverse') + 'Reverse forward direction</button></div>' +
       '<div class="sidebar-hint">The robot pivots about this line\'s start and drives towards its end. ' +
       'Reach ahead/behind are measured from that pivot and are what wall align stands off by.</div>';
     var fb = document.getElementById('geo-flip-drive');
@@ -717,7 +718,7 @@ RP.updateGeometryDetail = function() {
   host.innerHTML =
     '<div class="ap-row"><span>Arc radius</span><span>' +
       (g ? RP.constructionLabel(0, 0, g.radius, 0) : '-') + '</span></div>' +
-    '<button id="geo-flip-arc" class="sidebar-small-btn" style="margin-top:6px">⇄ Flip to other side</button>' +
+    '<div class="ap-actions"><button id="geo-flip-arc" class="sidebar-small-btn">' + RP.icon('reverse') + 'Flip to other side</button></div>' +
     '<div class="sidebar-hint">Two points bound two arcs; this picks the other one. ' +
     'No amount of dragging can do it.</div>';
 
@@ -747,11 +748,9 @@ RP.updateConstraintDetail = function() {
   if (def && def.hasValue) {
     html += '<label class="ap-row"><span>Value (' + RP.constraintUnit(c.type) + ')</span>' +
             '<input type="number" id="cd-value" step="0.1" value="' +
-            RP.constraintToDisplay(c.type, c.value).toFixed(2) + '" ' +
-            'style="width:70px;background:#3a3a3a;border:1px solid #555;color:#ddd;' +
-            'padding:2px 4px;border-radius:3px;font-size:11px;text-align:right"></label>';
+            RP.constraintToDisplay(c.type, c.value).toFixed(2) + '"></label>';
   }
-  html += '<button id="cd-del" class="sidebar-small-btn" style="margin-top:6px">🗑 Delete constraint</button>';
+  html += '<div class="ap-actions"><button id="cd-del" class="sidebar-small-btn danger">' + RP.icon('trash') + 'Delete constraint</button></div>';
   host.innerHTML = html;
 
   var valEl = document.getElementById('cd-value');
@@ -778,7 +777,7 @@ RP.updateConstraintPanel = function() {
       var dofEl = document.getElementById('constraint-dof');
       if (dofEl) {
         dofEl.textContent = info.text;
-        dofEl.style.color = info.color;
+        RP.setTone(dofEl, info.tone);
       }
       var selEl = document.getElementById('constraint-selection');
       if (selEl) {
@@ -828,7 +827,7 @@ RP.updateConstraintList = function() {
 
       var del = document.createElement('button');
       del.className = 'layer-del-btn';
-      del.textContent = '✕';
+      del.innerHTML = RP.icon('close');
       del.title = 'Delete constraint';
       del.onclick = function(e) {
         e.stopPropagation();
@@ -881,7 +880,7 @@ RP.wireConstraintPanel = function() {
     auto.addEventListener('click', function() {
       RP.autoConstrain = !RP.autoConstrain;
       auto.classList.toggle('active', RP.autoConstrain);
-      auto.textContent = RP.autoConstrain ? '✓ Auto-constrain' : '✗ Auto-constrain';
+      auto.setAttribute('aria-pressed', RP.autoConstrain ? 'true' : 'false');
     });
   }
   RP.updateConstraintPanel();

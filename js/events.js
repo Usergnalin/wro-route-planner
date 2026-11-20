@@ -40,7 +40,7 @@ RP.initEvents = function() {
       RP.startMarkerPlacing = false;
       RP.startMarkerPlacingHeading = true;
       RP.startMarkerPlacedPoint = { x: fin.x, y: fin.y };
-      RP.dom.btnSetStart.textContent = '📍 Click on map to set';
+      RP.setLabel(RP.dom.btnSetStart, 'map-marker', 'Click on map to set');
       RP.updateRobotUI();
       RP.render();
       return;
@@ -489,7 +489,7 @@ RP.initEvents = function() {
     // Removing a MOVE only drops the route's reference to it — the
     // construction line is kept, same as everywhere else in Route mode.
     // Wording it as Delete would read as "delete the line".
-    if (ctxDelBtn) ctxDelBtn.textContent = target.kind === 'move' ? '🗑 Remove from Route' : '🗑 Delete';
+    RP.setLabel(ctxDelBtn, 'trash', target.kind === 'move' ? 'Remove from route' : 'Delete');
 
     // Obstacles are a mat idea, the drive axis a robot one, so each entry
     // only appears in the document where it means something. Field walls
@@ -504,9 +504,9 @@ RP.initEvents = function() {
         var n = RP.groupAssignmentTargets(target.lineId).length;
         // Say what will happen, including how many — moving twelve lines
         // by accident because they were still selected is worth naming.
-        grpBtn.textContent = (gm && gm.group === cg.id && n === 1)
-          ? '📁 Already in "' + cg.name + '"'
-          : '📁 Add ' + (n > 1 ? (n + ' to ') : 'to ') + '"' + cg.name + '"';
+        RP.setLabel(grpBtn, 'folder-move', (gm && gm.group === cg.id && n === 1)
+          ? 'Already in "' + cg.name + '"'
+          : 'Add ' + (n > 1 ? (n + ' to ') : 'to ') + '"' + cg.name + '"');
         grpBtn.disabled = (gm && gm.group === cg.id && n === 1);
       }
     }
@@ -516,13 +516,13 @@ RP.initEvents = function() {
     var taggable = target.kind === 'line' && RP.isTaggableRole(role);
     if (oBtn) {
       oBtn.style.display = (taggable && RP.activeDocId === RP.DOC_MAT) ? '' : 'none';
-      oBtn.textContent = role === RP.OBSTACLE_ROLE ? '🚧 Clear obstacle' : '🚧 Mark as obstacle';
+      RP.setLabel(oBtn, 'obstacle', role === RP.OBSTACLE_ROLE ? 'Clear obstacle' : 'Mark as obstacle');
     }
     if (dBtn) {
       var driveOk = target.kind === 'line' && RP.activeDocId === RP.DOC_ROBOT &&
                     (role === RP.DRIVE_ROLE || RP.isTaggableRole(role));
       dBtn.style.display = driveOk ? '' : 'none';
-      dBtn.textContent = role === RP.DRIVE_ROLE ? '🧭 Clear drive axis' : '🧭 Set as drive axis';
+      RP.setLabel(dBtn, 'drive', role === RP.DRIVE_ROLE ? 'Clear drive axis' : 'Set as drive axis');
     }
     ctxMenu.style.left = (x + 4) + 'px';
     ctxMenu.style.top  = (y + 4) + 'px';
@@ -821,7 +821,8 @@ RP.initEvents = function() {
     if (RP.dom.btnSnap) RP.dom.btnSnap.classList.toggle('active', RP.snapEnabled);
     if (RP.dom.btnSidebarSnap) {
       RP.dom.btnSidebarSnap.classList.toggle('active', RP.snapEnabled);
-      RP.dom.btnSidebarSnap.textContent = RP.snapEnabled ? '🧪 Snap On' : '🧪 Snap Off';
+      // A switch shows its own state, so the caption stays put.
+      RP.dom.btnSidebarSnap.setAttribute('aria-pressed', RP.snapEnabled ? 'true' : 'false');
     }
     if (RP.dom.infoSnap) RP.dom.infoSnap.textContent = RP.snapEnabled ? 'On' : 'Off';
     if (!RP.snapEnabled) { RP.hoverSnapPoint = null; RP.render(); }
@@ -847,11 +848,11 @@ RP.initEvents = function() {
         RP.startMarkerPlacing = false;
         RP.startMarkerPlacingHeading = false;
         RP.startMarkerPlacedPoint = null;
-        RP.dom.btnSetStart.textContent = '📍 Click on map to set';
+        RP.setLabel(RP.dom.btnSetStart, 'map-marker', 'Click on map to set');
         return;
       }
       RP.startMarkerPlacing = true;
-      RP.dom.btnSetStart.textContent = 'Click canvas... (click button to cancel)';
+      RP.setLabel(RP.dom.btnSetStart, 'close', 'Click the canvas… (click to cancel)');
       // Placing the marker means clicking the canvas, which the modal
       // covers — so get out of the way rather than sitting on top of it.
       RP.setRobotOverlay(false);
@@ -924,8 +925,8 @@ RP.initEvents = function() {
       var text = RP.dom.codeOutput ? RP.dom.codeOutput.textContent : '';
       if (text) {
         navigator.clipboard.writeText(text).then(function() {
-          RP.dom.btnCopyCode.textContent = '✅ Copied!';
-          setTimeout(function() { RP.dom.btnCopyCode.textContent = '📋 Copy Code'; }, 2000);
+          RP.setLabel(RP.dom.btnCopyCode, 'check', 'Copied');
+          setTimeout(function() { RP.setLabel(RP.dom.btnCopyCode, 'copy', 'Copy'); }, 2000);
         });
       }
     });
@@ -1008,7 +1009,7 @@ RP.initEvents = function() {
         RP.startMarkerPlacing = false;
         RP.startMarkerPlacingHeading = false;
         RP.startMarkerPlacedPoint = null;
-        if (RP.dom.btnSetStart) RP.dom.btnSetStart.textContent = '📍 Click on map to set';
+        if (RP.dom.btnSetStart) RP.setLabel(RP.dom.btnSetStart, 'map-marker', 'Click on map to set');
         didCancel = true;
       }
       if (RP.sketchSelection && RP.sketchSelection.length) {

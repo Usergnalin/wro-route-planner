@@ -40,7 +40,7 @@ RP.updateSimPanel = function() {
     // Not a failure to hide — "no robot drawn" is the normal state until
     // one is, and saying so is more use than an empty panel.
     statusEl.textContent = res ? ('Not run — ' + res.reason) : 'Not run';
-    statusEl.style.color = '#888';
+    RP.setTone(statusEl, 'muted');
     if (hintEl) {
       hintEl.textContent = (res && /robot body/.test(res.reason))
         ? 'Draw the robot (Sketch → Robot) and give it a drive axis to check for collisions.'
@@ -59,13 +59,13 @@ RP.updateSimPanel = function() {
   // collision hide among speculative ones.
   if (n === 0) {
     statusEl.textContent = 'No collisions';
-    statusEl.style.color = '#44ff44';
+    RP.setTone(statusEl, 'ok');
   } else if (certain === n) {
     statusEl.textContent = n + (n === 1 ? ' collision' : ' collisions');
-    statusEl.style.color = '#ff4444';
+    RP.setTone(statusEl, 'bad');
   } else {
     statusEl.textContent = certain + ' certain, ' + (n - certain) + ' possible';
-    statusEl.style.color = certain ? '#ff4444' : '#ffaa44';
+    RP.setTone(statusEl, certain ? 'bad' : 'warn');
   }
   if (hintEl) {
     hintEl.textContent = n === 0
@@ -84,8 +84,8 @@ RP.updateSimPanel = function() {
 
       var glyph = document.createElement('span');
       glyph.className = 'constraint-glyph';
-      glyph.textContent = hit.certain ? '⚠' : '?';
-      glyph.style.color = hit.certain ? '#ff4444' : '#ffaa44';
+      if (hit.certain) glyph.innerHTML = RP.icon('warning'); else glyph.textContent = '?';
+      glyph.classList.add(hit.certain ? 'tone-bad' : 'tone-warn');
 
       var lbl = document.createElement('span');
       lbl.className = 'layer-item-label';
@@ -97,7 +97,7 @@ RP.updateSimPanel = function() {
       }).join(', ');
       lbl.textContent = Math.round(hit.distMm) + ' mm in · ' + names +
                         (hit.certain ? '' : ' (possible)');
-      if (!hit.certain) lbl.style.color = '#c9a24a';
+      if (!hit.certain) lbl.classList.add('is-warn');
       lbl.title = lbl.textContent + ' — ' + hit.poses + ' samples in contact' +
         (hit.certain
           ? '. The body hits this at its true size.'
