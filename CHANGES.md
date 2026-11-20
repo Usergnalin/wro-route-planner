@@ -1,3 +1,72 @@
+# Changes — 2026-11-20
+
+## A modern interface, modelled on Immich
+
+The UI had kept the shape of the first rough draft. This is a restyle
+plus the layout fixes that draft never got. Function wins wherever it
+and looks disagree, and every element id the JS looks up is unchanged.
+
+### Look
+
+Immich's dark palette and its `#adcbfa` accent, pill buttons, rounded
+cards, and real icons. Every colour, radius and size is a token at the
+top of `style.css`. Canvas colours are deliberately left alone: they
+live in `render.js` and are chosen to read over a mat photo.
+
+The emoji are replaced by Material Design Icons (the set Immich uses),
+inlined as SVG paths in `js/ui/icons.js`. Emoji looked different on
+every OS; the paths look the same everywhere and need no network. Only
+the ~50 icons the app shows are copied in, which adds about 17 KB.
+
+### Layout fixes
+
+- **Menus open on click.** The hover dropdowns opened whenever the
+  pointer crossed the top bar and could not be used on a touch screen.
+  Escape or a click outside closes a menu; an open menu swallows Escape
+  so closing it does not also clear the selection.
+- **The Insert menu is gone.** Every tool in it was already in the left
+  sidebar, and nothing referenced its buttons.
+- **Clear everything moved to File.** It used to sit under "Route", next
+  to Undo/Redo, which are now icon buttons in the top bar.
+- **The Code toggle moved to the top bar.** It used to take a whole row
+  above the bottom panels on its own.
+- **Snap and Auto-constrain are switches.** The caption stays put and the
+  switch shows the state, instead of the caption flipping between
+  "On" and "Off".
+- **A status bar under the canvas** holds what the right sidebar's
+  Selection Info and Calibration sections used to: tool, snap, hover and
+  click position, counts, solver state and scale. Those are glanced at,
+  not worked in. The right sidebar now shows only what is selected, as
+  cards.
+- **The bottom panels are a dock you can resize** by dragging its top
+  edge, so the generated code can be given more than eight lines. The
+  default height scales with the window. It is not remembered between
+  sessions, because the app keeps nothing in browser storage.
+- **Robot & Code has tabs**: Robot, Code templates, Speeds. Escape still
+  closes it from inside any field.
+- **Row actions float.** Delete and flip appear over the end of a row on
+  hover, instead of reserving a column. That column was why move labels
+  were cut off in the sidebar.
+
+### For anyone editing the UI
+
+JS no longer writes colours or widths. Status lines take a tone
+(`RP.setTone(el, 'ok' | 'info' | 'warn' | 'bad' | 'muted')`), rows take
+classes (`is-off`, `tone-warn`, …), and a caption that changes at
+runtime goes through `RP.setLabel(el, icon, text)`. Setting
+`textContent` on such a button would wipe its icon.
+
+### Checked
+
+The whole test suite passes. On top of that, a headless-Chromium run
+loads a real project and exercises every moved control, against both
+`index.html` and the built `dist/wro-planner.html`: tools, the snap
+switch, the menu (click, hover, Escape, outside click), Save, undo/redo,
+mode switching by button and by key, the Code toggle, action selection,
+the drive toggle, row delete and eye, panel collapse, the dialog tabs and
+fields, Escape from a field, Set start, the context menu, zoom/fit and
+switching documents. No page errors.
+
 # Changes — 2026-08-30 (8)
 
 ## Seeing why a route is discontinuous

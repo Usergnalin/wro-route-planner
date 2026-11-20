@@ -55,7 +55,7 @@ To carry it around, run:
 node build.js          # -> dist/wro-planner.html
 ```
 
-That folds the stylesheet and all 18 scripts into **one self-contained ~320 KB HTML file** with no dependencies. Copy it to a USB stick, double-click it, and it works — no install, no admin rights, nothing for a school laptop's policy to block. `build.js` itself has no dependencies either; it is plain Node.
+That folds the stylesheet and every script — the icon set included — into **one self-contained ~480 KB HTML file** with no dependencies. Copy it to a USB stick, double-click it, and it works — no install, no admin rights, nothing for a school laptop's policy to block. `build.js` itself has no dependencies either; it is plain Node.
 
 Projects are ordinary `.json` files — **File → Save Project** / **Open Project** — so they travel with you exactly as you'd expect: copy the file, copy the project. There is no in-browser project store to lose track of, and no size limit beyond what your filesystem has.
 
@@ -96,7 +96,7 @@ Projects are ordinary `.json` files — **File → Save Project** / **Open Proje
 ```
 wro-route-planner/
 ├── index.html          # Single-page app shell (toolbars, canvas, panels, overlays)
-├── style.css           # All styling — dark theme, hover-dropdown tabs, responsive panels
+├── style.css           # All styling — dark theme as CSS tokens, menus, panels, dialog
 ├── js/
 │   ├── core.js         # Global state (RP namespace), DOM refs, geometry helpers,
 │   │                     coordinate transforms, snap system, undo/redo, zoom/pan, tool switching
@@ -110,7 +110,14 @@ wro-route-planner/
 │   ├── config.js       # Robot config panel, code template config UI, calibration
 │   │                     prompt, recalibration
 │   ├── events.js       # All mouse/touch/keyboard/button event handlers
-│   └── main.js         # Bootstrap — ResizeObserver, initial state, init call
+│   ├── main.js         # Bootstrap — ResizeObserver, initial state, init call
+│   ├── sketch/         # Geometry + constraint solver (no DOM)
+│   ├── model/          # Construction layer, routes, actions, resolver
+│   ├── sim/            # Pose track and collision sweep (no DOM)
+│   └── ui/
+│       ├── icons.js    # Inlined Material Design Icons + RP.icon / setLabel / setEye / setTone
+│       ├── chrome.js   # Click-to-open menus, dialog tabs, resizable bottom dock
+│       ├── sketch-ui.js, route-ui.js, sim-ui.js   # Mode panels
 ├── build.js            # Dependency-free build: inlines everything into
 │                         dist/wro-planner.html for carrying around
 ├── AUDIT.md            # Detailed code audit with severity-ranked bugs (mostly resolved)
@@ -121,7 +128,8 @@ wro-route-planner/
 ### Module Dependency Order (load order in `index.html`)
 
 ```
-core.js → render.js → routes.js → output.js → persist.js → config.js → events.js → main.js
+core.js → ui/icons.js → ui/chrome.js → sketch/* → render.js → routes.js → model/* → output.js
+        → sim/* → persist.js → config.js → ui/*-ui.js → events.js → main.js
 ```
 
 All modules extend the shared `window.RP` namespace. `core.js` initializes the namespace and global state; `main.js` kicks off the app.
@@ -153,6 +161,9 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - **The solver stops when iterating stops paying, not at a fixed tolerance** — `tol` is an absolute residual, but coordinates are not: a mat-sized sketch runs to six figures of pixels, where 1e-9 is finer than a double can represent, so a perfectly-solved sketch could never trip it and re-ran its whole iteration budget on every solve. `RP.Sketch.solve` therefore also exits when the residual is already under `conflictTol` and a further iteration cannot improve it by 10%, and caps the damped-retry search at `RP.Sketch.MAX_LM_RETRIES` (each retry is a full O(n³) factorisation, and damping only ever shrinks the step). Genuine conflicts are unaffected — the diminishing-returns exit only applies below `conflictTol`.
 - **Auto-tangency seeds the geometry before constraining it** — `tangent_at`'s residual `(p−c)·û` says nothing about how long the line is, so the solver reaching tangency by swinging the far end changes the line's length as an unopposed side effect. `RP.seedTangentLine` (`js/model/construction.js`) rotates a freshly-drawn line about the arc end it joins first, setting the angle exactly and leaving the length alone. It is only a starting guess; the constraint still goes on afterwards and the solver still has the last word.
 - **Code-config fields are table-driven** — `RP.CODE_CONFIG_FIELDS` (`js/core.js`) is the one place that lists every field in the Robot & Code panel's template/speed section: its `<input id>`, its value type, and its default. Defaults, old-save backfilling, panel read/write, per-kind speed lookup, and DOM listener wiring all walk this table instead of naming each field by hand in five separate places. Adding a field is one row here plus one `<input>` in `index.html` — nothing else to remember or keep in sync.
+- **The chrome follows Immich, the canvas does not** — panels, menus and controls take their colours from tokens in `style.css` (Immich's dark palette and `#adcbfa` accent), but canvas colours stay in `render.js`, chosen for legibility over a mat photo. Restyling the panels must never make a route harder to see.
+- **JS never writes colours or widths** — a status line gets a meaning (`RP.setTone(el, 'bad')`), a row gets a class (`is-off`, `tone-warn`), and the stylesheet decides what that looks like. A caption that changes at runtime goes through `RP.setLabel(el, icon, text)`; setting `textContent` would wipe the icon.
+- **Menus open on click, never on hover** — hover dropdowns opened whenever the pointer crossed the top bar on its way to the canvas, and could not be opened on a touch screen at all. An open menu swallows Escape in the capture phase, so closing it does not also clear the selection.
 
 ---
 
@@ -167,8 +178,9 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - [x] Insert waypoints by clicking route segment midpoints
 - [x] **Named groups with a current group** — new geometry goes into whichever
       group is current, so filing costs nothing while drawing. Click a group row
-      to draw into it (double-click to rename), ＋ New group to add one. The
-      sidebar always says *drawing into "…"*, and the current row is marked ✎
+      to draw into it (double-click to rename), **+ New group** to add one. The
+      sidebar always says *drawing into "…"*, and the current row is marked
+      with a pencil
 - [x] Right-click → **Add to "…"** files geometry into the current group in one
       click. If the right-clicked line is part of a multi-selection it moves the
       whole selection, so shift-clicking a dozen lines then filing them is still
@@ -271,10 +283,14 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 - [x] Undo/Redo (80 levels, covers all mutations)
 
 ### UX
-- [x] Dark theme, consistent styling
-- [x] Tool switching via top-bar tabs and sidebar buttons
-- [x] Right-side info panel (tool, snap, hover position, click position, line/route counts, calibration)
-- [x] Collapsible bottom panels (Construction Lines/Constraints, Instructions/Code)
+- [x] Dark theme modelled on Immich, with every colour a CSS token in `style.css`
+- [x] Inlined SVG icons (Material Design Icons) — identical on every OS, no network
+- [x] Click-to-open File menu; tools live once, in the left sidebar
+- [x] Status bar under the canvas (tool, snap, hover/click position, counts, solver state, scale)
+- [x] Right sidebar shows only what is selected, as cards
+- [x] Collapsible bottom panels (Geometry & groups / Constraints / Generated code) in a dock
+      whose height is dragged from its top edge
+- [x] Robot & Code dialog split into Robot / Code templates / Speeds tabs
 - [x] Snap indicator crosshair
 - [x] Construction line drawing preview
 - [x] Route continuation magnet circle on last waypoint
@@ -346,7 +362,7 @@ All modules extend the shared `window.RP` namespace. `core.js` initializes the n
 ### Polish / Low Priority
 - [ ] Replace native `prompt()`/`alert()`/`confirm()` with in-app styled modals
 - [ ] Magic number constants consolidation (screen-distance thresholds, snap radius, etc.)
-- [ ] Tab-dropdown keyboard accessibility (currently hover-only)
+- [ ] Arrow-key navigation inside menus (they open on click / Enter and close on Escape, but items are reached with Tab)
 - [ ] Print-friendly route card layout
 - [ ] Dark/light theme toggle
 - [ ] Session auto-recovery (restore last state on accidental close)
