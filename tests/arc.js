@@ -521,27 +521,181 @@ check('the joins stay tangent throughout the drag', () => {
   }
 });
 
-check('an arc tangent to a line can be dragged to the other side of it', () => {
+// ---- endpoint tangency is oriented (FreeCAD's angle-at-point) ----------
+// Tangency used to be "the radius is perpendicular to the line", which a
+// line folded back over the arc satisfies just as well. It is now the
+// signed angle between the line's own direction and the arc's normal,
+// locked to 0 or π when the constraint is made.
+check('an arc tangent to a FIXED line flattens towards it instead of crossing, and comes back', () => {
   const RP = fresh();
   const S = RP.Sketch, sk = () => RP.sketch;
   const l = RP.addConstructionLine(0, 300, 400, 300);
   S.addConstraint(sk(), 'fix', [l.p1.id]);
   S.addConstraint(sk(), 'fix', [l.p2.id]);
-  const snap = RP.computeSnap(0, 300, { kind: 'point' });
-  const a = RP.addConstructionArc(0, 300, 150, 200, { startSnap: snap });
+  const a = RP.addConstructionArc(0, 300, 150, 200, { startSnap: RP.computeSnap(0, 300, { kind: 'point' }) });
   assert(a.tangents.length === 1, 'tangent applied');
+  const cen = () => sk().entities[sk().entities[a.arc.id].center];
+  const radius = () => S.arcGeometry(sk(), sk().entities[a.arc.id]).radius;
+  const ys = [];
+  for (let y = 200; y <= 450; y += 10) ys.push(y);        // out past the line...
+  for (let y = 450; y >= 200; y -= 10) ys.push(y);        // ...and back
+  for (const y of ys) {
+    const res = S.dragPoint(sk(), a.p2.id, 150, y);
+    assert(res.status !== 'conflict', 'went red with the cursor at y=' + y);
+    assert(cen().y < 300, 'the centre crossed the line at y=' + y + ' — the tangent locks its side');
+    assert(sk().entities[a.p2.id].y < 300, 'the arc end crossed the line at y=' + y);
+  }
+  S.endDrag(sk());
+  assertClose(sk().entities[a.p2.id].y, 200, 1e-6, 'the end comes all the way back');
+  assert(radius() < 400, 'and the arc is not stranded flat: R=' + radius().toFixed(0));
+});
 
-  // Above the line, then below. The old side-locked form could not cross.
-  RP.Sketch.dragPoint(sk(), a.p2.id, 150, 150);
-  const above = sk().entities[sk().entities[a.arc.id].center].y;
-  RP.Sketch.dragPoint(sk(), a.p2.id, 150, 450);
-  const res = RP.Sketch.solve(sk());
-  const below = sk().entities[sk().entities[a.arc.id].center].y;
+check('a line folded back over the arc is an error of π, not a solution', () => {
+  const RP = fresh();
+  const S = RP.Sketch, sk = RP.sketch;
+  // Arc from (100,0) round to (0,100) about the origin; a line ending at
+  // (100,0) and running upwards meets it tangentially.
+  const c = S.addPoint(sk, 0, 0), p1 = S.addPoint(sk, 100, 0), p2 = S.addPoint(sk, 0, 100);
+  const arc = S.addArc(sk, c.id, p1.id, p2.id, true);
+  const a = S.addPoint(sk, 100, -80);
+  const line = S.addLine(sk, a.id, p1.id);
+  const t = S.addConstraint(sk, 'tangent_at', [line.id, arc.id, p1.id]);
+  const resid = () => {
+    const idx = S.buildIndex(sk, {}), plan = S.buildPlan(sk), prm = [];
+    idx.pids.forEach(q => { prm[idx.index[q]] = sk.entities[q].x; prm[idx.index[q] + 1] = sk.entities[q].y; });
+    const g = S.makeAccess(sk, idx, prm), r = new Array(plan.m).fill(0);
+    const it = plan.items.find(i => i.obj === t);
+    it.def.residual(g, t, r, it.row);
+    return r[it.row];
+  };
+  assertClose(resid(), 0, 1e-12, 'smooth as built');
+  a.y = 80;                                // fold the line back up past the join
+  assertClose(Math.abs(resid()), Math.PI, 1e-9, 'a fold-back is a half-turn of error');
+  a.y = 0;  a.x = 100;                     // and a collapsed line is not "satisfied" either
+  assert(Math.abs(resid()) > 1, 'zero length must not read as tangent, got ' + resid());
+});
 
-  assert(res.status !== 'conflict', 'crossing must not fault the sketch, got ' + res.status);
-  assert(above < 300 && below > 300,
-    'the centre should follow the arc across the line: ' +
-    above.toFixed(1) + ' -> ' + below.toFixed(1));
+check('tangencies saved without an orientation get one from their geometry', () => {
+  const RP = fresh();
+  const { l1, a1 } = sCurve(RP, false);
+  const sk = RP.sketch;
+  const ts = RP.Sketch.constraintIds(sk).map(id => sk.constraints[id]).filter(c => c.type === 'tangent_at');
+  const want = ts.map(c => c.orient);
+  ts.forEach(c => { delete c.orient; });            // as an older save would have it
+  const res = RP.Sketch.solve(sk);
+  assert(res.status !== 'conflict', 'still solves');
+  assert(JSON.stringify(ts.map(c => c.orient)) === JSON.stringify(want),
+    'backfilled ' + JSON.stringify(ts.map(c => c.orient)) + ', expected ' + JSON.stringify(want));
+});
+
+check('swinging a tangent line a long way does not squeeze it to nothing', () => {
+  // Making a line horizontal when it was drawn steeply tangent to an arc
+  // needs a big rotation, and shrinking the line is the cheapest way for
+  // the solver to turn it. A zero-length line has no direction, so the
+  // tangent could no longer be stated and the solve stalled in conflict.
+  const RP = fresh();
+  const { l2 } = sCurve(RP, false);        // sCurve makes l2 horizontal last
+  const sk = RP.sketch, E = id => sk.entities[id];
+  const L = E(l2.line.id);
+  const len = Math.hypot(E(L.p2).x - E(L.p1).x, E(L.p2).y - E(L.p1).y);
+  const res = RP.Sketch.solve(sk);
+  assert(res.status !== 'conflict', 'the S-curve solves, got ' + res.status);
+  assert(len > 20, 'the line kept a usable length: ' + len.toFixed(3));
+  assertClose(E(L.p1).y, E(L.p2).y, 1e-6, 'and it is horizontal');
+});
+
+// ---- the line-arc-line chain from the bug report ------------------------
+// A straight, an arc and a straight, both tangent at the arc's ends, one
+// arc end locked, then dragging. It used to squeeze a straight to zero
+// length (and stay red), or fold a straight back over the arc.
+function chain(RP) {
+  const sk = () => RP.sketch;
+  const l1 = RP.addConstructionLine(0, 300, 200, 300);
+  const a = RP.addConstructionArc(200, 300, 350, 200, { startSnap: RP.computeSnap(200, 300, { kind: 'point' }) });
+  const e2 = sk().entities[a.p2.id];
+  const l2 = RP.addConstructionLine(e2.x, e2.y, e2.x + 60, e2.y - 200,
+    { startSnap: RP.computeSnap(e2.x, e2.y, { kind: 'point' }) });
+  return { l1, a, l2 };
+}
+function chainHealth(RP, g) {
+  const sk = RP.sketch, E = id => sk.entities[id];
+  const len = l => { const L = E(l.line.id); return Math.hypot(E(L.p2).x - E(L.p1).x, E(L.p2).y - E(L.p1).y); };
+  const orients = RP.Sketch.constraintIds(sk).map(i => sk.constraints[i]).filter(c => c.type === 'tangent_at')
+    .map(c => RP.Sketch.tangentAtOrient(sk, c) === c.orient);
+  return { l1: len(g.l1), l2: len(g.l2), oriented: orients.every(Boolean), n: orients.length };
+}
+
+check('dragging the free arc end round the chain never collapses, folds or goes red', () => {
+  for (const radius of [120, 250]) {
+    const RP = fresh();
+    const g = chain(RP);
+    const S = RP.Sketch, sk = RP.sketch;
+    assert(chainHealth(RP, g).n === 2, 'both joins are tangent');
+    S.addConstraint(sk, 'fix', [g.a.p1.id]);
+    S.solve(sk);
+    const p = sk.entities[g.a.p2.id], x0 = p.x, y0 = p.y;
+    for (let i = 1; i <= 72; i++) {
+      const t = i / 72 * 2 * Math.PI;
+      const res = S.dragPoint(sk, g.a.p2.id, x0 + radius * Math.sin(t), y0 - radius * (1 - Math.cos(t)));
+      const h = chainHealth(RP, g);
+      assert(res.status !== 'conflict', 'r=' + radius + ' step ' + i + ' went red');
+      assert(h.l1 > 1 && h.l2 > 1, 'r=' + radius + ' step ' + i + ' collapsed a line: ' + h.l1.toFixed(1) + ', ' + h.l2.toFixed(1));
+      assert(h.oriented, 'r=' + radius + ' step ' + i + ' folded a line back over the arc');
+    }
+    S.endDrag(sk);
+  }
+});
+
+check('dragging the join into a free line pushes its far end instead of collapsing it', () => {
+  const RP = fresh();
+  const g = chain(RP);
+  const S = RP.Sketch, sk = RP.sketch, E = id => sk.entities[id];
+  S.addConstraint(sk, 'fix', [g.a.p1.id]);
+  S.solve(sk);
+  const start = chainHealth(RP, g).l2;
+  const P = E(g.a.p2.id), B = E(E(g.l2.line.id).p2);
+  const x0 = P.x, y0 = P.y, dx = B.x - P.x, dy = B.y - P.y;
+  for (let i = 1; i <= 30; i++) {          // straight at, and past, the far end
+    const res = S.dragPoint(sk, g.a.p2.id, x0 + dx * i / 20, y0 + dy * i / 20);
+    assert(res.status !== 'conflict', 'went red at step ' + i);
+  }
+  S.endDrag(sk);
+  const h = chainHealth(RP, g);
+  assert(h.l2 >= start * RP.Sketch.DRAG_MIN_LENGTH * 0.99, 'the line kept a usable length: ' + h.l2.toFixed(1));
+  assert(h.oriented, 'and still runs into the arc the way it did');
+});
+
+check('random drags of every point in the chain never fault it', () => {
+  let seed = 7;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  let moves = 0;
+  for (let trial = 0; trial < 12; trial++) {
+    const RP = fresh();
+    const g = chain(RP);
+    const S = RP.Sketch, sk = RP.sketch, E = id => sk.entities[id];
+    S.addConstraint(sk, 'fix', [g.a[trial % 2 ? 'p2' : 'p1'].id]);
+    S.solve(sk);
+    const pts = [g.a.p1.id, g.a.p2.id, g.a.center.id, g.l1.p1.id, g.l2.p2.id];
+    for (let d = 0; d < 5; d++) {
+      const pid = pts[Math.floor(rnd() * pts.length)];
+      let x = E(pid).x, y = E(pid).y;
+      let span = Math.abs(S.arcGeometry(sk, E(g.a.arc.id)).sweep);
+      for (let s = 0; s < 25; s++) {
+        x += (rnd() - 0.5) * 40; y += (rnd() - 0.5) * 40;
+        const res = S.dragPoint(sk, pid, x, y);
+        moves++;
+        const h = chainHealth(RP, g);
+        const now = Math.abs(S.arcGeometry(sk, E(g.a.arc.id)).sweep);
+        assert(res.status !== 'conflict', 'trial ' + trial + ' went red');
+        assert(h.l1 > 1 && h.l2 > 1, 'trial ' + trial + ' collapsed a line');
+        assert(h.oriented, 'trial ' + trial + ' folded a line');
+        assert(Math.abs(now - span) < Math.PI, 'trial ' + trial + ' wrapped the arc through zero');
+        span = now;
+      }
+      S.endDrag(sk);
+    }
+  }
+  assert(moves === 1500, 'ran ' + moves + ' moves');
 });
 
 if (!report()) process.exitCode = 1;

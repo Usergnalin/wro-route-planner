@@ -52,6 +52,7 @@ RP.switchDoc = function(id) {
   RP.lineDrawStart = null;
   RP.sketchDrag = null;
   RP.elementDrag = null;
+  if (RP.sketch && RP.Sketch.endDrag) RP.Sketch.endDrag(RP.sketch);
   RP.hoverSnapPoint = null;
 
   RP._docViews = RP._docViews || {};
@@ -102,6 +103,7 @@ RP.setEditMode = function(mode) {
     if (RP.clearSketchSelection) RP.clearSketchSelection();
     RP.sketchDrag = null;
     RP.elementDrag = null;
+    if (RP.sketch && RP.Sketch.endDrag) RP.Sketch.endDrag(RP.sketch);
     RP.lineDrawing = false;
     RP.lineDrawStart = null;
     RP.hoverSnapPoint = null;

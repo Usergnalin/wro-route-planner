@@ -481,63 +481,99 @@ RP.Sketch.registerConstraint('tangent', {
 // tangent_at(line, arc, point) — the arc meets the line smoothly AT that
 // point, which must be one of the arc's own ends.
 //
-// This is the endpoint tangency FreeCAD recommends for smooth joins, and
-// it exists because plain `tangent` above cannot express it. That one
-// constrains the CENTRE to stand one radius off the line, with the side
-// captured at creation so the arc cannot flip. The side lock makes whole
-// regions of the sketch unreachable: drag an end far enough and the
-// solver has to push the centre through the line to follow, cannot, and
-// grinds to a halt in a configuration it can no longer solve — the
-// sketch goes red and stays red.
+// Modelled on FreeCAD's endpoint tangency (planegcs ConstraintAngleViaPoint
+// with the angle locked at creation). Two normals meet at the point:
 //
-// Stating it at the point removes the problem entirely. The radius at
-// that end must be perpendicular to the line:
+//     n1 = the line's direction p1→p2, turned 90°   (oriented: it knows
+//                                                     which way the line runs)
+//     n2 = centre − point                           (the arc's normal there)
 //
-//     f = (p − c) · û          û = unit direction of the line
+// and the residual is the SIGNED angle from n1 to n2, minus `orient`,
+// which is 0 or π and is captured when the constraint is made:
 //
-// Zero when perpendicular, whichever side the centre is on and whichever
-// way the arc sweeps. Smooth everywhere, no captured state, and it is
-// exactly what "tangent at this end" means. Normalised by the line
-// length so the residual is a length and mixes with the positional rows.
+//     f = wrap(atan2(n1 × n2, n1 · n2) − orient)
+//
+// The previous form, (p − c)·û, was zero whenever the radius was
+// perpendicular to the line — which is just as true with the line folded
+// back over the arc as with it running smoothly into it. Dragging could
+// therefore walk a line through zero length and out the other side, and
+// the sketch would call that solved. Here a fold-back is an error of π,
+// not zero, so the solver steers away from it; and since n1 is oriented,
+// a line cannot reverse without leaving that error behind.
+//
+// It also locks which side of the line the centre sits on, exactly as
+// FreeCAD does: an arc changes side only by flattening through an infinite
+// radius, which no drag can do. Flip the arc explicitly instead.
+//
+// Weighted as an angle, so it mixes with the positional rows through
+// charLength like `angle` and `horizontal` do.
+function tangentAtNormals(g, c) {
+  var line = g.ent(c.refs[0]), arc = g.ent(c.refs[1]), p = c.refs[2];
+  var dx = g.px(line.p2) - g.px(line.p1);
+  var dy = g.py(line.p2) - g.py(line.p1);
+  return {
+    line: line, arc: arc, p: p,
+    n1x: -dy, n1y: dx,                                   // d rotated 90° ccw
+    n2x: g.px(arc.center) - g.px(p), n2y: g.py(arc.center) - g.py(p)
+  };
+}
+
+function tangentAtAngle(n) {
+  return Math.atan2(n.n1x * n.n2y - n.n1y * n.n2x, n.n1x * n.n2x + n.n1y * n.n2y);
+}
+
+// The orientation a tangent_at should hold, read from current geometry:
+// whichever of 0 and π the configuration is nearer.
+RP.Sketch.tangentAtOrient = function(sk, c) {
+  var line = sk.entities[c.refs[0]], arc = sk.entities[c.refs[1]], p = sk.entities[c.refs[2]];
+  if (!line || !arc || !p) return 0;
+  var a = sk.entities[line.p1], b = sk.entities[line.p2], cen = sk.entities[arc.center];
+  var n1x = -(b.y - a.y), n1y = b.x - a.x;
+  var n2x = cen.x - p.x, n2y = cen.y - p.y;
+  var ang = Math.atan2(n1x * n2y - n1y * n2x, n1x * n2x + n1y * n2y);
+  return Math.abs(ang) > Math.PI / 2 ? Math.PI : 0;
+};
+
 RP.Sketch.registerConstraint('tangent_at', {
   label: 'Tangent at point',
   glyph: 'T',
   equations: 1,
-  weight: 'position',
+  weight: 'angle',
   accepts: function(e) {
     return e.length === 3 && isLine(e[0]) && e[1] && e[1].type === 'arc' && isPoint(e[2]);
   },
+  init: function(c, sk) {
+    c.orient = RP.Sketch.tangentAtOrient(sk, c);
+  },
   residual: function(g, c, r, row) {
-    var line = g.ent(c.refs[0]), arc = g.ent(c.refs[1]), p = c.refs[2];
-    var dx = g.px(line.p2) - g.px(line.p1);
-    var dy = g.py(line.p2) - g.py(line.p1);
-    var L = Math.hypot(dx, dy);
-    if (L < EPS) { r[row] = 0; return; }
-    var wx = g.px(p) - g.px(arc.center);
-    var wy = g.py(p) - g.py(arc.center);
-    r[row] = (wx * dx + wy * dy) / L;
+    var n = tangentAtNormals(g, c);
+    // A zero-length line or a zero-radius arc has no direction to compare.
+    // That must NOT read as satisfied: when it did, collapsing a line onto
+    // the join was the cheapest way to zero this row, and the solver found
+    // it — the line went to length 0 and the sketch stuck there. A right
+    // angle's worth of error makes the degenerate state something every
+    // step is rejected for entering.
+    if (Math.hypot(n.n1x, n.n1y) < EPS || Math.hypot(n.n2x, n.n2y) < EPS) { r[row] = Math.PI / 2; return; }
+    r[row] = wrapPi(tangentAtAngle(n) - (c.orient || 0));
   },
   jacobian: function(g, c, J, row) {
-    var line = g.ent(c.refs[0]), arc = g.ent(c.refs[1]), p = c.refs[2];
-    var a = line.p1, b = line.p2, cen = arc.center;
-    var dx = g.px(b) - g.px(a);
-    var dy = g.py(b) - g.py(a);
-    var L = Math.hypot(dx, dy);
-    if (L < EPS) return;
-    var ux = dx / L, uy = dy / L;
-    var wx = g.px(p) - g.px(cen);
-    var wy = g.py(p) - g.py(cen);
-    var f = wx * ux + wy * uy;
-
-    // d/dw of (w·û) is û; the point and the centre move w in opposition.
-    J_(J, row, g.cx(p), ux);      J_(J, row, g.cy(p), uy);
-    J_(J, row, g.cx(cen), -ux);   J_(J, row, g.cy(cen), -uy);
-
-    // d/dd of (w·d/|d|) = (w − f·û)/|d|, and d = b − a.
-    var gx = (wx - f * ux) / L;
-    var gy = (wy - f * uy) / L;
-    J_(J, row, g.cx(b), gx);      J_(J, row, g.cy(b), gy);
-    J_(J, row, g.cx(a), -gx);     J_(J, row, g.cy(a), -gy);
+    var n = tangentAtNormals(g, c);
+    var q1 = n.n1x * n.n1x + n.n1y * n.n1y;
+    var q2 = n.n2x * n.n2x + n.n2y * n.n2y;
+    if (q1 < EPS || q2 < EPS) return;
+    // f = φ(n2) − φ(n1), where dφ(v) = (v.x·dv.y − v.y·dv.x) / |v|².
+    // n1 = (−dy, dx) with d = b − a:  ∂n1/∂bx = (0, 1), ∂n1/∂by = (−1, 0).
+    var a = n.line.p1, b = n.line.p2;
+    J_(J, row, g.cx(b), -n.n1x / q1);
+    J_(J, row, g.cy(b), -n.n1y / q1);
+    J_(J, row, g.cx(a),  n.n1x / q1);
+    J_(J, row, g.cy(a),  n.n1y / q1);
+    // n2 = c − p:  ∂n2/∂cx = (1, 0), ∂n2/∂cy = (0, 1); the point is opposite.
+    var cen = n.arc.center;
+    J_(J, row, g.cx(cen), -n.n2y / q2);
+    J_(J, row, g.cy(cen),  n.n2x / q2);
+    J_(J, row, g.cx(n.p),  n.n2y / q2);
+    J_(J, row, g.cy(n.p), -n.n2x / q2);
   }
 });
 

@@ -445,6 +445,7 @@ RP.initEvents = function() {
     // Finish a sketch point drag
     if (RP.sketchDrag) {
       RP.sketchDrag = null;
+      RP.Sketch.endDrag(RP.sketch);
       RP.solveSketch();
       RP.refreshSketchUI();
       return;
@@ -454,6 +455,7 @@ RP.initEvents = function() {
     if (RP.elementDrag) {
       // Lengths are measured live in rebuildLines(); nothing to refresh.
       RP.elementDrag = null;
+      RP.Sketch.endDrag(RP.sketch);
       RP.render();
       if (RP.updateInstructions) RP.updateInstructions();
       return;
