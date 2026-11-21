@@ -487,11 +487,10 @@ RP.entitiesEndingAt = function(sk, pointId, type) {
 // instead of kinking, and it is the whole reason to draw an arc between
 // two legs. So offer it the same way snap offers coincident.
 //
-// Stated as `tangent_at`, at the shared end, rather than the plain
-// `tangent` that constrains the centre to stand one radius off the line.
-// The plain one captures which SIDE the centre started on and can never
-// let the arc flip, which leaves regions of the sketch unreachable and
-// the solver stuck in them. See the constraint's own comment.
+// Stated as `tangent_at`, at the shared end — FreeCAD's endpoint
+// tangency: the angle between the line's direction and the arc at the
+// join, locked to 0 or π when made, so the line can never fold back over
+// the arc. See the constraint's own comment.
 //
 // Only applied when exactly one candidate ends at the point: at a corner
 // where two lines already meet, a second tangent would over-constrain and
@@ -499,19 +498,14 @@ RP.entitiesEndingAt = function(sk, pointId, type) {
 // Rotate a freshly-drawn line about the arc end it joins, so it starts out
 // exactly tangent, WITHOUT changing the length the user drew.
 //
-// tangent_at's residual is (p − c)·û, the radius vector dotted with the
-// line's unit direction. That is scale-invariant in the line's length: the
-// constraint says nothing whatsoever about how long the line is, and its
-// Jacobian is correspondingly flat along that direction. So when the line
-// is drawn far from tangent, the only way the solver has to fix the angle
-// is to walk the far end sideways — and swinging a line by translating one
-// end changes its length as a side effect, with nothing pushing back. On a
-// mat-sized sketch that regularly turned a 200px line into several
-// thousand, or (with the length driven the other way) collapsed it toward
-// zero, where the residual and Jacobian are both hard-zeroed for a
-// degenerate direction: vacuously satisfied, no gradient out, and every
-// other constraint touching that line now unsatisfiable — the "conflicting
-// constraints" that only a manual length constraint could rescue.
+// tangent_at constrains an ANGLE, which says nothing about how long the
+// line is. So when the line is drawn far from tangent, the solver fixes
+// the angle by walking the far end sideways — and swinging a line by
+// translating one end changes its length as a side effect. On a mat-sized
+// sketch that turned a 200px line into several thousand, or collapsed it
+// towards zero, where it has no direction left to be tangent with.
+// (RP.Sketch.solve now also catches a collapse after the fact — see its
+// guard — but starting on the answer is cheaper than recovering.)
 //
 // Rotating about the shared end instead sets the angle exactly and leaves
 // the length alone, so the solver starts on the answer rather than walking

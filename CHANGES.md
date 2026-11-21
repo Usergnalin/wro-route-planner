@@ -1,3 +1,68 @@
+# Changes — 2026-11-21
+
+## Stable arcs: tangency and dragging, modelled on FreeCAD
+
+**Reported:** a straight, an arc and a straight, tangent at both arc
+ends, with one arc end locked. Dragging the other arc end, or anything
+else, sometimes flipped the arc, and usually left one straight at zero
+length with "conflicting constraints".
+
+**Reproduced** in Node and with real mouse drags. Three causes:
+
+1. **Tangency couldn't tell smooth from folded.** `tangent_at` required
+   the radius to be perpendicular to the line. A line folded back over
+   the arc satisfies that too. In a random-drag stress test, `main` ended
+   in a folded state 524 times in 7,200 moves.
+2. **Nothing let a free line's far end move.** Dragging a join towards it
+   shortened the line on every mouse move: 75, 65, … 3, then 0. At zero
+   the line has no direction, the solve stalled, and the sketch stayed
+   red.
+3. **Long swings collapsed lines too.** Making a steeply tangent line
+   horizontal also shrank it, because shrinking is the cheapest way to
+   rotate it.
+
+**Fixed**, following FreeCAD's sketch solver (planegcs):
+
+- **Oriented endpoint tangency.** It is now the signed angle between the
+  line's direction and the arc at the join, locked to 0 or 180° when
+  made. A fold has an error of 180°, not zero, and a zero-length line no
+  longer counts as tangent. Saved projects get their orientation from
+  their saved geometry. As in FreeCAD, an arc keeps its side of its
+  tangent line: tangent to a fixed line, it flattens towards it instead
+  of crossing, and comes back when you drag back.
+- **Drag sessions with priorities.**
+  - Lines, radii and arc spans resist dropping below 10% of their size at
+    the start of the drag. Above that, nothing changes: free ends stay
+    put. Below it, they get pushed.
+  - A cursor out of reach becomes a soft target.
+  - A move that would wrap an arc through zero, or turn a good sketch
+    red, is refused for that mouse event.
+- **Every solve is guarded the same way.** A solve that collapses
+  something is redone with the floors, then settled exactly.
+  Dimensions still win.
+
+**Faster:**
+
+- Geometry not connected to the dragged point is frozen during a drag.
+- The rank calculation is skipped during the drag; the full solve on
+  mouse-up still labels the sketch.
+- A pinned drag stops iterating once its target is clearly out of reach.
+
+**Result:**
+
+| | `main` | now |
+|---|---|---|
+| Random-drag stress, 7,200 moves | 524 folds, 111 arc jumps | 0 folds, 0 jumps, 0 red, 0 collapsed |
+| Aug 29 project on load | red | healthy |
+| Aug 29 project, time per drag move | 225 ms | 88 ms |
+| Aug 29 project, red drag moves | 130 of 170 | none |
+| Generated code, both saved projects | — | identical |
+
+**Behaviour change:** dragging an arc's end across a fully fixed line
+that it is tangent to no longer moves the arc to the other side. FreeCAD
+behaves the same way. The arc flattens against the line and recovers
+when you drag back.
+
 # Changes — 2026-11-20 (2)
 
 ## Parameters
