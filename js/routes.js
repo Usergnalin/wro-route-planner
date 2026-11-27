@@ -202,6 +202,7 @@ RP.focusGeometryInList = function(id) {
   if (id == null) return;
   RP.selectedLineId = id;
   RP.updateLayerList();
+  if (RP.updateGeometryDetail) RP.updateGeometryDetail();
   var panel = document.getElementById('panel-geometry');
   if (panel) panel.classList.remove('collapsed');
   var el = document.getElementById('layer-list');
@@ -458,23 +459,6 @@ RP.updateLayerList = function() {
             RP.render();
           };
           div.appendChild(flip);
-        }
-        if (line.vertex !== undefined) {
-          // A smooth corner: its ramp (0 = constant radius ... 1 = all ramp)
-          var rampBtn = document.createElement('button');
-          rampBtn.className = 'layer-del-btn is-flip';
-          rampBtn.textContent = 'ramp ' + Number(line.ramp).toFixed(2);
-          rampBtn.title = 'Share of the turn in the curvature ramps: 1 = all ramp (smoothest), 0 = constant radius';
-          rampBtn.onclick = function(e) {
-            e.stopPropagation();
-            var v = prompt('Ramp (0 = constant radius ... 1 = all ramp):', String(line.ramp));
-            if (v === null) return;
-            RP.pushHistory('Smooth corner ramp');
-            if (!RP.setSmoothRamp(line.id, v)) RP.undoStack.pop();
-            RP.updateLayerList();
-            RP.render();
-          };
-          div.appendChild(rampBtn);
         }
         div.appendChild(del);
         el.appendChild(div);

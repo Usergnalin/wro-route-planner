@@ -768,6 +768,19 @@ RP.updateGeometryDetail = function() {
     return;
   }
 
+  // A smooth corner: its ramp, the one thing about its shape that is not a
+  // point you can drag. Picked with either the Constrain or Select tool.
+  var smSel = (sel && sel.type === 'smooth') ? sel : null;
+  if (!smSel && sk && !RP.sketchSelection.length && RP.selectedLineId != null) {
+    var picked = sk.entities[RP.selectedLineId];
+    if (picked && picked.type === 'smooth') smSel = picked;
+  }
+  if (RP.editMode !== 'route' && smSel) {
+    section.style.display = '';
+    RP.renderSmoothDetail(host, smSel);
+    return;
+  }
+
   var show = (RP.editMode !== 'route') && sel && sel.type === 'arc';
   section.style.display = show ? '' : 'none';
   if (!show) { host.innerHTML = ''; return; }
@@ -786,6 +799,62 @@ RP.updateGeometryDetail = function() {
     RP.flipArc(sel.id);
     RP.refreshSketchUI();
   });
+};
+
+// Right panel for a smooth corner: ramp (slider + number), and what it
+// gives - turn, tightest radius, length. Dragging the slider updates the
+// curve live; letting go makes it one undo step.
+RP.renderSmoothDetail = function(host, sm) {
+  var sk = RP.sketch;
+  var g = RP.Sketch.smoothGeometry(sk, sm);
+  var f = RP.Sketch.smoothRamp(sm);
+  function mm(px) { return RP.constructionLabel(0, 0, px, 0); }
+  host.innerHTML =
+    '<label class="ap-row"><span>Ramp</span>' +
+      '<input type="number" id="geo-smooth-ramp" min="0" max="1" step="0.05" value="' + f.toFixed(2) + '"></label>' +
+    '<input type="range" id="geo-smooth-ramp-slider" min="0" max="1" step="0.05" value="' + f + '" ' +
+      'style="width:100%;margin:2px 0 8px" title="0 = constant radius ... 1 = all ramp">' +
+    '<div class="ap-row"><span>Turn</span><span id="geo-smooth-turn">' +
+      (g ? Math.abs(g.sweep * 180 / Math.PI).toFixed(1) + '°' : '-') + '</span></div>' +
+    '<div class="ap-row"><span>Tightest radius</span><span id="geo-smooth-r">' + (g ? mm(g.radius) : '-') + '</span></div>' +
+    '<div class="ap-row"><span>Length</span><span id="geo-smooth-len">' + (g ? mm(g.length) : '-') + '</span></div>' +
+    '<div class="sidebar-hint">Ramp is the share of the turn spent easing in and out: ' +
+    '1 = all ramp (smoothest), 0 = constant radius. The ends and the vertex stay put; ' +
+    'drag the vertex to change the corner itself.</div>';
+
+  var slider = document.getElementById('geo-smooth-ramp-slider');
+  var num = document.getElementById('geo-smooth-ramp');
+  var startRamp = null;       // the ramp before a live slider drag began
+
+  function showNumbers() {
+    var gg = RP.Sketch.smoothGeometry(sk, sm);
+    var r = document.getElementById('geo-smooth-r'), l = document.getElementById('geo-smooth-len');
+    if (r) r.textContent = gg ? mm(gg.radius) : '-';
+    if (l) l.textContent = gg ? mm(gg.length) : '-';
+  }
+  function commit(v) {
+    var to = Math.min(1, Math.max(0, Number(v)));
+    if (!isFinite(to)) return;
+    var from = startRamp != null ? startRamp : RP.Sketch.smoothRamp(sm);
+    startRamp = null;
+    // Undo has to capture the ramp from BEFORE any live preview
+    RP.setSmoothRamp(sm.id, from);
+    if (Math.abs(to - from) < 1e-9) { RP.refreshSketchUI(); return; }
+    RP.pushHistory('Smooth corner ramp');
+    RP.setSmoothRamp(sm.id, to);
+    RP.refreshSketchUI();
+  }
+  if (slider) {
+    slider.addEventListener('input', function() {
+      if (startRamp == null) startRamp = RP.Sketch.smoothRamp(sm);
+      RP.setSmoothRamp(sm.id, this.value);
+      if (num) num.value = Number(this.value).toFixed(2);
+      showNumbers();
+      if (RP.render) RP.render();
+    });
+    slider.addEventListener('change', function() { commit(this.value); });
+  }
+  if (num) num.addEventListener('change', function() { commit(this.value); });
 };
 
 // Right panel: detail for whichever constraint is selected.

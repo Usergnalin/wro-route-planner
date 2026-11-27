@@ -25,8 +25,12 @@ from arcs throughout (`js/sketch/smooth.js`).
 - **Drawing:** the **Smooth** tool, dragged from one end to the other.
   Between the ends of two lines it rounds off their corner: the vertex
   goes where the lines cross and both lines are made tangent. Otherwise
-  it starts as a 90 degree corner; drag the vertex to shape it. Its ramp
-  is set from its row in the geometry list.
+  it starts as a 90 degree corner; drag the vertex to shape it.
+- **Ramp** is edited in the right-hand **Selected Geometry** panel (select
+  the corner with Select or Constrain): a slider that updates the curve
+  live (one undo step when you let go) and a number field, with the turn,
+  tightest radius and length it gives. It stays a fixed property rather
+  than a solver unknown, so dragging or constraining never changes it.
 - **Everywhere else:** drawn dashed with its tangent legs, hit-tested,
   snappable (ends and vertex), listed, deletable, an obstacle if marked
   so, saved and loaded as itself.
