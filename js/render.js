@@ -250,10 +250,16 @@ RP.render = function() {
       // Arc render polyline (matches the generated turn_arc geometry)
       var arcRenderPts = null;
       if (isArc) {
-        arcRenderPts = RP.Sketch.arcPoints(RP.sketch, RP.sketch.entities[seg.entityId], 48);
-        // Points come back in stored p1->p2 order; put them in travel order
-        // so the direction chevron points the right way.
-        if (seg.flip) arcRenderPts = arcRenderPts.slice().reverse();
+        if (sMode === 'smooth') {
+          // A smooth corner: same endpoints as the arc, its own curve, already in travel order
+          arcRenderPts = RP.smoothPoints(RP.sketch, RP.sketch.entities[seg.entityId], !!seg.flip,
+                                         RP.smoothRamp(seg), 48);
+        } else {
+          arcRenderPts = RP.Sketch.arcPoints(RP.sketch, RP.sketch.entities[seg.entityId], 48);
+          // Points come back in stored p1->p2 order; put them in travel order
+          // so the direction chevron points the right way.
+          if (seg.flip) arcRenderPts = arcRenderPts.slice().reverse();
+        }
         if (arcRenderPts.length < 2) { isArc = false; arcRenderPts = null; }
       }
 

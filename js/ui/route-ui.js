@@ -927,6 +927,19 @@ RP.renderMoveParams = function(host, el) {
     html += '<label class="ap-row"><span>Offset (mm)</span><input type="number" id="ap-offset" ' +
             'value="' + (el.offset || 0) + '"></label>';
   }
+  if (el.move === 'smooth') {
+    // The ramp is a geometry choice (it decides the curve and its radius),
+    // so it lives on the move, not in the template's parameters.
+    html += '<label class="ap-row"><span>Ramp (0-1)</span><input type="number" id="ap-ramp" ' +
+            'min="0" max="1" step="0.1" value="' + RP.smoothRamp(el) + '"></label>';
+    var scInfo = ent ? RP.smoothCornerOf(sk, ent, !!el.flip, RP.smoothRamp(el)) : null;
+    var ppmInfo = RP.calibration ? RP.calibration.pixelsPerMm : 0;
+    if (scInfo && ppmInfo) {
+      html += '<div class="sidebar-hint">Same ends as the arc, no curvature jumps. Tightest radius <b>' +
+              (scInfo.radiusPx / ppmInfo).toFixed(0) + ' mm</b>, length ' +
+              (scInfo.lengthPx / ppmInfo).toFixed(0) + ' mm.</div>';
+    }
+  }
   if (el.move === 'wall_align') {
     // Naming the wall matters now that nothing snaps to it: this is the
     // line the simulator credits the align with squaring against, and it
@@ -953,6 +966,10 @@ RP.renderMoveParams = function(host, el) {
 
   elpOn('ap-move', 'change', function() { RP.updateSelectedMove({ move: this.value }); });
   elpOn('ap-drive', 'click', function() { RP.updateSelectedMove({ reverse: !el.reverse }); });
+  elpOn('ap-ramp', 'change', function() {
+    var v = parseFloat(this.value);
+    if (isFinite(v)) RP.updateSelectedMove({ ramp: Math.min(1, Math.max(0, v)) });
+  });
   elpOn('ap-visible', 'click', function() {
     RP.updateSelectedMove({ visible: el.visible === false });
   });

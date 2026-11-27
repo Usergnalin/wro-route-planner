@@ -193,8 +193,11 @@ RP.simPoseTrack = function(route, opts) {
     if (it.arc) {
       // Sample the arc's own polyline so the swept body follows the real
       // curve rather than its chord, and carry the heading round with it.
-      var pts = RP.Sketch.arcPoints(RP.sketch, it.entity, 96);
-      if (el.flip) pts = pts.slice().reverse();
+      // A smooth corner follows its own curve between the same endpoints
+      var pts = mode === RP.MOVE_SMOOTH
+        ? RP.smoothPoints(RP.sketch, it.entity, !!el.flip, RP.smoothRamp(el), 96)
+        : RP.Sketch.arcPoints(RP.sketch, it.entity, 96);
+      if (el.flip && mode !== RP.MOVE_SMOOTH) pts = pts.slice().reverse();
       var prev = { x: cur.x, y: cur.y };
       for (var q = 1; q < pts.length; q++) {
         var seg = Math.hypot(pts[q].x - prev.x, pts[q].y - prev.y) / ppm;

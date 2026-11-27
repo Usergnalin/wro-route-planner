@@ -25,6 +25,7 @@ var RP = window.RP || {};
 
 RP.MOVE_FORWARD         = 'forward';
 RP.MOVE_ARC             = 'arc';
+RP.MOVE_SMOOTH          = 'smooth';
 RP.MOVE_LINETRACE_DIST  = 'linetrace_dist';
 RP.MOVE_LINETRACE_JUNCT = 'linetrace_junct';
 RP.MOVE_WALL_ALIGN      = 'wall_align';
@@ -36,7 +37,7 @@ RP.MOVE_TELEPORT        = 'teleport';
 // driven in either direction, so "Straight" is what it is, and "Forwards
 // / Backwards" is the separate Drive toggle's job to say.
 RP.MOVE_LABELS = {
-  forward: 'Straight', arc: 'Arc',
+  forward: 'Straight', arc: 'Arc', smooth: 'Smooth corner',
   linetrace_dist: 'Line trace (dist)',
   linetrace_junct: 'Line trace (junct)',
   wall_align: 'Wall align', teleport: 'Teleport'
@@ -231,7 +232,7 @@ RP.moveEndpoints = function(sk, el) {
 // Which moves make sense for the geometry an element references.
 RP.movesForEntity = function(entityType) {
   return entityType === 'arc'
-    ? [RP.MOVE_ARC, RP.MOVE_TELEPORT]
+    ? [RP.MOVE_ARC, RP.MOVE_SMOOTH, RP.MOVE_TELEPORT]
     : [RP.MOVE_FORWARD, RP.MOVE_LINETRACE_DIST, RP.MOVE_LINETRACE_JUNCT,
        RP.MOVE_WALL_ALIGN, RP.MOVE_TELEPORT];
 };
@@ -416,7 +417,7 @@ RP.rebuildRouteViews = function() {
         flip: !!el.flip,
         mode: el.move === 'forward' ? 'normal' : el.move,
         direction: el.reverse ? 'backward' : 'forward',
-        speed: el.speed, offset: el.offset,
+        speed: el.speed, offset: el.offset, ramp: el.ramp,
         junctionCount: el.junctions,
         teleportName: el.teleportName,
         // Effective visibility: the move's own switch AND its segment's.

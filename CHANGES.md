@@ -1,3 +1,37 @@
+# Changes — 2026-11-27
+
+## Smooth corners: arcs the robot can drive exactly
+
+**Why:** an arc meets a straight with a jump in curvature (0 to 1/r). A
+two-wheeled robot can only follow that by changing its wheel speeds
+instantly, so it smooths the corner itself and leaves the drawn path. A
+path whose curvature never jumps can be driven as drawn.
+
+**Added** a **Smooth corner** move for arc geometry (`js/model/smooth.js`):
+
+- Curvature rises from 0 to 1/R along a raised cosine, holds 1/R, and
+  falls back the same way. `ramp` (0-1, default 1, on the move panel) is
+  the share of the turn in the ramps: 1 = all ramp, 0 = the plain arc.
+- **The arc stays the sketch entity.** A smooth corner is a way of
+  DRIVING an arc: it keeps the arc's endpoints and end tangents (the
+  shape is symmetric, so its chord makes theta/2 with both ends, like an
+  arc's). The rest of the route and every constraint are untouched; R
+  (its smallest radius) is chosen so the chord matches.
+- It bulges further than the arc between the same ends (its ends are
+  straighter, its middle tighter). Rendering and the simulator use the
+  real curve, so collisions are checked against what is driven.
+- New movement `smooth` with built-ins `{angle}` (chassis turn,
+  clockwise positive), `{radius}` (smallest radius, positive), `{ramp}`,
+  `{distance}` (curve length) and `{reversed}`. Existing projects get the
+  default template automatically.
+- Same shape as the robot library's `bot.curve(angle, R, {.ramp})`
+  (WRO2027 repo, branch `smooth-corner`). Change both together.
+
+**Tests:** `tests/smooth.js` - shape (exact total turn, closed-form
+heading vs integral, ramp 0 = arc), endpoints and tangents kept (both
+travel directions), straight ends / 1/R peak, codegen, old configs, the
+simulator following the curve.
+
 # Changes — 2026-11-21
 
 ## Stable arcs: tangency and dragging, modelled on FreeCAD

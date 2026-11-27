@@ -156,6 +156,21 @@ RP.computeSteps = function(route) {
         heading: RP.toDeg(RP.angleRad(it.a.x, it.a.y, it.b.x, it.b.y)),
         name: el.teleportName || ('teleport_' + el.id)
       });
+    } else if (it.arc && mode === RP.MOVE_SMOOTH) {
+      // Same endpoints and end tangents as the arc, driven along a curve
+      // with no curvature jumps; R is its smallest radius.
+      var ramp = RP.smoothRamp(el);
+      var sc = RP.smoothCornerOf(RP.sketch, it.entity, !!el.flip, ramp);
+      if (sc) {
+        steps.push({
+          kind: 'smooth',
+          angle: it.arc.sweepDeg,                  // chassis turn, clockwise-positive
+          radiusMm: sc.radiusPx / ppm,
+          ramp: ramp,
+          mm: sc.lengthPx / ppm,
+          reverse: !it.arc.noseFirst
+        });
+      }
     } else if (it.arc) {
       var dCw = it.arc.sweepDeg;                 // chassis turn, clockwise-positive
       var Rmm = it.arc.radiusPx / ppm;
@@ -242,6 +257,12 @@ RP.renderStep = function(st, len, num) {
     b.angle = num(st.angle);
     b.radius = len(st.radiusMm);
     b.distance = len(st.mm);
+  } else if (key === 'smooth') {
+    b.angle = num(st.angle);
+    b.radius = len(st.radiusMm);
+    b.ramp = num(st.ramp);
+    b.distance = len(st.mm);
+    b.reversed = RP.formatBool(!!st.reverse);
   } else if (key === 'wall_align') {
     b.reversed = RP.formatBool(!!st.reverse);
     b.expected_distance = len(st.expectedDistanceMm || 0);
@@ -295,7 +316,8 @@ RP.generateCode = function(route) {
 
   var totalMm = 0;
   for (var i = 0; i < steps.length; i++) {
-    if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace' || steps[i].kind === 'arc') totalMm += steps[i].mm;
+    if (steps[i].kind === 'forward' || steps[i].kind === 'linetrace' || steps[i].kind === 'arc' ||
+        steps[i].kind === 'smooth') totalMm += steps[i].mm;
   }
   lines_out.push(cp + ' Total distance: ' + len(totalMm) + ' ' + unit);
   if (partial) {

@@ -88,7 +88,7 @@ RP.isBuiltinOf = function(key, name) {
 // Which movement an action renders as — the key into RP.MOVEMENTS.
 // Teleports emit only comments, so they have none.
 RP.MOVE_TO_MOVEMENT = {
-  forward: 'forward', arc: 'arc', wall_align: 'wall_align',
+  forward: 'forward', arc: 'arc', smooth: 'smooth', wall_align: 'wall_align',
   linetrace_dist: 'linetrace', linetrace_junct: 'linetrace_junct'
 };
 RP.movementForAction = function(act) {
@@ -317,6 +317,7 @@ var OLD_TEMPLATE_KEYS = {
   forward: { template: 'forwardTemplate' },
   turn: { template: 'turnTemplate', pivotLeft: 'turnPivotLeftTemplate', pivotRight: 'turnPivotRightTemplate' },
   arc: { template: 'turnArcTemplate' },
+  smooth: { template: 'smoothTemplate' },   // newer than flat configs: always the default
   wall_align: { template: 'wallAlignTemplate' },
   linetrace: { template: 'lineTraceDistTemplate' },
   linetrace_junct: { template: 'lineTraceJunctTemplate' },

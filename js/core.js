@@ -180,7 +180,8 @@ RP.CODE_CONFIG_FIELDS = [
 RP.BUILTINS = {
   distance:          'Leg length in the output unit (negative when driving backwards)',
   angle:             'Turn angle in degrees, clockwise positive',
-  radius:            'Arc radius in the output unit (+right / -left)',
+  radius:            'Arc radius in the output unit (+right / -left); smooth corner: its smallest radius',
+  ramp:              'Smooth corner: share of the turn in the curvature ramps (0 = arc, 1 = all ramp)',
   reversed:          'Whether this leg is driven backwards',
   expected_distance: 'Leg length as drawn, for slowing on approach',
   name:              'The checkpoint’s name'
@@ -194,6 +195,12 @@ RP.MOVEMENTS = [
                 { key: 'pivotRight', label: 'Pivot right', fallback: true }] },
   { key: 'arc', label: 'Arc', builtins: ['angle', 'radius', 'distance'],
     templates: [{ key: 'template', label: 'Arc' }] },
+  // A smooth corner drives an arc's endpoints and end tangents along a
+  // curve with no curvature jumps (js/model/smooth.js). {angle} is the
+  // chassis turn, clockwise positive; {radius} its smallest radius,
+  // always positive; {reversed} whether it is driven backwards.
+  { key: 'smooth', label: 'Smooth corner', builtins: ['angle', 'radius', 'ramp', 'distance', 'reversed'],
+    templates: [{ key: 'template', label: 'Smooth corner' }] },
   { key: 'wall_align', label: 'Wall align', builtins: ['reversed', 'expected_distance'],
     templates: [{ key: 'template', label: 'Wall align' }] },
   { key: 'linetrace', label: 'Line trace · distance', builtins: ['distance', 'reversed'],
@@ -218,6 +225,8 @@ RP.DEFAULT_MOVEMENTS = (function() {
     turn:            { template: 'robot.turn_in_place({angle}, power={speed}{extra_args})', pivotLeft: '', pivotRight: '',
                        params: [speed, extra] },
     arc:             { template: 'robot.turn_arc(angle={angle}, speed={speed}, radius={radius})', params: [speed] },
+    smooth:          { template: 'robot.curve(angle={angle}, radius={radius}, ramp={ramp}, reversed={reversed}, speed={speed})',
+                       params: [speed] },
     wall_align:      { template: 'robot.wall_align(reversed={reversed}, power={speed}, expected_distance={expected_distance}{extra_args})',
                        params: [speed, extra] },
     linetrace:       { template: 'line_trace_distance({distance}, {speed}{extra_args})', params: [speed, extra] },
