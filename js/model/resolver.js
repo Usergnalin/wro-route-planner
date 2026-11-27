@@ -41,7 +41,7 @@ RP.resolveRoute = function(route) {
   for (var i = 0; i < moves.length; i++) {
     var mv = moves[i];
     var ent = sk.entities[mv.entityId];
-    if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) {
+    if (!ent || (ent.type !== 'line' && ent.type !== 'arc' && ent.type !== 'smooth')) {
       return {
         ok: false, code: 'MISSING_GEOMETRY',
         message: 'Move ' + (i + 1) + ' references missing geometry',
@@ -120,7 +120,7 @@ RP.routeBreaks = function(route) {
   for (var i = 0; i < moves.length; i++) {
     var mv = moves[i];
     var ent = sk.entities[mv.entityId];
-    if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) { prev = null; continue; }
+    if (!ent || (ent.type !== 'line' && ent.type !== 'arc' && ent.type !== 'smooth')) { prev = null; continue; }
     var ends = RP.moveEndpoints(sk, mv);
     var pa = ends && sk.entities[ends.entry], pb = ends && sk.entities[ends.exit];
     if (!pa || !pb) { prev = null; continue; }
@@ -210,6 +210,25 @@ RP.resolveTimeline = function(route) {
       }
     }
 
+    if (rel.entity.type === 'smooth') {
+      var sg = RP.Sketch.smoothGeometry(sk, rel.entity);
+      var vtx = sk.entities[rel.entity.vertex];
+      if (sg && vtx) {
+        // Its end tangents run through the vertex: entry -> vertex -> exit.
+        var vIn = RP.toDeg(RP.angleRad(rel.a.x, rel.a.y, vtx.x, vtx.y));
+        var vOut = RP.toDeg(RP.angleRad(vtx.x, vtx.y, rel.b.x, rel.b.y));
+        var sweepS = el.flip ? -sg.sweep : sg.sweep;
+        var noseS = !backward;
+        return {
+          entry: noseS ? vIn : (vIn + 180) % 360,
+          exit:  noseS ? vOut : (vOut + 180) % 360,
+          arc: null,
+          smooth: { sweepDeg: sweepS * 180 / Math.PI, radiusPx: sg.radius,
+                    lengthPx: sg.length, ramp: sg.ramp, noseFirst: noseS }
+        };
+      }
+    }
+
     var h = backward ? RP.toDeg(RP.angleRad(rel.b.x, rel.b.y, rel.a.x, rel.a.y))
                      : RP.toDeg(RP.angleRad(rel.a.x, rel.a.y, rel.b.x, rel.b.y));
     // wall_align ends square to the wall it found, whatever it started as.
@@ -228,7 +247,7 @@ RP.resolveTimeline = function(route) {
       items.push({
         kind: 'move', action: act, entity: rel.entity,
         a: rel.a, b: rel.b,
-        entryHeading: hd.entry, exitHeading: hd.exit, arc: hd.arc
+        entryHeading: hd.entry, exitHeading: hd.exit, arc: hd.arc, smooth: hd.smooth || null
       });
     } else if (RP.isTurnAction(act)) {
       items.push({ kind: 'turn', action: act });

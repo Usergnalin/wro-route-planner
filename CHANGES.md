@@ -1,36 +1,49 @@
 # Changes — 2026-11-27
 
-## Smooth corners: arcs the robot can drive exactly
+## Smooth corners: their own sketch geometry
 
 **Why:** an arc meets a straight with a jump in curvature (0 to 1/r). A
 two-wheeled robot can only follow that by changing its wheel speeds
 instantly, so it smooths the corner itself and leaves the drawn path. A
-path whose curvature never jumps can be driven as drawn.
+curve whose curvature never jumps can be driven exactly as drawn.
 
-**Added** a **Smooth corner** move for arc geometry (`js/model/smooth.js`):
+**Added** a **Smooth corner**: a new kind of sketch geometry, separate
+from arcs throughout (`js/sketch/smooth.js`).
 
-- Curvature rises from 0 to 1/R along a raised cosine, holds 1/R, and
-  falls back the same way. `ramp` (0-1, default 1, on the move panel) is
-  the share of the turn in the ramps: 1 = all ramp, 0 = the plain arc.
-- **The arc stays the sketch entity.** A smooth corner is a way of
-  DRIVING an arc: it keeps the arc's endpoints and end tangents (the
-  shape is symmetric, so its chord makes theta/2 with both ends, like an
-  arc's). The rest of the route and every constraint are untouched; R
-  (its smallest radius) is chosen so the chord matches.
-- It bulges further than the arc between the same ends (its ends are
-  straighter, its middle tighter). Rendering and the simulator use the
-  real curve, so collisions are checked against what is driven.
-- New movement `smooth` with built-ins `{angle}` (chassis turn,
-  clockwise positive), `{radius}` (smallest radius, positive), `{ramp}`,
-  `{distance}` (curve length) and `{reversed}`. Existing projects get the
-  default template automatically.
+- **Shape:** curvature rises from 0 to 1/R along a raised cosine, holds
+  1/R, and falls back the same way. `ramp` (0-1, default 1) is the share
+  of the turn in the ramps: 1 = all ramp, 0 = constant radius.
+- **Entity:** three points - start, end and the **vertex** where its end
+  tangents meet - plus `ramp`. One internal equation (equal legs, it is
+  symmetric); the turn, the tightest radius R and the length are derived.
+  A line through an end and the vertex is tangent there, so tangency is
+  just `point_on_line`. Turns up to just under 180 degrees.
+- **Constraints:** `point_on_smooth` (a point anywhere along the curve -
+  signed distance to the nearest point, finite-difference Jacobian for the
+  curve's own points) and `smooth_radius` (the tightest radius). They are
+  what Coincident and Dimension resolve to for a smooth corner selection.
+- **Drawing:** the **Smooth** tool, dragged from one end to the other.
+  Between the ends of two lines it rounds off their corner: the vertex
+  goes where the lines cross and both lines are made tangent. Otherwise
+  it starts as a 90 degree corner; drag the vertex to shape it. Its ramp
+  is set from its row in the geometry list.
+- **Everywhere else:** drawn dashed with its tangent legs, hit-tested,
+  snappable (ends and vertex), listed, deletable, an obstacle if marked
+  so, saved and loaded as itself.
+- **Routes:** a route move on a smooth corner is a `smooth` movement:
+  `{angle}` (chassis turn, clockwise positive), `{radius}` (tightest),
+  `{ramp}`, `{distance}` (curve length), `{reversed}`. Entry and exit
+  headings come from its tangent legs, so straight -> smooth corner ->
+  straight needs no turns. Rendering and the simulator follow the curve.
+  Existing projects get the default template automatically.
 - Same shape as the robot library's `bot.curve(angle, R, {.ramp})`
   (WRO2027 repo, branch `smooth-corner`). Change both together.
 
-**Tests:** `tests/smooth.js` - shape (exact total turn, closed-form
-heading vs integral, ramp 0 = arc), endpoints and tangents kept (both
-travel directions), straight ends / 1/R peak, codegen, old configs, the
-simulator following the curve.
+**Tests:** `tests/smooth.js` (15) - shape, fillet between two lines
+(vertex at the crossing, tangency, equal legs), curve tangent/curvature,
+radius dimension, point on curve, constraint UI dispatch, ramp, delete,
+save/load, arcs and smooth corners offering only their own moves, codegen
+for straight -> smooth -> straight, old configs, the simulator.
 
 # Changes — 2026-11-21
 

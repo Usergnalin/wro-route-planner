@@ -76,6 +76,7 @@ RP.calibration = null;
 // Line ids are sketch entity ids — there is no separate line id space.
 RP.lines = [];
 RP.arcs = [];     // sibling view for arc entities
+RP.smooths = [];  // sibling view for smooth corner entities (js/sketch/smooth.js)
 RP.points = [];   // standalone points — reference marks, not endpoints
 
 // Routes: { id, name, nodes: [{x,y,id,isCheckpoint,checkpointName}], segments: [{id,fromNodeId,toNodeId,direction,mode,...}], visible }
@@ -96,7 +97,7 @@ RP.ROUTE_EDIT_LOCKED = true;
 RP.LOCKED_TOOLS = { route: 1, freehand: 1, checkpoint: 1 };
 
 RP.TOOL_LABELS = {
-  construction: 'Construction', select: 'Select', arc: 'Arc',
+  construction: 'Construction', select: 'Select', arc: 'Arc', smooth: 'Smooth corner',
   point: 'Point', constrain: 'Constrain'
 };
 
@@ -180,8 +181,8 @@ RP.CODE_CONFIG_FIELDS = [
 RP.BUILTINS = {
   distance:          'Leg length in the output unit (negative when driving backwards)',
   angle:             'Turn angle in degrees, clockwise positive',
-  radius:            'Arc radius in the output unit (+right / -left); smooth corner: its smallest radius',
-  ramp:              'Smooth corner: share of the turn in the curvature ramps (0 = arc, 1 = all ramp)',
+  radius:            'Arc radius in the output unit (+right / -left); smooth corner: its tightest radius',
+  ramp:              'Smooth corner: share of the turn in the curvature ramps (0 = constant radius, 1 = all ramp)',
   reversed:          'Whether this leg is driven backwards',
   expected_distance: 'Leg length as drawn, for slowing on approach',
   name:              'The checkpoint’s name'
@@ -195,10 +196,10 @@ RP.MOVEMENTS = [
                 { key: 'pivotRight', label: 'Pivot right', fallback: true }] },
   { key: 'arc', label: 'Arc', builtins: ['angle', 'radius', 'distance'],
     templates: [{ key: 'template', label: 'Arc' }] },
-  // A smooth corner drives an arc's endpoints and end tangents along a
-  // curve with no curvature jumps (js/model/smooth.js). {angle} is the
-  // chassis turn, clockwise positive; {radius} its smallest radius,
-  // always positive; {reversed} whether it is driven backwards.
+  // A smooth corner entity (js/sketch/smooth.js): a curve with no curvature
+  // jumps. {angle} is the chassis turn, clockwise positive; {radius} its
+  // tightest radius, always positive; {ramp} its shape; {reversed} whether
+  // it is driven backwards.
   { key: 'smooth', label: 'Smooth corner', builtins: ['angle', 'radius', 'ramp', 'distance', 'reversed'],
     templates: [{ key: 'template', label: 'Smooth corner' }] },
   { key: 'wall_align', label: 'Wall align', builtins: ['reversed', 'expected_distance'],
@@ -467,6 +468,16 @@ RP.computeSnap = function(ix, iy, opts) {
     considerPoint(sarc.x1, sarc.y1, sarc.p1);
     considerPoint(sarc.x2, sarc.y2, sarc.p2);
   }
+  // Smooth corner ends and vertices (the vertex is where its tangents meet -
+  // a real corner on the mat, worth measuring to).
+  var smSnap = RP.smooths || [];
+  for (var ssi = 0; ssi < smSnap.length; ssi++) {
+    var ssm = smSnap[ssi];
+    if (ssm.visible === false) continue;
+    considerPoint(ssm.x1, ssm.y1, ssm.p1);
+    considerPoint(ssm.x2, ssm.y2, ssm.p2);
+    considerPoint(ssm.vx, ssm.vy, ssm.vertex);
+  }
   // Standalone points exist to be snapped to — that is the whole job.
   for (var spi2 = 0; spi2 < RP.points.length; spi2++) {
     var spt = RP.points[spi2];
@@ -671,6 +682,7 @@ RP.setTool = function(tool) {
     else if (tool === 'select') hint.textContent = 'Click dots/endpoints to move';
     else if (tool === 'point') hint.textContent = 'Click to place a reference point';
     else if (tool === 'arc') hint.textContent = 'Drag the chord · then drag the centre to curve it';
+    else if (tool === 'smooth') hint.textContent = 'Drag from one end to the other · between two line ends it rounds their corner · drag the vertex to shape it';
     else if (tool === 'constrain') hint.textContent = 'Click geometry to select · shift-click adds · drag points to move';
   }
   // Cancel any in-progress drawing when switching tools.

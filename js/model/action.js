@@ -95,8 +95,10 @@ RP.makeMoveAction = function(entityId, entType, opts) {
     id: RP.nextActionId++,
     type: RP.ACTION_MOVE,
     entityId: entityId,
-    // An arc entity can only be driven as an arc; a line cannot be.
-    move: opts.move || (entType === 'arc' ? RP.MOVE_ARC : RP.MOVE_FORWARD),
+    // An arc entity can only be driven as an arc, a smooth corner as a
+    // smooth corner; a line as neither.
+    move: opts.move || (entType === 'arc' ? RP.MOVE_ARC
+                      : (entType === 'smooth' ? RP.MOVE_SMOOTH : RP.MOVE_FORWARD)),
     flip: !!opts.flip,
     reverse: !!opts.reverse,
     // Built in rather than a parameter: it changes the distance the

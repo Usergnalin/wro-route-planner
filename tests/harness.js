@@ -42,6 +42,7 @@ const CODEGEN_FILES = [
   'js/sketch/linalg.js',
   'js/sketch/sketch.js',
   'js/sketch/constraints.js',
+  'js/sketch/smooth.js',
   'js/sketch/solver.js',
   'js/routes.js',
   'js/model/construction.js',
@@ -60,6 +61,7 @@ const SKETCH_FILES = [
   'js/sketch/linalg.js',
   'js/sketch/sketch.js',
   'js/sketch/constraints.js',
+  'js/sketch/smooth.js',
   'js/sketch/solver.js'
 ];
 

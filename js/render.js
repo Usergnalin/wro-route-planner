@@ -124,6 +124,45 @@ RP.render = function() {
     }
   }
 
+  // --- Draw construction smooth corners ---
+  var smList = RP.smooths || [];
+  for (var smi = 0; smi < smList.length; smi++) {
+    var smc = smList[smi];
+    if (smc.visible === false) continue;
+    if (inRouteMode && routeRefs[smc.id]) continue;
+    var smSel = RP.selectedLineId === smc.id ||
+                (RP.isSketchSelected ? RP.isSketchSelected(smc.id) : false);
+    var smHover = RP.hoverGeoId === smc.id;
+    var smColor = smSel ? '#ffee44'
+                        : (smHover ? RP.HOVER_GEO_COLOR
+                        : (inRouteMode ? 'rgba(90,150,90,0.45)'
+                                       : (RP.sketchStatusColor ? RP.sketchStatusColor() : '#44ff44')));
+    if (smc.role === RP.OBSTACLE_ROLE && !smSel && !smHover) {
+      smColor = inRouteMode ? 'rgba(255,90,90,0.55)' : '#ff5a5a';
+    }
+    // The tangent legs to the vertex, faint, so it is obvious the vertex is
+    // the handle that shapes it.
+    if (!inRouteMode) {
+      ctx.strokeStyle = 'rgba(160,200,255,0.45)';
+      ctx.lineWidth = 1 / RP.scale;
+      ctx.setLineDash([3 / RP.scale, 3 / RP.scale]);
+      ctx.beginPath();
+      ctx.moveTo(smc.x1, smc.y1); ctx.lineTo(smc.vx, smc.vy); ctx.lineTo(smc.x2, smc.y2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    var spts = RP.Sketch.smoothPoints(RP.sketch, RP.sketch.entities[smc.id], 48);
+    if (spts.length < 2) continue;
+    ctx.strokeStyle = smColor;
+    ctx.lineWidth = (smHover ? 4.5 : (smSel ? 3 : 2)) / RP.scale;
+    ctx.setLineDash([6 / RP.scale, 4 / RP.scale]);
+    ctx.beginPath();
+    ctx.moveTo(spts[0].x, spts[0].y);
+    for (var spi = 1; spi < spts.length; spi++) ctx.lineTo(spts[spi].x, spts[spi].y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   // --- Draw standalone points ---
   // Drawn as a small ring with a centre dot so they read as a marked
   // position rather than as another line's endpoint.
@@ -234,7 +273,8 @@ RP.render = function() {
       var isTeleport  = sMode === RP.SEG_MODE_TELEPORT;
       var isLineTrace = sMode === RP.SEG_MODE_LINETRACE_DIST || sMode === RP.SEG_MODE_LINETRACE_JUNCT;
       var isWallAlign = sMode === RP.SEG_MODE_WALL_ALIGN;
-      var isArc = seg.entityType === 'arc';
+      var isSmooth = seg.entityType === 'smooth';
+      var isArc = seg.entityType === 'arc' || isSmooth;   // drawn along its curve either way
       // Segment ids ARE move-action ids, so the route-mode selection lines up
       // with the derived segment view directly.
       var isSegSel = inRouteMode && r.id === RP.activeRouteId &&
@@ -250,16 +290,12 @@ RP.render = function() {
       // Arc render polyline (matches the generated turn_arc geometry)
       var arcRenderPts = null;
       if (isArc) {
-        if (sMode === 'smooth') {
-          // A smooth corner: same endpoints as the arc, its own curve, already in travel order
-          arcRenderPts = RP.smoothPoints(RP.sketch, RP.sketch.entities[seg.entityId], !!seg.flip,
-                                         RP.smoothRamp(seg), 48);
-        } else {
-          arcRenderPts = RP.Sketch.arcPoints(RP.sketch, RP.sketch.entities[seg.entityId], 48);
-          // Points come back in stored p1->p2 order; put them in travel order
-          // so the direction chevron points the right way.
-          if (seg.flip) arcRenderPts = arcRenderPts.slice().reverse();
-        }
+        arcRenderPts = isSmooth
+          ? RP.Sketch.smoothPoints(RP.sketch, RP.sketch.entities[seg.entityId], 48)
+          : RP.Sketch.arcPoints(RP.sketch, RP.sketch.entities[seg.entityId], 48);
+        // Points come back in stored p1->p2 order; put them in travel order
+        // so the direction chevron points the right way.
+        if (seg.flip) arcRenderPts = arcRenderPts.slice().reverse();
         if (arcRenderPts.length < 2) { isArc = false; arcRenderPts = null; }
       }
 

@@ -282,6 +282,7 @@ RP.resetSketch = function() {
   RP.documents = {};
   RP.lines = [];
   RP.arcs = [];
+  RP.smooths = [];
   RP.points = [];
   RP.selectedLineId = null;
 };
@@ -292,6 +293,7 @@ RP.rebuildLines = function() {
   var ids = RP.Sketch.entityIds(sk);
   var out = [];
   var arcsOut = [];
+  var smoothsOut = [];
   var ptsOut = [];
   for (var i = 0; i < ids.length; i++) {
     var e = sk.entities[ids[i]];
@@ -335,6 +337,27 @@ RP.rebuildLines = function() {
       continue;
     }
 
+    if (e.type === 'smooth') {
+      var sm = RP.constructionMeta[e.id];
+      if (!sm) continue;
+      var s1 = sk.entities[e.p1], sv = sk.entities[e.vertex], s2 = sk.entities[e.p2];
+      if (!s1 || !sv || !s2) continue;
+      var sgeo = RP.Sketch.smoothGeometry(sk, e);
+      smoothsOut.push({
+        id: e.id, p1: e.p1, vertex: e.vertex, p2: e.p2, ramp: RP.Sketch.smoothRamp(e),
+        x1: s1.x, y1: s1.y, vx: sv.x, vy: sv.y, x2: s2.x, y2: s2.y,
+        radius: sgeo ? sgeo.radius : 0,
+        sweep: sgeo ? sgeo.sweep : 0,
+        role: sm.role || 'construction',
+        // Tightest radius, measured live like line lengths.
+        label: sgeo ? ('Rmin ' + RP.constructionLabel(0, 0, sgeo.radius, 0)) : null,
+        group: sm.group != null ? sm.group : null,
+        name: sm.label || null,
+        visible: sm.visible !== false && RP.groupVisible(sm.group)
+      });
+      continue;
+    }
+
     if (e.type !== 'line') continue;
     var meta = RP.constructionMeta[e.id];
     if (!meta) continue;              // not a construction line
@@ -357,6 +380,7 @@ RP.rebuildLines = function() {
   }
   RP.lines = out;
   RP.arcs = arcsOut;
+  RP.smooths = smoothsOut;
   RP.points = ptsOut;
   return out;
 };
@@ -427,6 +451,84 @@ RP.addConstructionArc = function(x1, y1, x2, y2, opts) {
 
   return { arc: arc, p1: p1, p2: p2, center: pc,
            constraints: added, tangents: tangents };
+};
+
+// Create a construction smooth corner (js/sketch/smooth.js), drawn by its
+// two ends like a line. The vertex - where its end tangents meet - is a
+// real sketch point you can drag or constrain:
+//   - both ends snapped onto the ends of single lines: the vertex goes where
+//     those lines cross, and each line is made tangent (vertex on line), so
+//     drawing between two lines rounds off their corner;
+//   - otherwise a 90 degree corner to start with (vertex to the left of the
+//     drawn chord, or wherever opts.vertex says).
+RP.addConstructionSmooth = function(x1, y1, x2, y2, opts) {
+  opts = opts || {};
+  var sk = RP.ensureSketch();
+  var dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy);
+  if (L < 1e-6) return null;
+
+  function lineAt(snap) {
+    if (!snap || snap.kind !== 'endpoint' || snap.pointId == null) return null;
+    var ls = RP.entitiesEndingAt(sk, snap.pointId, 'line');
+    return ls.length === 1 ? ls[0] : null;
+  }
+  var la = lineAt(opts.startSnap), lb = lineAt(opts.endSnap);
+  var vx = null, vy = null;
+  if (opts.vertex) { vx = opts.vertex.x; vy = opts.vertex.y; }
+  if (vx == null && la && lb) {
+    var a1 = sk.entities[la.p1], a2 = sk.entities[la.p2], b1 = sk.entities[lb.p1], b2 = sk.entities[lb.p2];
+    var r = { x: a2.x - a1.x, y: a2.y - a1.y }, q = { x: b2.x - b1.x, y: b2.y - b1.y };
+    var den = r.x * q.y - r.y * q.x;
+    if (Math.abs(den) > 1e-9) {
+      var t = ((b1.x - a1.x) * q.y - (b1.y - a1.y) * q.x) / den;
+      vx = a1.x + t * r.x; vy = a1.y + t * r.y;
+    }
+  }
+  if (vx == null) {           // 90 degree corner over the chord
+    vx = (x1 + x2) / 2 - dy / 2; vy = (y1 + y2) / 2 + dx / 2;
+  }
+  var p1 = RP.Sketch.addPoint(sk, x1, y1);
+  var pv = RP.Sketch.addPoint(sk, vx, vy);
+  var p2 = RP.Sketch.addPoint(sk, x2, y2);
+  var sm = RP.Sketch.addSmooth(sk, p1.id, pv.id, p2.id, opts.ramp);
+  RP.constructionMeta[sm.id] = { label: opts.name || null, visible: true, group: RP.currentGroup().id };
+
+  var added = [];
+  added = added.concat(RP.autoConstrainPoint(p1.id, opts.startSnap));
+  added = added.concat(RP.autoConstrainPoint(p2.id, opts.endSnap));
+  var res = RP.solveSketch();
+  if (res && res.status === 'conflict' && added.length) {
+    for (var i = 0; i < added.length; i++) RP.Sketch.removeConstraint(sk, added[i].id);
+    RP.solveSketch();
+    added = [];
+  }
+  // Tangency: the line an end joins passes through the vertex. Judged on
+  // its own, after the joins, so a rejected tangent can't take them down.
+  var tangents = [];
+  [la, lb].forEach(function(line) {
+    if (!RP.autoConstrain || !line) return;
+    try {
+      var c = RP.Sketch.addConstraint(sk, 'point_on_line', [pv.id, line.id]);
+      var r2 = RP.Sketch.solve(sk);
+      if (r2.status === 'conflict' || r2.status === 'redundant') RP.Sketch.removeConstraint(sk, c.id);
+      else tangents.push(c);
+    } catch (err) { /* never fatal */ }
+  });
+  RP.solveSketch();
+  return { smooth: sm, p1: p1, vertex: pv, p2: p2, constraints: added, tangents: tangents };
+};
+
+// Change a smooth corner's ramp (0..1): its shape between the same three
+// points. The caller pushes history.
+RP.setSmoothRamp = function(entityId, ramp) {
+  var sk = RP.ensureSketch();
+  var e = sk.entities[entityId];
+  if (!e || e.type !== 'smooth') return false;
+  var f = Number(ramp);
+  if (!isFinite(f)) return false;
+  e.ramp = Math.min(1, Math.max(0, f));
+  RP.solveSketch();
+  return true;
 };
 
 RP.solveSketch = function(opts) {
@@ -835,6 +937,11 @@ RP.obstacleSegments = function() {
       var ap = RP.Sketch.arcPoints(sk, e, 32);
       for (var j = 0; j < ap.length - 1; j++) {
         segs.push({ id: e.id, x1: ap[j].x, y1: ap[j].y, x2: ap[j + 1].x, y2: ap[j + 1].y });
+      }
+    } else if (e.type === 'smooth') {
+      var sp = RP.Sketch.smoothPoints(sk, e, 32);
+      for (var k = 0; k < sp.length - 1; k++) {
+        segs.push({ id: e.id, x1: sp[k].x, y1: sp[k].y, x2: sp[k + 1].x, y2: sp[k + 1].y });
       }
     }
   }

@@ -158,6 +158,11 @@ RP.initEvents = function() {
         var aDSqB = RP.arcHitDistSq(arcB.id, pSel.x, pSel.y);
         if (aDSqB < bodyDSq) { bodyDSq = aDSqB; bodyId = arcB.id; }
       }
+      (RP.smooths || []).forEach(function(smB) {
+        if (smB.visible === false) return;
+        var sDSqB = RP.smoothHitDistSq(smB.id, pSel.x, pSel.y);
+        if (sDSqB < bodyDSq) { bodyDSq = sDSqB; bodyId = smB.id; }
+      });
       for (var pb = 0; pb < RP.points.length; pb++) {
         var ptB = RP.points[pb];
         if (ptB.visible === false) continue;
@@ -206,7 +211,7 @@ RP.initEvents = function() {
     // ---- CONSTRUCTION MODE ----
     // Arcs are drawn by their chord, exactly like a line; the centre is
     // then a normal sketch point you can drag or constrain.
-    if (RP.activeTool === 'construction' || RP.activeTool === 'arc') {
+    if (RP.activeTool === 'construction' || RP.activeTool === 'arc' || RP.activeTool === 'smooth') {
       var p2 = RP.screenToImage(e.clientX, e.clientY);
       var sC = RP.computeSnap(p2.x, p2.y, { kind: 'point' });
       var startC = sC || p2;
@@ -247,7 +252,7 @@ RP.initEvents = function() {
       // rather than whatever was last touched there. Only for lines/arcs
       // and STANDALONE points — a line's own endpoint is not a row in
       // that list, so focusing it would select nothing visible.
-      if (hitCon.kind === 'line' || hitCon.kind === 'arc') {
+      if (hitCon.kind === 'line' || hitCon.kind === 'arc' || hitCon.kind === 'smooth') {
         RP.focusGeometryInList(hitCon.id);
       } else if (hitCon.kind === 'point' &&
                  RP.points.some(function(pt) { return pt.id === hitCon.id; })) {
@@ -417,12 +422,16 @@ RP.initEvents = function() {
       var endPt = snapUp || pUp;
       var movedFar = RP.dist(RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y) > 2 / RP.scale;
 
-      if ((RP.activeTool === 'construction' || RP.activeTool === 'arc') && movedFar) {
+      if ((RP.activeTool === 'construction' || RP.activeTool === 'arc' || RP.activeTool === 'smooth') && movedFar) {
         var drawOpts = {
           startSnap: RP.lineDrawStart.snap,
           endSnap: (endPt && endPt.kind) ? endPt : null
         };
-        if (RP.activeTool === 'arc') {
+        if (RP.activeTool === 'smooth') {
+          RP.pushHistory('Draw smooth corner');
+          RP.addConstructionSmooth(
+            RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y, drawOpts);
+        } else if (RP.activeTool === 'arc') {
           RP.pushHistory('Draw construction arc');
           RP.addConstructionArc(
             RP.lineDrawStart.x, RP.lineDrawStart.y, endPt.x, endPt.y, drawOpts);
@@ -685,6 +694,16 @@ RP.initEvents = function() {
       if (dSqA < bestSq) {
         bestSq = dSqA; bestId = arc.id;
         bestTitle = arc.label ? ('Arc: ' + arc.label) : ('Arc ' + (ai + 1));
+      }
+    }
+    var smCtx = RP.smooths || [];
+    for (var si2 = 0; si2 < smCtx.length; si2++) {
+      var smc2 = smCtx[si2];
+      if (smc2.visible === false) continue;
+      var dSqS = RP.smoothHitDistSq(smc2.id, p.x, p.y);
+      if (dSqS < bestSq) {
+        bestSq = dSqS; bestId = smc2.id;
+        bestTitle = smc2.name || (smc2.label ? ('Smooth corner: ' + smc2.label) : ('Smooth corner ' + (si2 + 1)));
       }
     }
     for (var li = 0; li < RP.lines.length; li++) {

@@ -83,7 +83,7 @@ RP.addMove = function(routeId, entityId, opts) {
   if (!route) return null;
   var sk = RP.ensureSketch();
   var ent = sk.entities[entityId];
-  if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) return null;
+  if (!ent || (ent.type !== 'line' && ent.type !== 'arc' && ent.type !== 'smooth')) return null;
   opts = opts || {};
 
   var el = RP.makeMoveAction(entityId, ent.type, opts);
@@ -173,7 +173,7 @@ RP.bestInsertionFor = function(route, entityId) {
   var sk = RP.ensureSketch();
   var ent = sk.entities[entityId];
   var moves = route ? RP.moveActions(route) : [];
-  if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) {
+  if (!ent || (ent.type !== 'line' && ent.type !== 'arc' && ent.type !== 'smooth')) {
     return { index: moves.length, flip: false, joins: 0 };
   }
   if (!moves.length) return { index: 0, flip: false, joins: 0 };
@@ -215,24 +215,29 @@ RP.moveLengthMm = function(el) {
     var g = RP.Sketch.arcGeometry(sk, ent);
     return g ? Math.abs(g.sweep) * g.radius / ppm : null;
   }
+  if (ent.type === 'smooth') {
+    var sg = RP.Sketch.smoothGeometry(sk, ent);
+    return sg ? sg.length / ppm : null;
+  }
   var a = sk.entities[ent.p1], b = sk.entities[ent.p2];
   if (!a || !b) return null;
   return Math.hypot(b.x - a.x, b.y - a.y) / ppm;
 };
 
-// Travel-order endpoints: entry first, exit second. Lines and arcs both
-// carry p1/p2, so this is the same for either.
+// Travel-order endpoints: entry first, exit second. Lines, arcs and smooth
+// corners all carry p1/p2, so this is the same for each.
 RP.moveEndpoints = function(sk, el) {
   var ent = sk.entities[el.entityId];
-  if (!ent || (ent.type !== 'line' && ent.type !== 'arc')) return null;
+  if (!ent || (ent.type !== 'line' && ent.type !== 'arc' && ent.type !== 'smooth')) return null;
   return el.flip ? { entry: ent.p2, exit: ent.p1 }
                  : { entry: ent.p1, exit: ent.p2 };
 };
 
 // Which moves make sense for the geometry an element references.
 RP.movesForEntity = function(entityType) {
+  if (entityType === 'smooth') return [RP.MOVE_SMOOTH, RP.MOVE_TELEPORT];
   return entityType === 'arc'
-    ? [RP.MOVE_ARC, RP.MOVE_SMOOTH, RP.MOVE_TELEPORT]
+    ? [RP.MOVE_ARC, RP.MOVE_TELEPORT]
     : [RP.MOVE_FORWARD, RP.MOVE_LINETRACE_DIST, RP.MOVE_LINETRACE_JUNCT,
        RP.MOVE_WALL_ALIGN, RP.MOVE_TELEPORT];
 };
@@ -417,7 +422,7 @@ RP.rebuildRouteViews = function() {
         flip: !!el.flip,
         mode: el.move === 'forward' ? 'normal' : el.move,
         direction: el.reverse ? 'backward' : 'forward',
-        speed: el.speed, offset: el.offset, ramp: el.ramp,
+        speed: el.speed, offset: el.offset,
         junctionCount: el.junctions,
         teleportName: el.teleportName,
         // Effective visibility: the move's own switch AND its segment's.

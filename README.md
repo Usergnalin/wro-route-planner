@@ -84,7 +84,7 @@ Projects are ordinary `.json` files — **File → Save Project** / **Open Proje
 5. **Set robot config** — chassis dimensions, wheelbase, start position, and start heading
 6. **Generate output:**
    - **Human-readable step-by-step instructions** (e.g. "Turn right 90°", "Forward 450 mm")
-   - **Smooth corners** — drive an arc as a curve with no curvature jumps (same endpoints and tangents, raised-cosine curvature ramps), so the robot can follow it exactly; `{angle}`, `{radius}` (tightest), `{ramp}`
+   - **Smooth corners** — their own sketch geometry (Smooth tool): a corner with no curvature jumps (raised-cosine curvature ramps), so the robot can drive it exactly; shaped by its vertex and ramp, constrainable along its whole length; code gets `{angle}`, `{radius}` (tightest), `{ramp}`
    - **Code template output** — one strict template per movement (forward, turn, arc, smooth corner, wall align, line traces, checkpoint), each with its own parameters (speed, acceleration, flags — whatever your robot API takes) whose values you set per action in Route mode
    - Total distance summary
 7. **Save/Open** projects as `.json` files (mat image + routes + calibration + config, all in one)

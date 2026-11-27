@@ -76,6 +76,14 @@ RP.sketchPoints = function() {
     add(arc.p2, arc.x2, arc.y2);
     add(arc.center, arc.cx, arc.cy);
   }
+  var sms = RP.smooths || [];
+  for (var m = 0; m < sms.length; m++) {
+    var smv = sms[m];
+    if (smv.visible === false) continue;
+    add(smv.p1, smv.x1, smv.y1);
+    add(smv.p2, smv.x2, smv.y2);
+    add(smv.vertex, smv.vx, smv.vy);
+  }
   for (var k = 0; k < RP.points.length; k++) {
     var sp = RP.points[k];
     if (sp.visible === false) continue;
@@ -100,12 +108,27 @@ RP.arcHitDistSq = function(arcEntityId, ix, iy) {
   return best;
 };
 
+// Same for a smooth corner, along its own curve.
+RP.smoothHitDistSq = function(smoothEntityId, ix, iy) {
+  var ent = RP.sketch && RP.sketch.entities[smoothEntityId];
+  if (!ent || ent.type !== 'smooth') return Infinity;
+  var pts = RP.Sketch.smoothPoints(RP.sketch, ent, 24);
+  if (pts.length < 2) return Infinity;
+  var best = Infinity;
+  for (var i = 0; i < pts.length - 1; i++) {
+    var d = RP.pointToSegDistSq(ix, iy, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+    if (d < best) best = d;
+  }
+  return best;
+};
+
 // Distance from a point to whatever geometry an element references —
 // straight for lines, along the curve for arcs.
 RP.entityDistSq = function(sk, entityId, ix, iy) {
   var ent = sk && sk.entities[entityId];
   if (!ent) return Infinity;
   if (ent.type === 'arc') return RP.arcHitDistSq(entityId, ix, iy);
+  if (ent.type === 'smooth') return RP.smoothHitDistSq(entityId, ix, iy);
   var a = sk.entities[ent.p1], b = sk.entities[ent.p2];
   if (!a || !b) return Infinity;
   return RP.pointToSegDistSq(ix, iy, a.x, a.y, b.x, b.y);
@@ -141,6 +164,15 @@ RP.sketchHitTest = function(ix, iy) {
       bestLine = { kind: 'arc', id: arc.id };
     }
   }
+  var smh = RP.smooths || [];
+  for (var q = 0; q < smh.length; q++) {
+    if (smh[q].visible === false) continue;
+    var sSq = RP.smoothHitDistSq(smh[q].id, ix, iy);
+    if (sSq < threshSq && sSq < bestLineD) {
+      bestLineD = sSq;
+      bestLine = { kind: 'smooth', id: smh[q].id };
+    }
+  }
   return bestLine;
 };
 
@@ -150,13 +182,22 @@ RP.sketchHitTest = function(ix, iy) {
 RP.constraintRefsFor = function(type) {
   var sk = RP.sketch;
   if (!sk) return null;
-  var pts = [], lns = [], arcs = [];
+  var pts = [], lns = [], arcs = [], sms = [];
   for (var i = 0; i < RP.sketchSelection.length; i++) {
     var e = sk.entities[RP.sketchSelection[i]];
     if (!e) continue;
     if (e.type === 'point') pts.push(e.id);
     else if (e.type === 'line') lns.push(e.id);
     else if (e.type === 'arc') arcs.push(e.id);
+    else if (e.type === 'smooth') sms.push(e.id);
+  }
+  // Smooth corners take only their own constraints
+  if (sms.length) {
+    if (type === 'point_on_smooth')
+      return (pts.length === 1 && sms.length === 1 && !lns.length && !arcs.length) ? [pts[0], sms[0]] : null;
+    if (type === 'smooth_radius')
+      return (sms.length === 1 && !pts.length && !lns.length && !arcs.length) ? sms : null;
+    return null;
   }
   switch (type) {
     case 'point_on_arc':
@@ -215,8 +256,8 @@ RP.constraintRefsFor = function(type) {
 // two heads above — instead it picks whichever the line is already
 // closer to. Nobody selects a mostly-vertical line hoping to snap it flat.
 RP.CONSTRAINT_MERGED = {
-  coincident: ['coincident', 'point_on_line', 'point_on_arc'],
-  distance:   ['distance', 'point_line_distance', 'radius', 'angle'],
+  coincident: ['coincident', 'point_on_line', 'point_on_arc', 'point_on_smooth'],
+  distance:   ['distance', 'point_line_distance', 'radius', 'smooth_radius', 'angle'],
   align:      ['horizontal', 'vertical']
 };
 
@@ -255,6 +296,10 @@ RP.measureConstraint = function(type, refs) {
     var ag = RP.Sketch.arcGeometry(sk, sk.entities[refs[0]]);
     return ag ? ag.radius : 0;
   }
+  if (type === 'smooth_radius') {
+    var sg = RP.Sketch.smoothGeometry(sk, sk.entities[refs[0]]);
+    return sg ? sg.radius : 0;
+  }
   if (type === 'distance') {
     if (refs.length === 1) {
       var l = sk.entities[refs[0]];
@@ -279,7 +324,8 @@ RP.measureConstraint = function(type, refs) {
 
 // px <-> mm, radians <-> degrees
 function isLengthConstraint(type) {
-  return type === 'distance' || type === 'point_line_distance' || type === 'radius';
+  return type === 'distance' || type === 'point_line_distance' || type === 'radius' ||
+         type === 'smooth_radius';
 }
 RP.constraintToDisplay = function(type, v) {
   if (isLengthConstraint(type)) return RP.calibration ? v / RP.calibration.pixelsPerMm : v;
@@ -416,6 +462,9 @@ RP.buildAnnotations = function() {
     if (arc.visible === false) continue;
     if (arc.label) ensure(arc.id).label = arc.label;
   }
+  (RP.smooths || []).forEach(function(smv) {
+    if (smv.visible !== false && smv.label) ensure(smv.id).label = smv.label;
+  });
 
   var cids = RP.Sketch.constraintIds(sk);
   for (var k = 0; k < cids.length; k++) {
@@ -572,6 +621,15 @@ RP.drawSketchOverlay = function(ctx) {
       var ac = sk.entities[e.center];
       var rl = Math.hypot(ax - ac.x, ay - ac.y) || 1;
       nx = (ax - ac.x) / rl; ny = (ay - ac.y) / rl;   // outward from the centre
+      tx = -ny; ty = nx;
+    } else if (e.type === 'smooth') {
+      var spts = RP.Sketch.smoothPoints(sk, e, 16);
+      if (spts.length < 2) continue;
+      var smid = spts[Math.floor(spts.length / 2)];
+      ax = smid.x; ay = smid.y;
+      var vtx = sk.entities[e.vertex];
+      var vl = Math.hypot(vtx.x - ax, vtx.y - ay) || 1;
+      nx = (vtx.x - ax) / vl; ny = (vtx.y - ay) / vl;   // towards the vertex: the outside of the turn
       tx = -ny; ty = nx;
     } else if (e.type === 'point') {
       ax = e.x; ay = e.y;

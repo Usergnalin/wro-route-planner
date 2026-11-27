@@ -156,21 +156,16 @@ RP.computeSteps = function(route) {
         heading: RP.toDeg(RP.angleRad(it.a.x, it.a.y, it.b.x, it.b.y)),
         name: el.teleportName || ('teleport_' + el.id)
       });
-    } else if (it.arc && mode === RP.MOVE_SMOOTH) {
-      // Same endpoints and end tangents as the arc, driven along a curve
-      // with no curvature jumps; R is its smallest radius.
-      var ramp = RP.smoothRamp(el);
-      var sc = RP.smoothCornerOf(RP.sketch, it.entity, !!el.flip, ramp);
-      if (sc) {
-        steps.push({
-          kind: 'smooth',
-          angle: it.arc.sweepDeg,                  // chassis turn, clockwise-positive
-          radiusMm: sc.radiusPx / ppm,
-          ramp: ramp,
-          mm: sc.lengthPx / ppm,
-          reverse: !it.arc.noseFirst
-        });
-      }
+    } else if (it.smooth) {
+      // A smooth corner: everything comes straight off the drawn entity.
+      steps.push({
+        kind: 'smooth',
+        angle: it.smooth.sweepDeg,               // chassis turn, clockwise-positive
+        radiusMm: it.smooth.radiusPx / ppm,      // tightest radius
+        ramp: it.smooth.ramp,
+        mm: it.smooth.lengthPx / ppm,
+        reverse: !it.smooth.noseFirst
+      });
     } else if (it.arc) {
       var dCw = it.arc.sweepDeg;                 // chassis turn, clockwise-positive
       var Rmm = it.arc.radiusPx / ppm;

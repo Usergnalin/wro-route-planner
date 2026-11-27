@@ -72,6 +72,21 @@ RP.Sketch.addArc = function(sk, centerId, p1Id, p2Id, ccw) {
   return e;
 };
 
+// Smooth corner over three points: start, vertex (where its end tangents
+// meet) and end. See js/sketch/smooth.js. ramp is a fixed shape property.
+RP.Sketch.addSmooth = function(sk, p1Id, vertexId, p2Id, ramp) {
+  if (!sk.entities[p1Id] || !sk.entities[vertexId] || !sk.entities[p2Id]) {
+    throw new Error('addSmooth: unknown point');
+  }
+  var e = {
+    id: sk.nextEntityId++, type: 'smooth',
+    p1: p1Id, vertex: vertexId, p2: p2Id,
+    ramp: ramp == null ? 1 : Math.min(1, Math.max(0, Number(ramp)))
+  };
+  sk.entities[e.id] = e;
+  return e;
+};
+
 // Convenience: create both endpoints and the line in one call.
 RP.Sketch.addLineXY = function(sk, x1, y1, x2, y2) {
   var a = RP.Sketch.addPoint(sk, x1, y1);
@@ -87,12 +102,14 @@ RP.Sketch.pointsOf = function(sk, entityId) {
   if (!e) return [];
   if (e.type === 'line') return [e.p1, e.p2];
   if (e.type === 'arc') return [e.center, e.p1, e.p2];
+  if (e.type === 'smooth') return [e.p1, e.vertex, e.p2];
   return [];
 };
 
 RP.Sketch.referencesEntity = function(e, targetId) {
   if (e.type === 'line') return e.p1 === targetId || e.p2 === targetId;
   if (e.type === 'arc') return e.center === targetId || e.p1 === targetId || e.p2 === targetId;
+  if (e.type === 'smooth') return e.p1 === targetId || e.vertex === targetId || e.p2 === targetId;
   return false;
 };
 

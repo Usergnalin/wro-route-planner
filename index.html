@@ -65,6 +65,7 @@
       <div class="tool-group">
         <button id="btn-sidebar-construction" class="tool-btn sidebar-tool-btn active" data-tool="construction"><i data-icon="line"></i><span>Line</span></button>
         <button id="btn-sidebar-arc" class="tool-btn sidebar-tool-btn" data-tool="arc"><i data-icon="arc"></i><span>Arc</span></button>
+        <button id="btn-sidebar-smooth" class="tool-btn sidebar-tool-btn" data-tool="smooth" title="Smooth corner: a curve with no curvature jumps, drawn by its two ends"><i data-icon="smooth"></i><span>Smooth</span></button>
         <button id="btn-sidebar-point" class="tool-btn sidebar-tool-btn" data-tool="point"><i data-icon="point"></i><span>Point</span></button>
         <button id="btn-sidebar-select" class="tool-btn sidebar-tool-btn" data-tool="select"><i data-icon="select"></i><span>Select</span></button>
         <button id="btn-sidebar-constrain" class="tool-btn sidebar-tool-btn wide" data-tool="constrain"><i data-icon="constrain"></i><span>Constrain</span></button>
@@ -270,6 +271,7 @@
 <script src="js/sketch/linalg.js"></script>
 <script src="js/sketch/sketch.js"></script>
 <script src="js/sketch/constraints.js"></script>
+<script src="js/sketch/smooth.js"></script>
 <script src="js/sketch/solver.js"></script>
 <script src="js/render.js"></script>
 <script src="js/routes.js"></script>
@@ -277,7 +279,6 @@
 <script src="js/model/route.js"></script>
 <script src="js/model/action.js"></script>
 <script src="js/model/resolver.js"></script>
-<script src="js/model/smooth.js"></script>
 <script src="js/model/params.js"></script>
 <script src="js/output.js"></script>
 <!-- Simulation layer: pure geometry over the route + robot + obstacles -->
